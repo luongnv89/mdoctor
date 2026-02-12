@@ -22,7 +22,18 @@ set -uo pipefail
 # VERSION
 ########################################
 
-MDOCTOR_VERSION="1.0.0"
+MDOCTOR_VERSION="1.1.0"
+
+# Append short git commit hash if inside a git repo
+_mdoctor_commit=""
+if command -v git >/dev/null 2>&1; then
+  _mdoctor_commit="$(git -C "$(dirname "$0")" rev-parse --short HEAD 2>/dev/null || true)"
+fi
+if [ -n "$_mdoctor_commit" ]; then
+  MDOCTOR_VERSION_FULL="${MDOCTOR_VERSION}+${_mdoctor_commit}"
+else
+  MDOCTOR_VERSION_FULL="${MDOCTOR_VERSION}"
+fi
 
 ########################################
 # RESOLVE INSTALL DIRECTORY
@@ -81,7 +92,7 @@ banner() {
   echo ' | |  | | |_| | (_) | (__| || (_) | |   '
   echo ' |_|  |_|____/ \___/ \___|\__\___/|_|   '
   echo "${RESET}"
-  echo "${DIM}  macOS Doctor v${MDOCTOR_VERSION} - Keep your Mac healthy${RESET}"
+  echo "${DIM}  macOS Doctor v${MDOCTOR_VERSION_FULL} - Keep your Mac healthy${RESET}"
   echo
 }
 
@@ -121,6 +132,8 @@ cmd_check() {
         ;;
     esac
   done
+
+  echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
 
   if [ -n "$module" ]; then
     # Run a single check module
@@ -230,6 +243,8 @@ cmd_clean() {
     esac
   done
 
+  echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
+
   if [ -n "$module" ]; then
     # Run a single cleanup module
     local clean_file="${MDOCTOR_DIR}/cleanups/${module}.sh"
@@ -268,6 +283,7 @@ cmd_clean() {
     source "$clean_file"
 
     # Start spinner for single cleanup module
+    # shellcheck disable=SC2034
     STEP_CURRENT=1
     progress_start "Cleaning ${module}..."
 
@@ -556,7 +572,7 @@ cmd_info() {
 ########################################
 
 cmd_version() {
-  echo "mdoctor ${MDOCTOR_VERSION}"
+  echo "mdoctor ${MDOCTOR_VERSION_FULL}"
 }
 
 ########################################

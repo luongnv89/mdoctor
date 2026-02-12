@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0] - 2026-02-12
+
+### Added
+- Animated spinner with progress bar (`[████████░░░░░░░░] 44%`) shown while checks run
+- Version string now includes short git commit hash (e.g. `1.1.0+d2d9a90`)
+- Version displayed at the start of `mdoctor check` and `mdoctor clean`
+
+### Changed
+- `mdoctor version` now outputs full version with commit hash
+- Banner in `mdoctor help` shows version with commit hash
+- Spinner is automatically hidden when output is piped or redirected
+- Status output (ok/warn/fail/info) pauses spinner to prevent garbled lines
+
 ## [1.0.0] - 2025-12-01
 
 ### Added
