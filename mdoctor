@@ -30,14 +30,15 @@ MDOCTOR_VERSION="1.0.0"
 
 # Find the real script directory (handles symlinks)
 resolve_script_dir() {
+  local resolved
   # Try realpath first (available on modern macOS)
-  if command -v realpath >/dev/null 2>&1; then
-    dirname "$(realpath "$0")"
+  if resolved="$(realpath "$0" 2>/dev/null)"; then
+    dirname "$resolved"
     return
   fi
   # Try perl as fallback (always available on macOS)
-  if command -v perl >/dev/null 2>&1; then
-    perl -e 'use Cwd "abs_path"; print dirname(abs_path($ARGV[0])) . "\n"' "$0"
+  if resolved="$(perl -e 'use Cwd "abs_path"; use File::Basename; print dirname(abs_path($ARGV[0])) . "\n"' "$0" 2>/dev/null)"; then
+    echo "$resolved"
     return
   fi
   # Last resort: use known install location or script dir
