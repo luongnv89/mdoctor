@@ -28,21 +28,24 @@ MDOCTOR_VERSION="1.0.0"
 # RESOLVE INSTALL DIRECTORY
 ########################################
 
-# Follow symlinks to find the real script location
+# Find the real script directory (handles symlinks)
 resolve_script_dir() {
-  local script="$0"
-  # Resolve symlinks iteratively
-  while [ -h "$script" ]; do
-    local ls_output
-    ls_output="$(ls -ld "$script")"
-    local link="${ls_output#*-> }"
-    if [[ "$link" == /* ]]; then
-      script="$link"
-    else
-      script="$(dirname "$script")/$link"
-    fi
-  done
-  cd -P "$(dirname "$script")" && pwd
+  # Try realpath first (available on modern macOS)
+  if command -v realpath >/dev/null 2>&1; then
+    dirname "$(realpath "$0")"
+    return
+  fi
+  # Try perl as fallback (always available on macOS)
+  if command -v perl >/dev/null 2>&1; then
+    perl -e 'use Cwd "abs_path"; print dirname(abs_path($ARGV[0])) . "\n"' "$0"
+    return
+  fi
+  # Last resort: use known install location or script dir
+  if [ -d "${HOME}/.mdoctor/lib" ]; then
+    echo "${HOME}/.mdoctor"
+  else
+    cd -P "$(dirname "$0")" && pwd
+  fi
 }
 
 MDOCTOR_DIR="$(resolve_script_dir)"
