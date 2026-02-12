@@ -1,0 +1,85 @@
+# Development Guide
+
+## Prerequisites
+
+- macOS (any recent version)
+- Bash 3.2+ (ships with macOS)
+- Git
+
+No build tools, package managers, or runtimes are required. mdoctor is pure Bash.
+
+## Local Setup
+
+```bash
+git clone https://github.com/luongnv89/mdoctor.git
+cd mdoctor
+chmod +x mdoctor doctor.sh cleanup.sh
+```
+
+## Running Locally
+
+```bash
+# Run directly without installing
+./mdoctor help
+./mdoctor check
+./mdoctor info
+
+# Or install the symlink
+./install.sh
+mdoctor help
+```
+
+## Testing Individual Modules
+
+You can test a single check or cleanup module in isolation:
+
+```bash
+# Test a specific check
+./mdoctor check -m network
+./mdoctor check -m disk
+
+# Test a specific cleanup (dry-run)
+./mdoctor clean -m trash
+./mdoctor clean -m caches --force
+```
+
+Or source modules manually:
+
+```bash
+source lib/common.sh
+source lib/logging.sh
+source lib/disk.sh
+
+STEP_CURRENT=0 STEP_TOTAL=1
+ACTIONS=() WARN_COUNT=0 FAIL_COUNT=0
+LOG_PATHS=() LOG_DESCS=()
+REPORT_MD=""
+
+init_colors
+
+source checks/network.sh
+check_network
+```
+
+## Debugging
+
+Use `bash -x` to trace execution:
+
+```bash
+bash -x ./mdoctor check -m disk
+```
+
+Or add `set -x` temporarily inside a specific module.
+
+## Code Style
+
+- Shebang: `#!/usr/bin/env bash`
+- Error handling: `set -uo pipefail` (add `e` for cleanup scripts)
+- Always quote variables: `"$var"`
+- Use library functions for output consistency
+- One concern per module file
+- Functions named `check_*` for checks, `clean_*` for cleanups, `fix_*` for fixes
+
+## Adding New Functionality
+
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for step-by-step guides on adding check modules, cleanup modules, and fix targets.

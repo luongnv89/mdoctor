@@ -1,6 +1,18 @@
 # mdoctor - macOS Doctor
 
-A unified CLI toolkit for checking, cleaning, fixing, and diagnosing macOS systems.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](https://www.apple.com/macos/)
+[![Bash](https://img.shields.io/badge/shell-bash-green.svg)](https://www.gnu.org/software/bash/)
+
+A unified CLI toolkit for checking, cleaning, fixing, and diagnosing macOS systems. Pure Bash, no dependencies, works out of the box.
+
+## Why mdoctor?
+
+- **One command** to audit your entire Mac: OS, disk, memory, Homebrew, Node, Python, Docker, shell configs, network
+- **Safe by default** -- health checks are read-only, cleanup runs in dry-run mode
+- **Modular** -- run everything or target a single module
+- **Actionable** -- provides a health score and specific next steps to fix issues
+- **Zero dependencies** -- pure Bash, uses only standard macOS tools
 
 ## Quick Install
 
@@ -113,7 +125,7 @@ DAYS_OLD_OVERRIDE=14 mdoctor clean --force
 ## Project Structure
 
 ```
-mac-doctor/
+mdoctor/
 ├── mdoctor              # Unified CLI entry point
 ├── install.sh           # One-line installer
 ├── uninstall.sh         # Uninstaller
@@ -140,47 +152,28 @@ mac-doctor/
 │   ├── downloads.sh     # Large files in Downloads
 │   ├── browser.sh       # Browser caches
 │   └── dev.sh           # Developer tools cleanup
-└── gui/                 # TUI application (optional)
+└── docs/                # Documentation
+    ├── ARCHITECTURE.md   # System design
+    ├── DEVELOPMENT.md    # Dev setup guide
+    ├── DEPLOYMENT.md     # Distribution & releases
+    └── CHANGELOG.md      # Version history
 ```
 
-## Extending
+## Documentation
 
-### Add a new health check
+- [Architecture](docs/ARCHITECTURE.md) -- System design and component overview
+- [Development](docs/DEVELOPMENT.md) -- Local setup and debugging guide
+- [Deployment](docs/DEPLOYMENT.md) -- Distribution and release process
+- [Changelog](docs/CHANGELOG.md) -- Version history
+- [Contributing](CONTRIBUTING.md) -- How to contribute
+- [Security](SECURITY.md) -- Vulnerability reporting
 
-1. Create `checks/mycheck.sh`:
+## Contributing
 
-```bash
-check_my_feature() {
-  step "My Feature Check"
-  if command -v mytool >/dev/null 2>&1; then
-    status_ok "mytool is installed"
-  else
-    status_warn "mytool not found"
-    add_action "Install mytool: brew install mytool"
-  fi
-}
-```
-
-2. Source it in `doctor.sh` and call the function from `main()`
-3. Increment `STEP_TOTAL`
-
-### Add a new cleanup module
-
-1. Create `cleanups/mycleanup.sh`:
-
-```bash
-clean_my_cache() {
-  header "Cleaning My Cache"
-  if [ -d "${HOME}/.mycache" ]; then
-    run_cmd "rm -rf \"${HOME}/.mycache\"/*"
-  else
-    log "No cache found."
-  fi
-}
-```
-
-2. Source it in `cleanup.sh` and call the function
-3. Increment `PROGRESS_TOTAL`
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on:
+- Adding new health check modules
+- Adding new cleanup modules
+- Commit conventions and PR process
 
 ## Uninstall
 
@@ -197,4 +190,4 @@ rm -rf ~/.mdoctor
 
 ## License
 
-Use freely. No warranty provided.
+[MIT](LICENSE) -- Use freely.
