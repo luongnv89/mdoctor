@@ -508,9 +508,11 @@ cmd_info() {
   printf "  %-20s %s\n" "User:" "$(whoami)"
   printf "  %-20s %s\n" "Shell:" "${SHELL}"
 
-  # Disk
+  # Disk (use Data volume on macOS APFS for accurate usage)
+  local disk_root="/"
+  [ -d /System/Volumes/Data ] && disk_root="/System/Volumes/Data"
   local disk_info
-  disk_info=$(df -h / | awk 'NR==2 {print $3" used / "$2" total ("$5" used)"}')
+  disk_info=$(df -h "$disk_root" | awk 'NR==2 {print $3" used / "$2" total ("$5" used)"}')
   printf "  %-20s %s\n" "Disk:" "${disk_info}"
 
   # Memory

@@ -4,6 +4,16 @@
 # Disk-related utilities
 #
 
+# On macOS APFS, df / reports the read-only system snapshot which shows
+# very little usage. The real user data lives on /System/Volumes/Data.
+_disk_root() {
+  if [ -d /System/Volumes/Data ]; then
+    echo /System/Volumes/Data
+  else
+    echo /
+  fi
+}
+
 kb_to_human() {
   local kb="${1:-0}"
   if (( kb >= 1048576 )); then
@@ -16,15 +26,15 @@ kb_to_human() {
 }
 
 disk_used_pct_root() {
-  df -H / | awk 'NR==2 {gsub("%","",$5); print $5}'
+  df -H "$(_disk_root)" | awk 'NR==2 {gsub("%","",$5); print $5}'
 }
 
 disk_usage() {
-  df -h / | awk 'NR==2 {print "Disk usage: "$3" used / "$2" total ("$5" used)"}'
+  df -h "$(_disk_root)" | awk 'NR==2 {print "Disk usage: "$3" used / "$2" total ("$5" used)"}'
 }
 
 disk_used_kb() {
-  df -k / | awk 'NR==2 {print $3}'
+  df -k "$(_disk_root)" | awk 'NR==2 {print $3}'
 }
 
 human_readable_kb() {

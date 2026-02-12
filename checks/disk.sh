@@ -11,7 +11,7 @@ check_disk() {
   used_pct=$(disk_used_pct_root)
 
   status_info "Root filesystem usage: ${used_pct}%"
-  df -h / | awk 'NR==1 || NR==2 {print "  "$0}'
+  df -h "$(_disk_root)" | awk 'NR==1 || NR==2 {print "  "$0}'
 
   if (( used_pct >= 90 )); then
     status_fail "Disk is almost full (>= 90%)."
