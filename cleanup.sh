@@ -35,11 +35,12 @@ source "${SCRIPT_DIR}/cleanups/dev.sh"
 
 DRY_RUN=true
 LOGFILE="${HOME}/Library/Logs/macos_cleanup.log"
-DAYS_OLD=7   # logs / old files older than this will be considered
+# shellcheck disable=SC2034
+DAYS_OLD="${DAYS_OLD_OVERRIDE:-7}"
 
 # If --force is passed, disable dry-run
 if [[ "${1-}" == "--force" ]]; then
-  DRY_RUN=false
+	DRY_RUN=false
 fi
 
 ########################################
@@ -47,13 +48,13 @@ fi
 ########################################
 
 PROGRESS_CURRENT=0
-PROGRESS_TOTAL=4   # update if you add/remove core steps below
+PROGRESS_TOTAL=4 # update if you add/remove core steps below
 
 step() {
-  PROGRESS_CURRENT=$((PROGRESS_CURRENT + 1))
-  local label="$1"
-  echo
-  echo "➤ [${PROGRESS_CURRENT}/${PROGRESS_TOTAL}] ${label}"
+	PROGRESS_CURRENT=$((PROGRESS_CURRENT + 1))
+	local label="$1"
+	echo
+	echo "➤ [${PROGRESS_CURRENT}/${PROGRESS_TOTAL}] ${label}"
 }
 
 ########################################
@@ -61,60 +62,60 @@ step() {
 ########################################
 
 main() {
-  mkdir -p "$(dirname "$LOGFILE")"
-  echo >> "$LOGFILE"
+	mkdir -p "$(dirname "$LOGFILE")"
+	echo >>"$LOGFILE"
 
-  local used_before_kb
-  local used_after_kb
-  local freed_kb
-  local freed_hr
+	local used_before_kb
+	local used_after_kb
+	local freed_kb
+	local freed_hr
 
-  used_before_kb="$(disk_used_kb)"
+	used_before_kb="$(disk_used_kb)"
 
-  header "Starting macOS cleanup (DRY_RUN=${DRY_RUN})"
-  log "$(disk_usage)"
+	header "Starting macOS cleanup (DRY_RUN=${DRY_RUN})"
+	log "$(disk_usage)"
 
-  # Core generic cleanups – safe-ish for any macOS user
-  step "Emptying Trash"
-  clean_trash
+	# Core generic cleanups – safe-ish for any macOS user
+	step "Emptying Trash"
+	clean_trash
 
-  step "Cleaning user caches"
-  clean_user_caches
+	step "Cleaning user caches"
+	clean_user_caches
 
-  step "Cleaning old logs"
-  clean_logs
+	step "Cleaning old logs"
+	clean_logs
 
-  step "Scanning large files in Downloads"
-  clean_downloads_large_files
+	step "Scanning large files in Downloads"
+	clean_downloads_large_files
 
-  # OPTIONAL: Uncomment if you want these too (and bump PROGRESS_TOTAL)
-  # step "Cleaning browser caches"
-  # clean_browser_caches
-  #
-  # step "Developer caches & tools cleanup"
-  # clean_dev_stuff
+	# OPTIONAL: Uncomment if you want these too (and bump PROGRESS_TOTAL)
+	# step "Cleaning browser caches"
+	# clean_browser_caches
+	#
+	# step "Developer caches & tools cleanup"
+	# clean_dev_stuff
 
-  if [ "$DRY_RUN" = true ]; then
-    used_after_kb="$used_before_kb"
-  else
-    used_after_kb="$(disk_used_kb)"
-  fi
+	if [ "$DRY_RUN" = true ]; then
+		used_after_kb="$used_before_kb"
+	else
+		used_after_kb="$(disk_used_kb)"
+	fi
 
-  freed_kb=$((used_before_kb - used_after_kb))
-  if (( freed_kb < 0 )); then
-    freed_kb=0
-  fi
+	freed_kb=$((used_before_kb - used_after_kb))
+	if ((freed_kb < 0)); then
+		freed_kb=0
+	fi
 
-  freed_hr="$(human_readable_kb "$freed_kb")"
+	freed_hr="$(human_readable_kb "$freed_kb")"
 
-  log "Cleanup finished."
-  log "$(disk_usage)"
+	log "Cleanup finished."
+	log "$(disk_usage)"
 
-  if [ "$DRY_RUN" = true ]; then
-    log "Estimated space that COULD be freed: ${freed_hr} (dry run – no actual changes made)."
-  else
-    log "Estimated space freed: ${freed_hr}."
-  fi
+	if [ "$DRY_RUN" = true ]; then
+		log "Estimated space that COULD be freed: ${freed_hr} (dry run – no actual changes made)."
+	else
+		log "Estimated space freed: ${freed_hr}."
+	fi
 }
 
 main "$@"
