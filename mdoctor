@@ -231,9 +231,11 @@ cmd_clean() {
     source "${MDOCTOR_DIR}/lib/logging.sh"
     source "${MDOCTOR_DIR}/lib/disk.sh"
 
-    # Set globals
+    # Set globals (used by sourced cleanup modules via run_cmd)
+    # shellcheck disable=SC2034
     DRY_RUN=true
     LOGFILE="${HOME}/Library/Logs/macos_cleanup.log"
+    # shellcheck disable=SC2034
     DAYS_OLD="${DAYS_OLD_OVERRIDE:-7}"
 
     if [ "$force" = true ]; then
@@ -371,6 +373,7 @@ fix_disk() {
   source "${MDOCTOR_DIR}/lib/logging.sh"
   source "${MDOCTOR_DIR}/lib/disk.sh"
 
+  # shellcheck disable=SC2034
   DRY_RUN=false
   LOGFILE="${HOME}/Library/Logs/macos_cleanup.log"
   # shellcheck disable=SC2034
