@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.1] - 2026-02-13
+
+### Fixed
+- Use `/System/Volumes/Data` for accurate disk usage on macOS APFS (previously reported only the read-only system snapshot, showing ~11 GB instead of actual usage)
+
 ## [1.1.0] - 2026-02-12
 
 ### Added

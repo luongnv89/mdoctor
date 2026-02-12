@@ -22,7 +22,7 @@ set -uo pipefail
 # VERSION
 ########################################
 
-MDOCTOR_VERSION="1.1.0"
+MDOCTOR_VERSION="1.1.1"
 
 # Append short git commit hash if inside a git repo
 _mdoctor_commit=""
