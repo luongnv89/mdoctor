@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none">
+  <!-- Simplified m-stethoscope at 16x16 -->
+  <path d="M2 11 V7 C2 4.5 4 2.5 6.5 2.5 C9 2.5 10 4.5 10 7" stroke="#06B6D4" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+  <path d="M10 7 C10 4.5 11 2.5 13.5 2.5" stroke="#06B6D4" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+  <path d="M13.5 2.5 V11" stroke="#06B6D4" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+  <path d="M10 7 V11" stroke="#06B6D4" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+  <circle cx="2" cy="13" r="1.2" fill="#06B6D4"/>
+</svg>

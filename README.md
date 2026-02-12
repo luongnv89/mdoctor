@@ -1,10 +1,17 @@
-# mdoctor - macOS Doctor
+<p align="center">
+  <img src="assets/logo/logo-full.svg" alt="mdoctor" width="400">
+</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](https://www.apple.com/macos/)
-[![Bash](https://img.shields.io/badge/shell-bash-green.svg)](https://www.gnu.org/software/bash/)
+<p align="center">
+  <strong>Keep your Mac healthy.</strong><br>
+  A unified CLI to diagnose, clean, and fix your macOS system. Pure Bash, zero dependencies.
+</p>
 
-A unified CLI toolkit for checking, cleaning, fixing, and diagnosing macOS systems. Pure Bash, no dependencies, works out of the box.
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://www.apple.com/macos/"><img src="https://img.shields.io/badge/platform-macOS-lightgrey.svg" alt="macOS"></a>
+  <a href="https://www.gnu.org/software/bash/"><img src="https://img.shields.io/badge/shell-bash-green.svg" alt="Bash"></a>
+</p>
 
 ## Why mdoctor?
 

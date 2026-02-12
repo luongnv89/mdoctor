@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 128" fill="none">
+  <!-- Black version for light backgrounds -->
+  <g transform="translate(0, 0)">
+    <path d="M24 88 V56 C24 38.33 38.33 24 56 24 C73.67 24 80 38.33 80 56" stroke="#0A0A0A" stroke-width="10" stroke-linecap="round" fill="none"/>
+    <path d="M80 56 C80 38.33 86.33 24 104 24" stroke="#0A0A0A" stroke-width="10" stroke-linecap="round" fill="none"/>
+    <path d="M104 24 V88" stroke="#0A0A0A" stroke-width="10" stroke-linecap="round" fill="none"/>
+    <path d="M80 56 V88" stroke="#0A0A0A" stroke-width="10" stroke-linecap="round" fill="none"/>
+    <circle cx="24" cy="100" r="8" fill="#0A0A0A"/>
+  </g>
+  <text x="140" y="82" font-family="system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="52" font-weight="600" fill="#0A0A0A" letter-spacing="-1">mdoctor</text>
+</svg>

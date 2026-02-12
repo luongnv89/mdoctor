@@ -71,7 +71,7 @@ echo ' | |\/| | | | |/ _ \ / __| __/ _ \| '\''__|'
 echo ' | |  | | |_| | (_) | (__| || (_) | |   '
 echo ' |_|  |_|____/ \___/ \___|\__\___/|_|   '
 echo "${RESET}"
-echo "${DIM}  macOS Doctor - Keep your Mac healthy${RESET}"
+echo "${DIM}  Keep your Mac healthy${RESET}"
 echo
 
 ########################################

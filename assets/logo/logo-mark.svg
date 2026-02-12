@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <!-- Stethoscope-inspired "m" mark -->
+  <g>
+    <!-- Left arch of stethoscope / left hump of m -->
+    <path d="M24 88 V56 C24 38.33 38.33 24 56 24 C73.67 24 80 38.33 80 56" stroke="#06B6D4" stroke-width="10" stroke-linecap="round" fill="none"/>
+    <!-- Right arch of stethoscope / right hump of m -->
+    <path d="M80 56 C80 38.33 86.33 24 104 24" stroke="#06B6D4" stroke-width="10" stroke-linecap="round" fill="none"/>
+    <!-- Right leg -->
+    <path d="M104 24 V88" stroke="#06B6D4" stroke-width="10" stroke-linecap="round" fill="none"/>
+    <!-- Middle leg -->
+    <path d="M80 56 V88" stroke="#06B6D4" stroke-width="10" stroke-linecap="round" fill="none"/>
+    <!-- Chest piece / health dot -->
+    <circle cx="24" cy="100" r="8" fill="#06B6D4"/>
+  </g>
+</svg>
