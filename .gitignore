@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Node (gui/)
+node_modules/
+gui/node_modules/
+
+# Temp
+/tmp/
+*.tmp
+
+# Environment
+.env
+.env.local
