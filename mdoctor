@@ -1,0 +1,581 @@
+#!/usr/bin/env bash
+#
+# mdoctor - Unified macOS Doctor CLI
+#
+# A single entry-point for checking, cleaning, fixing, and diagnosing macOS.
+#
+# Usage:
+#   mdoctor <command> [options]
+#
+# Commands:
+#   check      Run system health audit (read-only)
+#   clean      Run system cleanup (dry-run by default)
+#   fix        Apply common fixes
+#   info       Show system information summary
+#   version    Show mdoctor version
+#   help       Show this help message
+#
+
+set -uo pipefail
+
+########################################
+# VERSION
+########################################
+
+MDOCTOR_VERSION="1.0.0"
+
+########################################
+# RESOLVE INSTALL DIRECTORY
+########################################
+
+# Follow symlinks to find the real script location
+resolve_script_dir() {
+  local source="${BASH_SOURCE[0]}"
+  while [ -L "$source" ]; do
+    local dir
+    dir="$(cd -P "$(dirname "$source")" && pwd)"
+    source="$(readlink "$source")"
+    [[ "$source" != /* ]] && source="$dir/$source"
+  done
+  cd -P "$(dirname "$source")" && pwd
+}
+
+MDOCTOR_DIR="$(resolve_script_dir)"
+
+########################################
+# COLORS
+########################################
+
+if command -v tput >/dev/null 2>&1 && [ -t 1 ]; then
+  RED="$(tput setaf 1)"
+  GREEN="$(tput setaf 2)"
+  YELLOW="$(tput setaf 3)"
+  BLUE="$(tput setaf 4)"
+  CYAN="$(tput setaf 6)"
+  BOLD="$(tput bold)"
+  DIM="$(tput dim)"
+  RESET="$(tput sgr0)"
+else
+  RED="" GREEN="" YELLOW="" BLUE="" CYAN="" BOLD="" DIM="" RESET=""
+fi
+
+########################################
+# HELPERS
+########################################
+
+banner() {
+  echo "${BOLD}${CYAN}"
+  echo '  __  __ ____             _             '
+  echo ' |  \/  |  _ \  ___   ___| |_ ___  _ __ '
+  echo ' | |\/| | | | |/ _ \ / __| __/ _ \| '\''__|'
+  echo ' | |  | | |_| | (_) | (__| || (_) | |   '
+  echo ' |_|  |_|____/ \___/ \___|\__\___/|_|   '
+  echo "${RESET}"
+  echo "${DIM}  macOS Doctor v${MDOCTOR_VERSION} - Keep your Mac healthy${RESET}"
+  echo
+}
+
+error() {
+  echo "${RED}Error:${RESET} $*" >&2
+}
+
+########################################
+# COMMAND: check
+########################################
+
+cmd_check() {
+  local module=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --module|-m)
+        module="$2"
+        shift 2
+        ;;
+      --help|-h)
+        echo "Usage: mdoctor check [options]"
+        echo
+        echo "Run system health audit (read-only, changes nothing)."
+        echo
+        echo "Options:"
+        echo "  -m, --module <name>   Run only a specific check module"
+        echo "                        Modules: system, disk, updates, homebrew,"
+        echo "                        node, python, devtools, shell, network"
+        echo "  -h, --help            Show this help"
+        return 0
+        ;;
+      *)
+        error "Unknown option: $1"
+        echo "Run 'mdoctor check --help' for usage."
+        return 1
+        ;;
+    esac
+  done
+
+  if [ -n "$module" ]; then
+    # Run a single check module
+    local check_file="${MDOCTOR_DIR}/checks/${module}.sh"
+    if [ ! -f "$check_file" ]; then
+      error "Unknown check module: ${module}"
+      echo "Available modules: system, disk, updates, homebrew, node, python, devtools, shell, network"
+      return 1
+    fi
+
+    # Source libraries
+    source "${MDOCTOR_DIR}/lib/common.sh"
+    source "${MDOCTOR_DIR}/lib/logging.sh"
+    source "${MDOCTOR_DIR}/lib/disk.sh"
+
+    # Initialize globals
+    STEP_CURRENT=0
+    STEP_TOTAL=1
+    ACTIONS=()
+    WARN_COUNT=0
+    FAIL_COUNT=0
+    LOG_PATHS=()
+    LOG_DESCS=()
+    REPORT_MD=""
+
+    init_colors
+
+    source "$check_file"
+
+    # Map module name to function
+    case "$module" in
+      system)    check_system ;;
+      disk)      check_disk ;;
+      updates)   check_updates_basic ;;
+      homebrew)  check_homebrew ;;
+      node)      check_node_npm ;;
+      python)    check_python ;;
+      devtools)  check_dev_tools ;;
+      shell)     check_shell_configs ;;
+      network)   check_network ;;
+    esac
+
+    # Show summary for single module
+    if ((${#ACTIONS[@]} > 0)); then
+      echo
+      echo "${BOLD}Actions:${RESET}"
+      local i=1
+      for action in "${ACTIONS[@]}"; do
+        echo "  ${i}. ${action}"
+        i=$((i + 1))
+      done
+    fi
+  else
+    # Run full doctor
+    bash "${MDOCTOR_DIR}/doctor.sh"
+  fi
+}
+
+########################################
+# COMMAND: clean
+########################################
+
+cmd_clean() {
+  local force=false
+  local module=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --force|-f)
+        force=true
+        shift
+        ;;
+      --module|-m)
+        module="$2"
+        shift 2
+        ;;
+      --help|-h)
+        echo "Usage: mdoctor clean [options]"
+        echo
+        echo "Run system cleanup. Default is dry-run mode (shows what would"
+        echo "be deleted without actually removing anything)."
+        echo
+        echo "Options:"
+        echo "  -f, --force           Actually delete files (no dry-run)"
+        echo "  -m, --module <name>   Run only a specific cleanup module"
+        echo "                        Modules: trash, caches, logs, downloads,"
+        echo "                        browser, dev"
+        echo "  -h, --help            Show this help"
+        return 0
+        ;;
+      *)
+        error "Unknown option: $1"
+        echo "Run 'mdoctor clean --help' for usage."
+        return 1
+        ;;
+    esac
+  done
+
+  if [ -n "$module" ]; then
+    # Run a single cleanup module
+    local clean_file="${MDOCTOR_DIR}/cleanups/${module}.sh"
+    if [ ! -f "$clean_file" ]; then
+      error "Unknown cleanup module: ${module}"
+      echo "Available modules: trash, caches, logs, downloads, browser, dev"
+      return 1
+    fi
+
+    # Source libraries
+    source "${MDOCTOR_DIR}/lib/logging.sh"
+    source "${MDOCTOR_DIR}/lib/disk.sh"
+
+    # Set globals
+    DRY_RUN=true
+    LOGFILE="${HOME}/Library/Logs/macos_cleanup.log"
+    DAYS_OLD="${DAYS_OLD_OVERRIDE:-7}"
+
+    if [ "$force" = true ]; then
+      DRY_RUN=false
+    fi
+
+    mkdir -p "$(dirname "$LOGFILE")"
+
+    source "$clean_file"
+
+    # Map module name to function
+    case "$module" in
+      trash)     clean_trash ;;
+      caches)    clean_user_caches ;;
+      logs)      clean_logs ;;
+      downloads) clean_downloads_large_files ;;
+      browser)   clean_browser_caches ;;
+      dev)       clean_dev_stuff ;;
+    esac
+  else
+    # Run full cleanup
+    if [ "$force" = true ]; then
+      bash "${MDOCTOR_DIR}/cleanup.sh" --force
+    else
+      bash "${MDOCTOR_DIR}/cleanup.sh"
+    fi
+  fi
+}
+
+########################################
+# COMMAND: fix
+########################################
+
+cmd_fix() {
+  local target=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --help|-h)
+        echo "Usage: mdoctor fix [target]"
+        echo
+        echo "Apply common fixes for macOS issues."
+        echo
+        echo "Targets:"
+        echo "  homebrew      Fix Homebrew issues (update, cleanup, doctor)"
+        echo "  dns           Flush DNS cache"
+        echo "  disk          Free disk space (cleanup + recommendations)"
+        echo "  permissions   Reset disk permissions and rebuild"
+        echo "  spotlight     Rebuild Spotlight index"
+        echo "  all           Run all fixes"
+        echo
+        echo "Options:"
+        echo "  -h, --help    Show this help"
+        return 0
+        ;;
+      *)
+        target="$1"
+        shift
+        ;;
+    esac
+  done
+
+  if [ -z "$target" ]; then
+    echo "Usage: mdoctor fix <target>"
+    echo
+    echo "Available targets: homebrew, dns, disk, permissions, spotlight, all"
+    echo "Run 'mdoctor fix --help' for details."
+    return 1
+  fi
+
+  case "$target" in
+    homebrew)  fix_homebrew ;;
+    dns)       fix_dns ;;
+    disk)      fix_disk ;;
+    permissions) fix_permissions ;;
+    spotlight) fix_spotlight ;;
+    all)
+      fix_homebrew
+      fix_dns
+      fix_disk
+      fix_permissions
+      fix_spotlight
+      ;;
+    *)
+      error "Unknown fix target: ${target}"
+      echo "Available targets: homebrew, dns, disk, permissions, spotlight, all"
+      return 1
+      ;;
+  esac
+}
+
+fix_homebrew() {
+  echo "${BOLD}${BLUE}== Fixing Homebrew ==${RESET}"
+  echo
+
+  if ! command -v brew >/dev/null 2>&1; then
+    error "Homebrew is not installed."
+    echo "Install it with: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+    return 1
+  fi
+
+  echo "${CYAN}[1/4]${RESET} Updating Homebrew..."
+  brew update
+
+  echo "${CYAN}[2/4]${RESET} Upgrading outdated packages..."
+  brew upgrade
+
+  echo "${CYAN}[3/4]${RESET} Cleaning up old versions..."
+  brew cleanup -s
+  brew autoremove
+
+  echo "${CYAN}[4/4]${RESET} Running brew doctor..."
+  brew doctor || true
+
+  echo
+  echo "${GREEN}Homebrew fixes complete.${RESET}"
+}
+
+fix_dns() {
+  echo "${BOLD}${BLUE}== Flushing DNS Cache ==${RESET}"
+  echo
+
+  echo "Flushing macOS DNS cache..."
+  sudo dscacheutil -flushcache 2>/dev/null || true
+  sudo killall -HUP mDNSResponder 2>/dev/null || true
+
+  echo "${GREEN}DNS cache flushed.${RESET}"
+}
+
+fix_disk() {
+  echo "${BOLD}${BLUE}== Freeing Disk Space ==${RESET}"
+  echo
+
+  source "${MDOCTOR_DIR}/lib/logging.sh"
+  source "${MDOCTOR_DIR}/lib/disk.sh"
+
+  DRY_RUN=false
+  LOGFILE="${HOME}/Library/Logs/macos_cleanup.log"
+  DAYS_OLD="${DAYS_OLD_OVERRIDE:-7}"
+
+  mkdir -p "$(dirname "$LOGFILE")"
+
+  local used_before_kb
+  used_before_kb="$(disk_used_kb)"
+
+  echo "${CYAN}[1/4]${RESET} Emptying Trash..."
+  source "${MDOCTOR_DIR}/cleanups/trash.sh"
+  clean_trash
+
+  echo "${CYAN}[2/4]${RESET} Cleaning user caches..."
+  source "${MDOCTOR_DIR}/cleanups/caches.sh"
+  clean_user_caches
+
+  echo "${CYAN}[3/4]${RESET} Cleaning old logs..."
+  source "${MDOCTOR_DIR}/cleanups/logs.sh"
+  clean_logs
+
+  echo "${CYAN}[4/4]${RESET} Purging system caches..."
+  sudo purge 2>/dev/null || true
+
+  local used_after_kb
+  used_after_kb="$(disk_used_kb)"
+  local freed_kb=$((used_before_kb - used_after_kb))
+  if ((freed_kb < 0)); then freed_kb=0; fi
+
+  echo
+  echo "${GREEN}Disk cleanup complete. Freed approximately $(human_readable_kb "$freed_kb").${RESET}"
+}
+
+fix_permissions() {
+  echo "${BOLD}${BLUE}== Resetting Permissions ==${RESET}"
+  echo
+
+  echo "Resetting Homebrew permissions..."
+  if command -v brew >/dev/null 2>&1; then
+    local brew_prefix
+    brew_prefix="$(brew --prefix)"
+    sudo chown -R "$(whoami)" "${brew_prefix}/share" "${brew_prefix}/lib" "${brew_prefix}/Cellar" 2>/dev/null || true
+    echo "${GREEN}Homebrew permissions reset.${RESET}"
+  else
+    echo "${DIM}Homebrew not installed, skipping.${RESET}"
+  fi
+
+  echo "Resetting /usr/local permissions..."
+  sudo chown -R "$(whoami)" /usr/local 2>/dev/null || true
+  echo "${GREEN}Permissions reset complete.${RESET}"
+}
+
+fix_spotlight() {
+  echo "${BOLD}${BLUE}== Rebuilding Spotlight Index ==${RESET}"
+  echo
+
+  echo "Turning Spotlight off..."
+  sudo mdutil -a -i off 2>/dev/null || true
+
+  echo "Erasing Spotlight index..."
+  sudo mdutil -E / 2>/dev/null || true
+
+  echo "Turning Spotlight back on..."
+  sudo mdutil -a -i on 2>/dev/null || true
+
+  echo "${GREEN}Spotlight index rebuild initiated. This may take a while in the background.${RESET}"
+}
+
+########################################
+# COMMAND: info
+########################################
+
+cmd_info() {
+  echo "${BOLD}${BLUE}== System Information ==${RESET}"
+  echo
+
+  local product_name product_version build arch uptime_str
+  product_name=$(sw_vers -productName 2>/dev/null || echo "Unknown")
+  product_version=$(sw_vers -productVersion 2>/dev/null || echo "Unknown")
+  build=$(sw_vers -buildVersion 2>/dev/null || echo "Unknown")
+  arch=$(uname -m 2>/dev/null || echo "Unknown")
+  uptime_str=$(uptime | sed 's/.*up *//; s/, *[0-9]* user.*//')
+
+  printf "  %-20s %s\n" "OS:" "${product_name} ${product_version} (${build})"
+  printf "  %-20s %s\n" "Architecture:" "${arch}"
+  printf "  %-20s %s\n" "Hostname:" "$(hostname)"
+  printf "  %-20s %s\n" "Uptime:" "${uptime_str}"
+  printf "  %-20s %s\n" "User:" "$(whoami)"
+  printf "  %-20s %s\n" "Shell:" "${SHELL}"
+
+  # Disk
+  local disk_info
+  disk_info=$(df -h / | awk 'NR==2 {print $3" used / "$2" total ("$5" used)"}')
+  printf "  %-20s %s\n" "Disk:" "${disk_info}"
+
+  # Memory
+  if command -v vm_stat >/dev/null 2>&1; then
+    local page_size free_pages active_pages inactive_pages wired_pages speculative_pages
+    page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096)
+    free_pages=$(vm_stat | awk '/Pages free/ {gsub("\\.","",$3); print $3}')
+    active_pages=$(vm_stat | awk '/Pages active/ {gsub("\\.","",$3); print $3}')
+    inactive_pages=$(vm_stat | awk '/Pages inactive/ {gsub("\\.","",$3); print $3}')
+    speculative_pages=$(vm_stat | awk '/Pages speculative/ {gsub("\\.","",$3); print $3}')
+    wired_pages=$(vm_stat | awk '/Pages wired down/ {gsub("\\.","",$4); print $4}')
+
+    local total_mem
+    total_mem=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
+    local total_gb
+    total_gb=$(awk -v m="$total_mem" 'BEGIN {printf "%.0f", m/1073741824}')
+    local used_kb=$(( (active_pages + wired_pages) * page_size / 1024 ))
+    local used_gb
+    used_gb=$(awk -v kb="$used_kb" 'BEGIN {printf "%.1f", kb/1048576}')
+
+    printf "  %-20s %s\n" "Memory:" "${used_gb} GB used / ${total_gb} GB total"
+  fi
+
+  # CPU
+  local cpu_brand
+  cpu_brand=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "Unknown")
+  printf "  %-20s %s\n" "CPU:" "${cpu_brand}"
+
+  # Load
+  local load
+  load=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2", "$3", "$4}')
+  printf "  %-20s %s\n" "Load (1/5/15m):" "${load}"
+
+  # Key tools
+  echo
+  echo "${BOLD}  Installed Tools:${RESET}"
+  local tools=("brew" "git" "node" "npm" "python3" "pip3" "docker" "code" "java")
+  for tool in "${tools[@]}"; do
+    if command -v "$tool" >/dev/null 2>&1; then
+      local ver
+      case "$tool" in
+        brew)    ver=$(brew --version 2>/dev/null | head -n1) ;;
+        git)     ver=$(git --version 2>/dev/null) ;;
+        node)    ver=$(node -v 2>/dev/null) ;;
+        npm)     ver=$(npm -v 2>/dev/null) ;;
+        python3) ver=$(python3 --version 2>/dev/null) ;;
+        pip3)    ver=$(pip3 --version 2>/dev/null | awk '{print $2}') ;;
+        docker)  ver=$(docker --version 2>/dev/null) ;;
+        code)    ver=$(code --version 2>/dev/null | head -n1) ;;
+        java)    ver=$(java -version 2>&1 | head -n1) ;;
+        *)       ver="installed" ;;
+      esac
+      printf "    ${GREEN}%-12s${RESET} %s\n" "${tool}" "${ver}"
+    fi
+  done
+  echo
+}
+
+########################################
+# COMMAND: version
+########################################
+
+cmd_version() {
+  echo "mdoctor ${MDOCTOR_VERSION}"
+}
+
+########################################
+# COMMAND: help
+########################################
+
+cmd_help() {
+  banner
+  echo "Usage: ${BOLD}mdoctor${RESET} <command> [options]"
+  echo
+  echo "${BOLD}Commands:${RESET}"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "check"   "Run system health audit (read-only)"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "clean"   "Run system cleanup (dry-run by default)"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "fix"     "Apply common fixes (homebrew, dns, disk, etc.)"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "info"    "Show system information summary"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "version" "Show mdoctor version"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "help"    "Show this help message"
+  echo
+  echo "${BOLD}Examples:${RESET}"
+  echo "  mdoctor check                    # Full health audit"
+  echo "  mdoctor check -m homebrew        # Check only Homebrew"
+  echo "  mdoctor clean                    # Dry-run cleanup"
+  echo "  mdoctor clean --force            # Actually clean up"
+  echo "  mdoctor clean -m trash           # Clean only Trash"
+  echo "  mdoctor fix homebrew             # Fix Homebrew issues"
+  echo "  mdoctor fix dns                  # Flush DNS cache"
+  echo "  mdoctor fix all                  # Run all fixes"
+  echo "  mdoctor info                     # Quick system overview"
+  echo
+  echo "${BOLD}Environment Variables:${RESET}"
+  echo "  DAYS_OLD_OVERRIDE=N              Override cleanup age threshold (default: 7)"
+  echo
+  echo "${DIM}Documentation: https://github.com/luongnv89/mac-doctor${RESET}"
+}
+
+########################################
+# MAIN DISPATCH
+########################################
+
+main() {
+  local command="${1:-}"
+  shift 2>/dev/null || true
+
+  case "$command" in
+    check)    cmd_check "$@" ;;
+    clean)    cmd_clean "$@" ;;
+    fix)      cmd_fix "$@" ;;
+    info)     cmd_info ;;
+    version)  cmd_version ;;
+    -v|--version) cmd_version ;;
+    help|-h|--help) cmd_help ;;
+    "")       cmd_help ;;
+    *)
+      error "Unknown command: ${command}"
+      echo "Run 'mdoctor help' for usage."
+      return 1
+      ;;
+  esac
+}
+
+main "$@"
