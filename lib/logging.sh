@@ -41,7 +41,7 @@ run_cmd() {
     log "[DRY RUN] $*"
   else
     log "[RUN] $*"
-    eval "$@"
+    eval "$*"
   fi
 }
 
