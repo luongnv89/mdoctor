@@ -3,7 +3,7 @@
 # uninstall.sh - Remove mdoctor from your system
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/luongnv89/mac-doctor/main/uninstall.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/luongnv89/mdoctor/main/uninstall.sh | bash
 #   # Or locally: ./uninstall.sh
 #
 

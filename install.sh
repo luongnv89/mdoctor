@@ -3,10 +3,10 @@
 # install.sh - One-line installer for mdoctor
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/luongnv89/mac-doctor/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/luongnv89/mdoctor/main/install.sh | bash
 #
 # Or clone and run locally:
-#   git clone https://github.com/luongnv89/mac-doctor.git && cd mac-doctor && ./install.sh
+#   git clone https://github.com/luongnv89/mdoctor.git && cd mdoctor && ./install.sh
 #
 
 set -euo pipefail
@@ -15,7 +15,7 @@ set -euo pipefail
 # Configuration
 ########################################
 
-REPO_URL="https://github.com/luongnv89/mac-doctor.git"
+REPO_URL="https://github.com/luongnv89/mdoctor.git"
 INSTALL_DIR="${HOME}/.mdoctor"
 BIN_DIR="/usr/local/bin"
 BINARY_NAME="mdoctor"

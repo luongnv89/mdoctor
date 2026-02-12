@@ -550,7 +550,7 @@ cmd_help() {
   echo "${BOLD}Environment Variables:${RESET}"
   echo "  DAYS_OLD_OVERRIDE=N              Override cleanup age threshold (default: 7)"
   echo
-  echo "${DIM}Documentation: https://github.com/luongnv89/mac-doctor${RESET}"
+  echo "${DIM}Documentation: https://github.com/luongnv89/mdoctor${RESET}"
 }
 
 ########################################

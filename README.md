@@ -5,13 +5,13 @@ A unified CLI toolkit for checking, cleaning, fixing, and diagnosing macOS syste
 ## Quick Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/luongnv89/mac-doctor/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/luongnv89/mdoctor/main/install.sh | bash
 ```
 
 Or clone manually:
 
 ```bash
-git clone https://github.com/luongnv89/mac-doctor.git ~/.mdoctor
+git clone https://github.com/luongnv89/mdoctor.git ~/.mdoctor
 cd ~/.mdoctor && ./install.sh
 ```
 
@@ -185,7 +185,7 @@ clean_my_cache() {
 ## Uninstall
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/luongnv89/mac-doctor/main/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/luongnv89/mdoctor/main/uninstall.sh | bash
 ```
 
 Or manually:
