@@ -19,7 +19,14 @@ jobs:
 
       - name: Run ShellCheck on all shell scripts
         run: |
-          find . -name '*.sh' -o -name 'mdoctor' | while read -r script; do
+          find . \( -name '*.sh' -o -name 'mdoctor' \) \
+            -not -path './.specify/*' \
+            -not -path './.claude/*' \
+            -not -path './.codex/*' \
+            -not -path './.opencode/*' \
+            -not -path './openspec/*' \
+            -not -name '*-old.sh' \
+            | while read -r script; do
             echo "Checking: $script"
             shellcheck -e SC1091 "$script"
           done
@@ -33,7 +40,14 @@ jobs:
 
       - name: Check bash syntax for all scripts
         run: |
-          find . -name '*.sh' -o -name 'mdoctor' | while read -r script; do
+          find . \( -name '*.sh' -o -name 'mdoctor' \) \
+            -not -path './.specify/*' \
+            -not -path './.claude/*' \
+            -not -path './.codex/*' \
+            -not -path './.opencode/*' \
+            -not -path './openspec/*' \
+            -not -name '*-old.sh' \
+            | while read -r script; do
             echo "Syntax check: $script"
             bash -n "$script"
           done

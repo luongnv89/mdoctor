@@ -36,14 +36,20 @@ source "${SCRIPT_DIR}/checks/network.sh"
 # GLOBAL STATE
 ########################################
 
+# shellcheck disable=SC2034
 STEP_CURRENT=0
+# shellcheck disable=SC2034
 STEP_TOTAL=9  # update if you add/remove check modules
 
 ACTIONS=()
+# shellcheck disable=SC2034
 WARN_COUNT=0
+# shellcheck disable=SC2034
 FAIL_COUNT=0
 
+# shellcheck disable=SC2034
 LOG_PATHS=()
+# shellcheck disable=SC2034
 LOG_DESCS=()
 
 REPORT_MD=""
