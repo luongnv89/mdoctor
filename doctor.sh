@@ -81,6 +81,9 @@ main() {
   check_shell_configs
   check_network
 
+  # Stop spinner from last check step
+  progress_stop
+
   # Summary
   echo
   section_title "Summary"

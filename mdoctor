@@ -171,6 +171,9 @@ cmd_check() {
       network)   check_network ;;
     esac
 
+    # Stop spinner after single-module check
+    progress_stop
+
     # Show summary for single module
     if ((${#ACTIONS[@]} > 0)); then
       echo
@@ -237,8 +240,16 @@ cmd_clean() {
     fi
 
     # Source libraries
+    source "${MDOCTOR_DIR}/lib/common.sh"
     source "${MDOCTOR_DIR}/lib/logging.sh"
     source "${MDOCTOR_DIR}/lib/disk.sh"
+
+    # Initialize progress globals for spinner
+    # shellcheck disable=SC2034
+    STEP_CURRENT=0
+    # shellcheck disable=SC2034
+    STEP_TOTAL=1
+    init_colors
 
     # Set globals (used by sourced cleanup modules via run_cmd)
     # shellcheck disable=SC2034
@@ -256,6 +267,10 @@ cmd_clean() {
     # shellcheck source=/dev/null
     source "$clean_file"
 
+    # Start spinner for single cleanup module
+    STEP_CURRENT=1
+    progress_start "Cleaning ${module}..."
+
     # Map module name to function
     case "$module" in
       trash)     clean_trash ;;
@@ -265,6 +280,9 @@ cmd_clean() {
       browser)   clean_browser_caches ;;
       dev)       clean_dev_stuff ;;
     esac
+
+    # Stop spinner after single-module clean
+    progress_stop
   else
     # Run full cleanup
     if [ "$force" = true ]; then

@@ -18,6 +18,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source library modules
+source "${SCRIPT_DIR}/lib/common.sh"
 source "${SCRIPT_DIR}/lib/logging.sh"
 source "${SCRIPT_DIR}/lib/disk.sh"
 
@@ -50,11 +51,22 @@ fi
 PROGRESS_CURRENT=0
 PROGRESS_TOTAL=4 # update if you add/remove core steps below
 
+# Alias for progress bar functions (they use STEP_CURRENT/STEP_TOTAL)
+# shellcheck disable=SC2034
+STEP_CURRENT=0
+# shellcheck disable=SC2034
+STEP_TOTAL=$PROGRESS_TOTAL
+
 step() {
+	progress_stop
+
 	PROGRESS_CURRENT=$((PROGRESS_CURRENT + 1))
+	STEP_CURRENT=$PROGRESS_CURRENT
 	local label="$1"
 	echo
 	echo "➤ [${PROGRESS_CURRENT}/${PROGRESS_TOTAL}] ${label}"
+
+	progress_start "$label"
 }
 
 ########################################
@@ -94,6 +106,9 @@ main() {
 	#
 	# step "Developer caches & tools cleanup"
 	# clean_dev_stuff
+
+	# Stop spinner from last step
+	progress_stop
 
 	if [ "$DRY_RUN" = true ]; then
 		used_after_kb="$used_before_kb"
