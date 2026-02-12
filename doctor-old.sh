@@ -280,9 +280,9 @@ check_homebrew() {
     head -n 5 "$outdated_file" | sed 's/^/    - /'
     [ "$outdated_count" -gt 5 ] && status_info "    … see full list in ${outdated_file}"
 
-    add_action "Update Homebrew packages: 
-       1) 'brew update' 
-       2) 'brew upgrade' 
+    add_action "Update Homebrew packages:
+       1) 'brew update'
+       2) 'brew upgrade'
        3) Optionally 'brew cleanup -s' to remove old versions.
        Full outdated list: ${outdated_file}"
 

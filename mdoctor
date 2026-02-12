@@ -56,6 +56,7 @@ if command -v tput >/dev/null 2>&1 && [ -t 1 ]; then
   DIM="$(tput dim)"
   RESET="$(tput sgr0)"
 else
+  # shellcheck disable=SC2034
   RED="" GREEN="" YELLOW="" BLUE="" CYAN="" BOLD="" DIM="" RESET=""
 fi
 
@@ -126,18 +127,26 @@ cmd_check() {
     source "${MDOCTOR_DIR}/lib/logging.sh"
     source "${MDOCTOR_DIR}/lib/disk.sh"
 
-    # Initialize globals
+    # Initialize globals (used by sourced check modules)
+    # shellcheck disable=SC2034
     STEP_CURRENT=0
+    # shellcheck disable=SC2034
     STEP_TOTAL=1
     ACTIONS=()
+    # shellcheck disable=SC2034
     WARN_COUNT=0
+    # shellcheck disable=SC2034
     FAIL_COUNT=0
+    # shellcheck disable=SC2034
     LOG_PATHS=()
+    # shellcheck disable=SC2034
     LOG_DESCS=()
+    # shellcheck disable=SC2034
     REPORT_MD=""
 
     init_colors
 
+    # shellcheck source=/dev/null
     source "$check_file"
 
     # Map module name to function
@@ -233,6 +242,7 @@ cmd_clean() {
 
     mkdir -p "$(dirname "$LOGFILE")"
 
+    # shellcheck source=/dev/null
     source "$clean_file"
 
     # Map module name to function
@@ -363,6 +373,7 @@ fix_disk() {
 
   DRY_RUN=false
   LOGFILE="${HOME}/Library/Logs/macos_cleanup.log"
+  # shellcheck disable=SC2034
   DAYS_OLD="${DAYS_OLD_OVERRIDE:-7}"
 
   mkdir -p "$(dirname "$LOGFILE")"
@@ -458,19 +469,17 @@ cmd_info() {
 
   # Memory
   if command -v vm_stat >/dev/null 2>&1; then
-    local page_size free_pages active_pages inactive_pages wired_pages speculative_pages
+    local page_size active_pages wired_pages
     page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096)
-    free_pages=$(vm_stat | awk '/Pages free/ {gsub("\\.","",$3); print $3}')
     active_pages=$(vm_stat | awk '/Pages active/ {gsub("\\.","",$3); print $3}')
-    inactive_pages=$(vm_stat | awk '/Pages inactive/ {gsub("\\.","",$3); print $3}')
-    speculative_pages=$(vm_stat | awk '/Pages speculative/ {gsub("\\.","",$3); print $3}')
     wired_pages=$(vm_stat | awk '/Pages wired down/ {gsub("\\.","",$4); print $4}')
 
     local total_mem
     total_mem=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
     local total_gb
     total_gb=$(awk -v m="$total_mem" 'BEGIN {printf "%.0f", m/1073741824}')
-    local used_kb=$(( (active_pages + wired_pages) * page_size / 1024 ))
+    local used_kb
+    used_kb=$(( (active_pages + wired_pages) * page_size / 1024 ))
     local used_gb
     used_gb=$(awk -v kb="$used_kb" 'BEGIN {printf "%.1f", kb/1048576}')
 
