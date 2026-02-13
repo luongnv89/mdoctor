@@ -61,6 +61,7 @@ step() {
 	progress_stop
 
 	PROGRESS_CURRENT=$((PROGRESS_CURRENT + 1))
+	# shellcheck disable=SC2034
 	STEP_CURRENT=$PROGRESS_CURRENT
 	local label="$1"
 	echo
