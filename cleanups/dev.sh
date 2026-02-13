@@ -5,8 +5,7 @@
 #
 
 clean_dev_stuff() {
-  local days="${DAYS_OLD:-7}"
-  header "Developer / power-user cleanup (Homebrew, language caches, Docker, Xcode)"
+  header "Developer / power-user cleanup (Homebrew, language caches, Docker)"
 
   # Homebrew
   if command -v brew >/dev/null 2>&1; then
@@ -45,13 +44,5 @@ clean_dev_stuff() {
     log "Docker not found; skipping."
   fi
 
-  # Xcode (only if present)
-  if [ -d "${HOME}/Library/Developer/Xcode/DerivedData" ]; then
-    log "Xcode DerivedData detected – cleaning."
-    run_cmd "rm -rf \"${HOME}/Library/Developer/Xcode/DerivedData\"/*"
-  fi
-  if [ -d "${HOME}/Library/Developer/Xcode/Archives" ]; then
-    log "Cleaning old Xcode Archives (older than ${days} days)."
-    run_cmd "find \"${HOME}/Library/Developer/Xcode/Archives\" -type d -mtime +${days} -print -exec rm -rf {} +"
-  fi
+  # Note: Xcode cleanup moved to cleanups/xcode.sh (dedicated module)
 }

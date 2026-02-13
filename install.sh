@@ -99,6 +99,11 @@ chmod +x "${INSTALL_DIR}/mdoctor"
 chmod +x "${INSTALL_DIR}/doctor.sh"
 chmod +x "${INSTALL_DIR}/cleanup.sh"
 
+# Make fix modules executable
+if [ -d "${INSTALL_DIR}/fixes" ]; then
+  chmod +x "${INSTALL_DIR}"/fixes/*.sh 2>/dev/null || true
+fi
+
 # Create symlink
 info "Creating symlink: ${BIN_DIR}/${BINARY_NAME} -> ${INSTALL_DIR}/mdoctor"
 

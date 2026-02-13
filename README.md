@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong>Keep your Mac healthy.</strong><br>
-  A unified CLI to diagnose, clean, and fix your macOS system. Pure Bash, zero dependencies.
+  A comprehensive CLI to diagnose, clean, fix, and benchmark your macOS system. Pure Bash, zero dependencies.
 </p>
 
 <p align="center">
@@ -15,10 +15,12 @@
 
 ## Why mdoctor?
 
-- **One command** to audit your entire Mac: OS, disk, memory, Homebrew, Node, Python, Docker, shell configs, network
+- **Comprehensive** -- 20 health checks across Hardware, System, and Software categories
 - **Safe by default** -- health checks are read-only, cleanup runs in dry-run mode
+- **Risk-rated** -- every operation is classified `[SAFE]` `[LOW]` `[MED]` `[HIGH]`
 - **Modular** -- run everything or target a single module
 - **Actionable** -- provides a health score and specific next steps to fix issues
+- **Trackable** -- JSON output, historical scores with trend detection
 - **Zero dependencies** -- pure Bash, uses only standard macOS tools
 
 ## Quick Install
@@ -44,10 +46,14 @@ mdoctor <command> [options]
 
 | Command | Description |
 |---------|-------------|
-| `mdoctor check` | Run full system health audit (read-only) |
-| `mdoctor clean` | Run system cleanup (dry-run by default) |
-| `mdoctor fix <target>` | Apply common fixes |
+| `mdoctor check` | Run full system health audit (20 checks, read-only) |
+| `mdoctor check --json` | JSON output for automation |
+| `mdoctor clean` | Run system cleanup (dry-run by default, 9 modules) |
+| `mdoctor fix <target>` | Apply common fixes (9 targets) |
 | `mdoctor info` | Show system information summary |
+| `mdoctor list` | List all modules with category & risk level |
+| `mdoctor history` | View health score trends over time |
+| `mdoctor benchmark` | Run disk, network, CPU speed tests |
 | `mdoctor version` | Show version |
 | `mdoctor help` | Show help |
 
@@ -62,17 +68,30 @@ mdoctor check
 Check a specific module only:
 
 ```bash
-mdoctor check -m homebrew
-mdoctor check -m disk
-mdoctor check -m network
+mdoctor check -m battery
+mdoctor check -m security
+mdoctor check -m performance
 ```
 
-Available check modules: `system`, `disk`, `updates`, `homebrew`, `node`, `python`, `devtools`, `shell`, `network`
+Output as JSON for automation:
+
+```bash
+mdoctor check --json | python3 -m json.tool
+```
+
+#### Check Modules (all `[SAFE]` — read-only)
+
+| Category | Modules |
+|----------|---------|
+| **Hardware** | `battery`, `hardware`, `bluetooth`, `usb` |
+| **System** | `system`, `disk`, `updates`, `security`, `startup`, `network`, `performance` |
+| **Software** | `homebrew`, `node`, `python`, `devtools`, `shell`, `apps`, `git_config`, `containers` |
 
 The health check:
 - Scores your system 0-100
 - Reports warnings and failures
 - Generates a markdown report in `/tmp/`
+- Saves score history for trend tracking
 - Provides actionable next steps
 
 ### Cleanup
@@ -93,23 +112,57 @@ Clean a specific target only:
 
 ```bash
 mdoctor clean -m trash
-mdoctor clean -m caches --force
+mdoctor clean -m crash_reports --force
+mdoctor clean -m xcode
 ```
 
-Available cleanup modules: `trash`, `caches`, `logs`, `downloads`, `browser`, `dev`
+#### Cleanup Modules (all `[LOW]` risk)
+
+| Category | Modules |
+|----------|---------|
+| **System** | `trash`, `caches`, `logs`, `downloads`, `crash_reports`, `ios_backups` |
+| **Software** | `browser`, `dev`, `xcode` |
 
 ### Fix
 
 Apply common fixes for macOS issues:
 
 ```bash
-mdoctor fix homebrew    # Update & fix Homebrew
-mdoctor fix dns         # Flush DNS cache
-mdoctor fix disk        # Free disk space
-mdoctor fix permissions # Reset file permissions
-mdoctor fix spotlight   # Rebuild Spotlight index
-mdoctor fix all         # Run all fixes
+mdoctor fix homebrew       # [LOW]  Update & fix Homebrew
+mdoctor fix dns            # [LOW]  Flush DNS cache
+mdoctor fix disk           # [LOW]  Free disk space
+mdoctor fix bluetooth      # [LOW]  Reset Bluetooth module
+mdoctor fix audio          # [LOW]  Restart Core Audio
+mdoctor fix wifi           # [LOW]  Renew DHCP, flush DNS, cycle Wi-Fi
+mdoctor fix permissions    # [MED]  Reset file permissions
+mdoctor fix spotlight      # [MED]  Rebuild Spotlight index
+mdoctor fix timemachine    # [MED]  Verify Time Machine backup
+mdoctor fix all            # Run all fixes
 ```
+
+### History & Trends
+
+View health score history with trend arrows:
+
+```bash
+mdoctor history
+```
+
+Shows recent scores, detects regressions ("Score dropped from 92 to 64 since last run").
+
+### Benchmark
+
+Run disk I/O, network, and CPU benchmarks:
+
+```bash
+mdoctor benchmark
+```
+
+Tests include:
+- Disk write/read speed (256 MB test file)
+- DNS resolution latency
+- HTTP fetch time
+- CPU gzip compression (10 MB)
 
 ### System Info
 
@@ -120,6 +173,23 @@ mdoctor info
 ```
 
 Shows: OS version, architecture, memory, disk, CPU, uptime, and installed dev tools.
+
+### Module List
+
+Show all available modules with categories and risk levels:
+
+```bash
+mdoctor list
+```
+
+## Risk Levels
+
+| Level | Badge | Meaning | Examples |
+|-------|-------|---------|---------|
+| **Safe** | `[SAFE]` | Read-only, no system modifications | All check modules |
+| **Low** | `[LOW]` | Easily reversible, minimal impact | Clearing caches, flushing DNS |
+| **Medium** | `[MED]` | May require manual reversal | Resetting permissions, rebuilding indexes |
+| **High** | `[HIGH]` | Destructive or hard to reverse | Deleting backups, resetting SMC |
 
 ## Configuration
 
@@ -136,34 +206,61 @@ mdoctor/
 ├── mdoctor              # Unified CLI entry point
 ├── install.sh           # One-line installer
 ├── uninstall.sh         # Uninstaller
-├── doctor.sh            # Health audit engine
-├── cleanup.sh           # Cleanup engine
+├── doctor.sh            # Health audit engine (20 checks)
+├── cleanup.sh           # Cleanup engine (9 modules)
 ├── lib/                 # Shared libraries
-│   ├── common.sh        # Colors, icons, UI helpers
+│   ├── common.sh        # Colors, icons, UI helpers, progress spinner
 │   ├── logging.sh       # Logging and markdown reports
-│   └── disk.sh          # Disk utilities
-├── checks/              # Health check modules
-│   ├── system.sh        # System & OS checks
-│   ├── disk.sh          # Disk health checks
-│   ├── updates.sh       # Update status checks
+│   ├── disk.sh          # Disk utilities
+│   ├── metadata.sh      # Module registry (categories, risk levels)
+│   ├── json.sh          # Pure-Bash JSON output support
+│   ├── history.sh       # Health score history & trends
+│   └── benchmark.sh     # System benchmark tests
+├── checks/              # Health check modules (20)
+│   ├── battery.sh       # Battery health & cycle count
+│   ├── hardware.sh      # CPU, RAM, thermals
+│   ├── bluetooth.sh     # Bluetooth status
+│   ├── usb.sh           # USB device audit
+│   ├── system.sh        # OS, memory, load average
+│   ├── disk.sh          # Disk usage
+│   ├── updates.sh       # macOS updates
+│   ├── security.sh      # Firewall, FileVault, SIP, Gatekeeper
+│   ├── startup.sh       # Launch agents & login items
+│   ├── network.sh       # Connectivity, DNS, Wi-Fi signal
+│   ├── performance.sh   # Memory pressure, CPU, processes
 │   ├── homebrew.sh      # Homebrew checks
-│   ├── node.sh          # Node.js & npm checks
-│   ├── python.sh        # Python & pip checks
-│   ├── devtools.sh      # Xcode, Git, Docker checks
-│   ├── shell.sh         # Shell config checks
-│   └── network.sh       # Network connectivity checks
-├── cleanups/            # Cleanup modules
+│   ├── node.sh          # Node.js & npm
+│   ├── python.sh        # Python & pip
+│   ├── devtools.sh      # Xcode CLT, Git, Docker
+│   ├── shell.sh         # Shell config syntax
+│   ├── apps.sh          # Crash reports, app health
+│   ├── git_config.sh    # Git & SSH config
+│   └── containers.sh    # Docker & containers
+├── cleanups/            # Cleanup modules (9)
 │   ├── trash.sh         # Trash cleanup
-│   ├── caches.sh        # User caches cleanup
-│   ├── logs.sh          # Old logs cleanup
+│   ├── caches.sh        # User caches
+│   ├── logs.sh          # Old logs
 │   ├── downloads.sh     # Large files in Downloads
 │   ├── browser.sh       # Browser caches
-│   └── dev.sh           # Developer tools cleanup
+│   ├── dev.sh           # Developer tool caches
+│   ├── crash_reports.sh # Old crash/diagnostic reports
+│   ├── ios_backups.sh   # Old iOS device backups
+│   └── xcode.sh         # Xcode DerivedData, archives, simulators
+├── fixes/               # Fix modules (9)
+│   ├── homebrew.sh      # Homebrew update & repair
+│   ├── dns.sh           # Flush DNS cache
+│   ├── disk.sh          # Free disk space
+│   ├── permissions.sh   # Reset permissions
+│   ├── spotlight.sh     # Rebuild Spotlight index
+│   ├── bluetooth.sh     # Reset Bluetooth
+│   ├── audio.sh         # Restart Core Audio
+│   ├── wifi.sh          # Fix Wi-Fi connection
+│   └── timemachine.sh   # Time Machine repair
 └── docs/                # Documentation
-    ├── ARCHITECTURE.md   # System design
-    ├── DEVELOPMENT.md    # Dev setup guide
-    ├── DEPLOYMENT.md     # Distribution & releases
-    └── CHANGELOG.md      # Version history
+    ├── ARCHITECTURE.md
+    ├── DEVELOPMENT.md
+    ├── DEPLOYMENT.md
+    └── CHANGELOG.md
 ```
 
 ## Documentation

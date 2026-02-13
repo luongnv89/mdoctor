@@ -29,6 +29,9 @@ source "${SCRIPT_DIR}/cleanups/logs.sh"
 source "${SCRIPT_DIR}/cleanups/downloads.sh"
 source "${SCRIPT_DIR}/cleanups/browser.sh"
 source "${SCRIPT_DIR}/cleanups/dev.sh"
+source "${SCRIPT_DIR}/cleanups/crash_reports.sh"
+source "${SCRIPT_DIR}/cleanups/ios_backups.sh"
+source "${SCRIPT_DIR}/cleanups/xcode.sh"
 
 ########################################
 # CONFIGURATION
@@ -49,7 +52,7 @@ fi
 ########################################
 
 PROGRESS_CURRENT=0
-PROGRESS_TOTAL=4 # update if you add/remove core steps below
+PROGRESS_TOTAL=7 # update if you add/remove core steps below
 
 # Alias for progress bar functions (they use STEP_CURRENT/STEP_TOTAL)
 # shellcheck disable=SC2034
@@ -100,6 +103,16 @@ main() {
 
 	step "Scanning large files in Downloads"
 	clean_downloads_large_files
+
+	# New cleanup modules
+	step "Cleaning crash reports"
+	clean_crash_reports
+
+	step "Checking iOS backups"
+	clean_ios_backups
+
+	step "Xcode cleanup"
+	clean_xcode
 
 	# OPTIONAL: Uncomment if you want these too (and bump PROGRESS_TOTAL)
 	# step "Cleaning browser caches"

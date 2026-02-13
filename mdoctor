@@ -12,6 +12,9 @@
 #   clean      Run system cleanup (dry-run by default)
 #   fix        Apply common fixes
 #   info       Show system information summary
+#   list       List all modules with category & risk
+#   history    View health score trends over time
+#   benchmark  Run disk, network, CPU benchmarks
 #   version    Show mdoctor version
 #   help       Show this help message
 #
@@ -22,7 +25,7 @@ set -uo pipefail
 # VERSION
 ########################################
 
-MDOCTOR_VERSION="1.1.1"
+MDOCTOR_VERSION="2.0.0"
 
 # Append short git commit hash if inside a git repo
 _mdoctor_commit=""
@@ -106,12 +109,17 @@ error() {
 
 cmd_check() {
   local module=""
+  local json_flag=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --module|-m)
         module="$2"
         shift 2
+        ;;
+      --json)
+        json_flag=true
+        shift
         ;;
       --help|-h)
         echo "Usage: mdoctor check [options]"
@@ -120,9 +128,13 @@ cmd_check() {
         echo
         echo "Options:"
         echo "  -m, --module <name>   Run only a specific check module"
-        echo "                        Modules: system, disk, updates, homebrew,"
-        echo "                        node, python, devtools, shell, network"
+        echo "  --json                Output results as JSON"
         echo "  -h, --help            Show this help"
+        echo
+        echo "Check modules (all [SAFE] read-only):"
+        echo "  Hardware:  battery, hardware, bluetooth, usb"
+        echo "  System:    system, disk, updates, security, startup, network, performance"
+        echo "  Software:  homebrew, node, python, devtools, shell, apps, git_config, containers"
         return 0
         ;;
       *)
@@ -133,6 +145,10 @@ cmd_check() {
     esac
   done
 
+  if [ "$json_flag" = true ]; then
+    export JSON_ENABLED=true
+  fi
+
   echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
 
   if [ -n "$module" ]; then
@@ -140,7 +156,9 @@ cmd_check() {
     local check_file="${MDOCTOR_DIR}/checks/${module}.sh"
     if [ ! -f "$check_file" ]; then
       error "Unknown check module: ${module}"
-      echo "Available modules: system, disk, updates, homebrew, node, python, devtools, shell, network"
+      echo "Available modules: battery, hardware, bluetooth, usb,"
+      echo "  system, disk, updates, security, startup, network, performance,"
+      echo "  homebrew, node, python, devtools, shell, apps, git_config, containers"
       return 1
     fi
 
@@ -148,6 +166,8 @@ cmd_check() {
     source "${MDOCTOR_DIR}/lib/common.sh"
     source "${MDOCTOR_DIR}/lib/logging.sh"
     source "${MDOCTOR_DIR}/lib/disk.sh"
+    source "${MDOCTOR_DIR}/lib/json.sh"
+    source "${MDOCTOR_DIR}/lib/metadata.sh"
 
     # Initialize globals (used by sourced check modules)
     # shellcheck disable=SC2034
@@ -173,15 +193,25 @@ cmd_check() {
 
     # Map module name to function
     case "$module" in
-      system)    check_system ;;
-      disk)      check_disk ;;
-      updates)   check_updates_basic ;;
-      homebrew)  check_homebrew ;;
-      node)      check_node_npm ;;
-      python)    check_python ;;
-      devtools)  check_dev_tools ;;
-      shell)     check_shell_configs ;;
-      network)   check_network ;;
+      system)      check_system ;;
+      disk)        check_disk ;;
+      updates)     check_updates_basic ;;
+      homebrew)    check_homebrew ;;
+      node)        check_node_npm ;;
+      python)      check_python ;;
+      devtools)    check_dev_tools ;;
+      shell)       check_shell_configs ;;
+      network)     check_network ;;
+      battery)     check_battery ;;
+      hardware)    check_hardware ;;
+      bluetooth)   check_bluetooth ;;
+      usb)         check_usb ;;
+      security)    check_security ;;
+      startup)     check_startup ;;
+      performance) check_performance ;;
+      apps)        check_apps ;;
+      git_config)  check_git_config ;;
+      containers)  check_containers ;;
     esac
 
     # Stop spinner after single-module check
@@ -199,7 +229,11 @@ cmd_check() {
     fi
   else
     # Run full doctor
-    bash "${MDOCTOR_DIR}/doctor.sh"
+    if [ "$json_flag" = true ]; then
+      JSON_ENABLED=true bash "${MDOCTOR_DIR}/doctor.sh"
+    else
+      bash "${MDOCTOR_DIR}/doctor.sh"
+    fi
   fi
 }
 
@@ -230,9 +264,12 @@ cmd_clean() {
         echo "Options:"
         echo "  -f, --force           Actually delete files (no dry-run)"
         echo "  -m, --module <name>   Run only a specific cleanup module"
-        echo "                        Modules: trash, caches, logs, downloads,"
-        echo "                        browser, dev"
         echo "  -h, --help            Show this help"
+        echo
+        echo "Cleanup modules:"
+        echo "  System:    trash [LOW], caches [LOW], logs [LOW], downloads [LOW],"
+        echo "             crash_reports [LOW], ios_backups [LOW]"
+        echo "  Software:  browser [LOW], dev [LOW], xcode [LOW]"
         return 0
         ;;
       *)
@@ -250,7 +287,8 @@ cmd_clean() {
     local clean_file="${MDOCTOR_DIR}/cleanups/${module}.sh"
     if [ ! -f "$clean_file" ]; then
       error "Unknown cleanup module: ${module}"
-      echo "Available modules: trash, caches, logs, downloads, browser, dev"
+      echo "Available modules: trash, caches, logs, downloads, browser, dev,"
+      echo "  crash_reports, ios_backups, xcode"
       return 1
     fi
 
@@ -274,6 +312,7 @@ cmd_clean() {
     DAYS_OLD="${DAYS_OLD_OVERRIDE:-7}"
 
     if [ "$force" = true ]; then
+      # shellcheck disable=SC2034
       DRY_RUN=false
     fi
 
@@ -289,12 +328,15 @@ cmd_clean() {
 
     # Map module name to function
     case "$module" in
-      trash)     clean_trash ;;
-      caches)    clean_user_caches ;;
-      logs)      clean_logs ;;
-      downloads) clean_downloads_large_files ;;
-      browser)   clean_browser_caches ;;
-      dev)       clean_dev_stuff ;;
+      trash)          clean_trash ;;
+      caches)         clean_user_caches ;;
+      logs)           clean_logs ;;
+      downloads)      clean_downloads_large_files ;;
+      browser)        clean_browser_caches ;;
+      dev)            clean_dev_stuff ;;
+      crash_reports)  clean_crash_reports ;;
+      ios_backups)    clean_ios_backups ;;
+      xcode)          clean_xcode ;;
     esac
 
     # Stop spinner after single-module clean
@@ -324,11 +366,15 @@ cmd_fix() {
         echo "Apply common fixes for macOS issues."
         echo
         echo "Targets:"
-        echo "  homebrew      Fix Homebrew issues (update, cleanup, doctor)"
-        echo "  dns           Flush DNS cache"
-        echo "  disk          Free disk space (cleanup + recommendations)"
-        echo "  permissions   Reset disk permissions and rebuild"
-        echo "  spotlight     Rebuild Spotlight index"
+        echo "  homebrew      [LOW]  Fix Homebrew issues (update, cleanup, doctor)"
+        echo "  dns           [LOW]  Flush DNS cache"
+        echo "  disk          [LOW]  Free disk space (cleanup + recommendations)"
+        echo "  permissions   [MED]  Reset disk permissions and rebuild"
+        echo "  spotlight     [MED]  Rebuild Spotlight index"
+        echo "  bluetooth     [LOW]  Reset Bluetooth module"
+        echo "  audio         [LOW]  Restart Core Audio daemon"
+        echo "  wifi          [LOW]  Renew DHCP, flush DNS, cycle Wi-Fi"
+        echo "  timemachine   [MED]  Verify Time Machine backup integrity"
         echo "  all           Run all fixes"
         echo
         echo "Options:"
@@ -345,145 +391,45 @@ cmd_fix() {
   if [ -z "$target" ]; then
     echo "Usage: mdoctor fix <target>"
     echo
-    echo "Available targets: homebrew, dns, disk, permissions, spotlight, all"
+    echo "Available targets: homebrew, dns, disk, permissions, spotlight,"
+    echo "  bluetooth, audio, wifi, timemachine, all"
     echo "Run 'mdoctor fix --help' for details."
     return 1
   fi
 
+  # Source fix modules
+  local fix_file="${MDOCTOR_DIR}/fixes/${target}.sh"
+
   case "$target" in
-    homebrew)  fix_homebrew ;;
-    dns)       fix_dns ;;
-    disk)      fix_disk ;;
-    permissions) fix_permissions ;;
-    spotlight) fix_spotlight ;;
+    homebrew|dns|disk|permissions|spotlight|bluetooth|audio|wifi|timemachine)
+      if [ -f "$fix_file" ]; then
+        # shellcheck source=/dev/null
+        source "$fix_file"
+        "fix_${target}"
+      else
+        error "Fix module not found: ${fix_file}"
+        return 1
+      fi
+      ;;
     all)
-      fix_homebrew
-      fix_dns
-      fix_disk
-      fix_permissions
-      fix_spotlight
+      local t
+      for t in homebrew dns disk permissions spotlight bluetooth audio wifi; do
+        local f="${MDOCTOR_DIR}/fixes/${t}.sh"
+        if [ -f "$f" ]; then
+          # shellcheck source=/dev/null
+          source "$f"
+          "fix_${t}"
+          echo
+        fi
+      done
       ;;
     *)
       error "Unknown fix target: ${target}"
-      echo "Available targets: homebrew, dns, disk, permissions, spotlight, all"
+      echo "Available targets: homebrew, dns, disk, permissions, spotlight,"
+      echo "  bluetooth, audio, wifi, timemachine, all"
       return 1
       ;;
   esac
-}
-
-fix_homebrew() {
-  echo "${BOLD}${BLUE}== Fixing Homebrew ==${RESET}"
-  echo
-
-  if ! command -v brew >/dev/null 2>&1; then
-    error "Homebrew is not installed."
-    echo "Install it with: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
-    return 1
-  fi
-
-  echo "${CYAN}[1/4]${RESET} Updating Homebrew..."
-  brew update
-
-  echo "${CYAN}[2/4]${RESET} Upgrading outdated packages..."
-  brew upgrade
-
-  echo "${CYAN}[3/4]${RESET} Cleaning up old versions..."
-  brew cleanup -s
-  brew autoremove
-
-  echo "${CYAN}[4/4]${RESET} Running brew doctor..."
-  brew doctor || true
-
-  echo
-  echo "${GREEN}Homebrew fixes complete.${RESET}"
-}
-
-fix_dns() {
-  echo "${BOLD}${BLUE}== Flushing DNS Cache ==${RESET}"
-  echo
-
-  echo "Flushing macOS DNS cache..."
-  sudo dscacheutil -flushcache 2>/dev/null || true
-  sudo killall -HUP mDNSResponder 2>/dev/null || true
-
-  echo "${GREEN}DNS cache flushed.${RESET}"
-}
-
-fix_disk() {
-  echo "${BOLD}${BLUE}== Freeing Disk Space ==${RESET}"
-  echo
-
-  source "${MDOCTOR_DIR}/lib/logging.sh"
-  source "${MDOCTOR_DIR}/lib/disk.sh"
-
-  # shellcheck disable=SC2034
-  DRY_RUN=false
-  LOGFILE="${HOME}/Library/Logs/macos_cleanup.log"
-  # shellcheck disable=SC2034
-  DAYS_OLD="${DAYS_OLD_OVERRIDE:-7}"
-
-  mkdir -p "$(dirname "$LOGFILE")"
-
-  local used_before_kb
-  used_before_kb="$(disk_used_kb)"
-
-  echo "${CYAN}[1/4]${RESET} Emptying Trash..."
-  source "${MDOCTOR_DIR}/cleanups/trash.sh"
-  clean_trash
-
-  echo "${CYAN}[2/4]${RESET} Cleaning user caches..."
-  source "${MDOCTOR_DIR}/cleanups/caches.sh"
-  clean_user_caches
-
-  echo "${CYAN}[3/4]${RESET} Cleaning old logs..."
-  source "${MDOCTOR_DIR}/cleanups/logs.sh"
-  clean_logs
-
-  echo "${CYAN}[4/4]${RESET} Purging system caches..."
-  sudo purge 2>/dev/null || true
-
-  local used_after_kb
-  used_after_kb="$(disk_used_kb)"
-  local freed_kb=$((used_before_kb - used_after_kb))
-  if ((freed_kb < 0)); then freed_kb=0; fi
-
-  echo
-  echo "${GREEN}Disk cleanup complete. Freed approximately $(human_readable_kb "$freed_kb").${RESET}"
-}
-
-fix_permissions() {
-  echo "${BOLD}${BLUE}== Resetting Permissions ==${RESET}"
-  echo
-
-  echo "Resetting Homebrew permissions..."
-  if command -v brew >/dev/null 2>&1; then
-    local brew_prefix
-    brew_prefix="$(brew --prefix)"
-    sudo chown -R "$(whoami)" "${brew_prefix}/share" "${brew_prefix}/lib" "${brew_prefix}/Cellar" 2>/dev/null || true
-    echo "${GREEN}Homebrew permissions reset.${RESET}"
-  else
-    echo "${DIM}Homebrew not installed, skipping.${RESET}"
-  fi
-
-  echo "Resetting /usr/local permissions..."
-  sudo chown -R "$(whoami)" /usr/local 2>/dev/null || true
-  echo "${GREEN}Permissions reset complete.${RESET}"
-}
-
-fix_spotlight() {
-  echo "${BOLD}${BLUE}== Rebuilding Spotlight Index ==${RESET}"
-  echo
-
-  echo "Turning Spotlight off..."
-  sudo mdutil -a -i off 2>/dev/null || true
-
-  echo "Erasing Spotlight index..."
-  sudo mdutil -E / 2>/dev/null || true
-
-  echo "Turning Spotlight back on..."
-  sudo mdutil -a -i on 2>/dev/null || true
-
-  echo "${GREEN}Spotlight index rebuild initiated. This may take a while in the background.${RESET}"
 }
 
 ########################################
@@ -570,6 +516,96 @@ cmd_info() {
 }
 
 ########################################
+# COMMAND: list
+########################################
+
+cmd_list() {
+  source "${MDOCTOR_DIR}/lib/metadata.sh"
+
+  # Register all modules for listing
+  # Check modules — Hardware
+  register_module check battery    Hardware SAFE check_battery     "Battery health, cycle count, capacity"
+  register_module check hardware   Hardware SAFE check_hardware    "CPU, RAM, model, thermals"
+  register_module check bluetooth  Hardware SAFE check_bluetooth   "Bluetooth power state & devices"
+  register_module check usb        Hardware SAFE check_usb         "Connected USB devices"
+  # Check modules — System
+  register_module check system      System SAFE check_system        "OS version, memory, load average"
+  register_module check disk        System SAFE check_disk          "Disk usage & health"
+  register_module check updates     System SAFE check_updates_basic "macOS updates & Spotlight"
+  register_module check security    System SAFE check_security      "Firewall, FileVault, SIP, Gatekeeper"
+  register_module check startup     System SAFE check_startup       "Launch agents, daemons, login items"
+  register_module check network     System SAFE check_network       "Connectivity, DNS, Wi-Fi signal"
+  register_module check performance System SAFE check_performance   "Memory pressure, CPU, processes"
+  # Check modules — Software
+  register_module check homebrew   Software SAFE check_homebrew    "Homebrew installation & packages"
+  register_module check node       Software SAFE check_node_npm    "Node.js & npm"
+  register_module check python     Software SAFE check_python      "Python & pip"
+  register_module check devtools   Software SAFE check_dev_tools   "Xcode CLT, Git, Docker"
+  register_module check shell      Software SAFE check_shell_configs "Shell config syntax"
+  register_module check apps       Software SAFE check_apps        "Crash reports, application health"
+  register_module check git_config Software SAFE check_git_config  "Git & SSH configuration"
+  register_module check containers Software SAFE check_containers  "Docker & container health"
+
+  # Cleanup modules
+  register_module cleanup trash         System   LOW clean_trash               "Empty Trash"
+  register_module cleanup caches        System   LOW clean_user_caches         "User cache directories"
+  register_module cleanup logs          System   LOW clean_logs                "Old log files"
+  register_module cleanup downloads     System   LOW clean_downloads_large_files "Large files in Downloads"
+  register_module cleanup crash_reports System   LOW clean_crash_reports       "Old crash/diagnostic reports"
+  register_module cleanup ios_backups   System   LOW clean_ios_backups         "Old iOS device backups"
+  register_module cleanup browser       Software LOW clean_browser_caches      "Browser cache cleanup"
+  register_module cleanup dev           Software LOW clean_dev_stuff           "Developer tool caches"
+  register_module cleanup xcode         Software LOW clean_xcode              "Xcode DerivedData, archives, simulators"
+
+  # Fix modules
+  register_module fix homebrew    Software LOW  fix_homebrew    "Update, upgrade, cleanup Homebrew"
+  register_module fix dns         System   LOW  fix_dns         "Flush DNS cache"
+  register_module fix disk        System   LOW  fix_disk        "Free disk space"
+  register_module fix permissions System   MED  fix_permissions "Reset file permissions"
+  register_module fix spotlight   System   MED  fix_spotlight   "Rebuild Spotlight index"
+  register_module fix bluetooth   Hardware LOW  fix_bluetooth   "Reset Bluetooth module"
+  register_module fix audio       System   LOW  fix_audio       "Restart Core Audio daemon"
+  register_module fix wifi        System   LOW  fix_wifi        "Renew DHCP, flush DNS, cycle Wi-Fi"
+  register_module fix timemachine System   MED  fix_timemachine "Verify Time Machine backups"
+
+  echo "${BOLD}${BLUE}== All Modules ==${RESET}"
+  echo
+
+  echo "${BOLD}Check Modules (20 — all read-only):${RESET}"
+  list_modules_by_category check
+  echo
+
+  echo "${BOLD}Cleanup Modules (9):${RESET}"
+  list_modules_by_category cleanup
+  echo
+
+  echo "${BOLD}Fix Targets (9):${RESET}"
+  list_modules_by_category fix
+  echo
+}
+
+########################################
+# COMMAND: history
+########################################
+
+cmd_history() {
+  source "${MDOCTOR_DIR}/lib/history.sh"
+
+  echo "${BOLD}${BLUE}== Health Score History ==${RESET}"
+  echo
+  history_show "${1:-10}"
+}
+
+########################################
+# COMMAND: benchmark
+########################################
+
+cmd_benchmark() {
+  source "${MDOCTOR_DIR}/lib/benchmark.sh"
+  run_benchmark
+}
+
+########################################
 # COMMAND: version
 ########################################
 
@@ -586,22 +622,42 @@ cmd_help() {
   echo "Usage: ${BOLD}mdoctor${RESET} <command> [options]"
   echo
   echo "${BOLD}Commands:${RESET}"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "check"   "Run system health audit (read-only)"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "clean"   "Run system cleanup (dry-run by default)"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "fix"     "Apply common fixes (homebrew, dns, disk, etc.)"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "info"    "Show system information summary"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "version" "Show mdoctor version"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "help"    "Show this help message"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "check"     "Run system health audit (read-only, 20 checks)"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "clean"     "Run system cleanup (dry-run by default, 9 modules)"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "fix"       "Apply common fixes (9 targets)"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "info"      "Show system information summary"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "list"      "List all modules with category & risk level"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "history"   "View health score trends over time"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "benchmark" "Run disk, network, CPU benchmarks"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "version"   "Show mdoctor version"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "help"      "Show this help message"
+  echo
+  echo "${BOLD}Check Modules${RESET} (all [SAFE] read-only):"
+  echo "  Hardware:  battery, hardware, bluetooth, usb"
+  echo "  System:    system, disk, updates, security, startup, network, performance"
+  echo "  Software:  homebrew, node, python, devtools, shell, apps, git_config, containers"
+  echo
+  echo "${BOLD}Cleanup Modules${RESET} (all [LOW] risk):"
+  echo "  System:    trash, caches, logs, downloads, crash_reports, ios_backups"
+  echo "  Software:  browser, dev, xcode"
+  echo
+  echo "${BOLD}Fix Targets${RESET}:"
+  echo "  [LOW]  homebrew, dns, disk, bluetooth, audio, wifi"
+  echo "  [MED]  permissions, spotlight, timemachine"
   echo
   echo "${BOLD}Examples:${RESET}"
-  echo "  mdoctor check                    # Full health audit"
-  echo "  mdoctor check -m homebrew        # Check only Homebrew"
+  echo "  mdoctor check                    # Full health audit (20 checks)"
+  echo "  mdoctor check -m battery         # Check only battery health"
+  echo "  mdoctor check --json             # JSON output for automation"
   echo "  mdoctor clean                    # Dry-run cleanup"
   echo "  mdoctor clean --force            # Actually clean up"
-  echo "  mdoctor clean -m trash           # Clean only Trash"
+  echo "  mdoctor clean -m crash_reports   # Clean only crash reports"
   echo "  mdoctor fix homebrew             # Fix Homebrew issues"
-  echo "  mdoctor fix dns                  # Flush DNS cache"
+  echo "  mdoctor fix wifi                 # Fix Wi-Fi connection"
   echo "  mdoctor fix all                  # Run all fixes"
+  echo "  mdoctor list                     # Show all modules"
+  echo "  mdoctor history                  # View score trends"
+  echo "  mdoctor benchmark                # Run speed tests"
   echo "  mdoctor info                     # Quick system overview"
   echo
   echo "${BOLD}Environment Variables:${RESET}"
@@ -619,14 +675,17 @@ main() {
   shift 2>/dev/null || true
 
   case "$command" in
-    check)    cmd_check "$@" ;;
-    clean)    cmd_clean "$@" ;;
-    fix)      cmd_fix "$@" ;;
-    info)     cmd_info ;;
-    version)  cmd_version ;;
+    check)     cmd_check "$@" ;;
+    clean)     cmd_clean "$@" ;;
+    fix)       cmd_fix "$@" ;;
+    info)      cmd_info ;;
+    list)      cmd_list ;;
+    history)   cmd_history "$@" ;;
+    benchmark) cmd_benchmark ;;
+    version)   cmd_version ;;
     -v|--version) cmd_version ;;
     help|-h|--help) cmd_help ;;
-    "")       cmd_help ;;
+    "")        cmd_help ;;
     *)
       error "Unknown command: ${command}"
       echo "Run 'mdoctor help' for usage."
