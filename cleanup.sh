@@ -32,6 +32,7 @@ source "${SCRIPT_DIR}/cleanups/dev.sh"
 source "${SCRIPT_DIR}/cleanups/crash_reports.sh"
 source "${SCRIPT_DIR}/cleanups/ios_backups.sh"
 source "${SCRIPT_DIR}/cleanups/xcode.sh"
+source "${SCRIPT_DIR}/cleanups/dev_caches.sh"
 
 ########################################
 # CONFIGURATION
@@ -52,7 +53,7 @@ fi
 ########################################
 
 PROGRESS_CURRENT=0
-PROGRESS_TOTAL=7 # update if you add/remove core steps below
+PROGRESS_TOTAL=8 # update if you add/remove core steps below
 
 # Alias for progress bar functions (they use STEP_CURRENT/STEP_TOTAL)
 # shellcheck disable=SC2034
@@ -113,6 +114,9 @@ main() {
 
 	step "Xcode cleanup"
 	clean_xcode
+
+	step "Developer caches cleanup"
+	clean_dev_caches
 
 	# OPTIONAL: Uncomment if you want these too (and bump PROGRESS_TOTAL)
 	# step "Cleaning browser caches"

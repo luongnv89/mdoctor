@@ -38,6 +38,7 @@ source "${SCRIPT_DIR}/checks/security.sh"
 source "${SCRIPT_DIR}/checks/startup.sh"
 source "${SCRIPT_DIR}/checks/network.sh"
 source "${SCRIPT_DIR}/checks/performance.sh"
+source "${SCRIPT_DIR}/checks/storage.sh"
 
 # Source check modules — Software (existing + new)
 source "${SCRIPT_DIR}/checks/homebrew.sh"
@@ -67,6 +68,7 @@ register_module check security    System SAFE check_security      "Firewall, Fil
 register_module check startup     System SAFE check_startup       "Launch agents, daemons, login items"
 register_module check network     System SAFE check_network       "Connectivity, DNS, Wi-Fi signal"
 register_module check performance System SAFE check_performance   "Memory pressure, CPU, processes"
+register_module check storage     System SAFE check_storage       "Large files & app storage analysis"
 
 # Software checks
 register_module check homebrew   Software SAFE check_homebrew    "Homebrew installation & packages"
@@ -85,7 +87,7 @@ register_module check containers Software SAFE check_containers  "Docker & conta
 # shellcheck disable=SC2034
 STEP_CURRENT=0
 # shellcheck disable=SC2034
-STEP_TOTAL=20  # 4 hardware + 7 system + 9 software
+STEP_TOTAL=21  # 4 hardware + 8 system + 9 software
 
 ACTIONS=()
 # shellcheck disable=SC2034
@@ -130,6 +132,7 @@ main() {
   check_startup
   check_network
   check_performance
+  check_storage
 
   # Software checks
   check_homebrew

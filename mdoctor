@@ -133,7 +133,7 @@ cmd_check() {
         echo
         echo "Check modules (all [SAFE] read-only):"
         echo "  Hardware:  battery, hardware, bluetooth, usb"
-        echo "  System:    system, disk, updates, security, startup, network, performance"
+        echo "  System:    system, disk, updates, security, startup, network, performance, storage"
         echo "  Software:  homebrew, node, python, devtools, shell, apps, git_config, containers"
         return 0
         ;;
@@ -157,7 +157,7 @@ cmd_check() {
     if [ ! -f "$check_file" ]; then
       error "Unknown check module: ${module}"
       echo "Available modules: battery, hardware, bluetooth, usb,"
-      echo "  system, disk, updates, security, startup, network, performance,"
+      echo "  system, disk, updates, security, startup, network, performance, storage,"
       echo "  homebrew, node, python, devtools, shell, apps, git_config, containers"
       return 1
     fi
@@ -212,6 +212,7 @@ cmd_check() {
       apps)        check_apps ;;
       git_config)  check_git_config ;;
       containers)  check_containers ;;
+      storage)     check_storage ;;
     esac
 
     # Stop spinner after single-module check
@@ -269,7 +270,7 @@ cmd_clean() {
         echo "Cleanup modules:"
         echo "  System:    trash [LOW], caches [LOW], logs [LOW], downloads [LOW],"
         echo "             crash_reports [LOW], ios_backups [LOW]"
-        echo "  Software:  browser [LOW], dev [LOW], xcode [LOW]"
+        echo "  Software:  browser [LOW], dev [LOW], xcode [LOW], dev_caches [LOW]"
         return 0
         ;;
       *)
@@ -288,7 +289,7 @@ cmd_clean() {
     if [ ! -f "$clean_file" ]; then
       error "Unknown cleanup module: ${module}"
       echo "Available modules: trash, caches, logs, downloads, browser, dev,"
-      echo "  crash_reports, ios_backups, xcode"
+      echo "  crash_reports, ios_backups, xcode, dev_caches"
       return 1
     fi
 
@@ -337,6 +338,7 @@ cmd_clean() {
       crash_reports)  clean_crash_reports ;;
       ios_backups)    clean_ios_backups ;;
       xcode)          clean_xcode ;;
+      dev_caches)     clean_dev_caches ;;
     esac
 
     # Stop spinner after single-module clean
@@ -536,6 +538,7 @@ cmd_list() {
   register_module check startup     System SAFE check_startup       "Launch agents, daemons, login items"
   register_module check network     System SAFE check_network       "Connectivity, DNS, Wi-Fi signal"
   register_module check performance System SAFE check_performance   "Memory pressure, CPU, processes"
+  register_module check storage     System SAFE check_storage       "Large files & app storage analysis"
   # Check modules — Software
   register_module check homebrew   Software SAFE check_homebrew    "Homebrew installation & packages"
   register_module check node       Software SAFE check_node_npm    "Node.js & npm"
@@ -556,6 +559,7 @@ cmd_list() {
   register_module cleanup browser       Software LOW clean_browser_caches      "Browser cache cleanup"
   register_module cleanup dev           Software LOW clean_dev_stuff           "Developer tool caches"
   register_module cleanup xcode         Software LOW clean_xcode              "Xcode DerivedData, archives, simulators"
+  register_module cleanup dev_caches    Software LOW clean_dev_caches         "Developer dependency & package caches"
 
   # Fix modules
   register_module fix homebrew    Software LOW  fix_homebrew    "Update, upgrade, cleanup Homebrew"
@@ -571,11 +575,11 @@ cmd_list() {
   echo "${BOLD}${BLUE}== All Modules ==${RESET}"
   echo
 
-  echo "${BOLD}Check Modules (20 — all read-only):${RESET}"
+  echo "${BOLD}Check Modules (21 — all read-only):${RESET}"
   list_modules_by_category check
   echo
 
-  echo "${BOLD}Cleanup Modules (9):${RESET}"
+  echo "${BOLD}Cleanup Modules (10):${RESET}"
   list_modules_by_category cleanup
   echo
 
@@ -622,8 +626,8 @@ cmd_help() {
   echo "Usage: ${BOLD}mdoctor${RESET} <command> [options]"
   echo
   echo "${BOLD}Commands:${RESET}"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "check"     "Run system health audit (read-only, 20 checks)"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "clean"     "Run system cleanup (dry-run by default, 9 modules)"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "check"     "Run system health audit (read-only, 21 checks)"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "clean"     "Run system cleanup (dry-run by default, 10 modules)"
   printf "  ${GREEN}%-12s${RESET} %s\n" "fix"       "Apply common fixes (9 targets)"
   printf "  ${GREEN}%-12s${RESET} %s\n" "info"      "Show system information summary"
   printf "  ${GREEN}%-12s${RESET} %s\n" "list"      "List all modules with category & risk level"
@@ -634,19 +638,19 @@ cmd_help() {
   echo
   echo "${BOLD}Check Modules${RESET} (all [SAFE] read-only):"
   echo "  Hardware:  battery, hardware, bluetooth, usb"
-  echo "  System:    system, disk, updates, security, startup, network, performance"
+  echo "  System:    system, disk, updates, security, startup, network, performance, storage"
   echo "  Software:  homebrew, node, python, devtools, shell, apps, git_config, containers"
   echo
   echo "${BOLD}Cleanup Modules${RESET} (all [LOW] risk):"
   echo "  System:    trash, caches, logs, downloads, crash_reports, ios_backups"
-  echo "  Software:  browser, dev, xcode"
+  echo "  Software:  browser, dev, xcode, dev_caches"
   echo
   echo "${BOLD}Fix Targets${RESET}:"
   echo "  [LOW]  homebrew, dns, disk, bluetooth, audio, wifi"
   echo "  [MED]  permissions, spotlight, timemachine"
   echo
   echo "${BOLD}Examples:${RESET}"
-  echo "  mdoctor check                    # Full health audit (20 checks)"
+  echo "  mdoctor check                    # Full health audit (21 checks)"
   echo "  mdoctor check -m battery         # Check only battery health"
   echo "  mdoctor check --json             # JSON output for automation"
   echo "  mdoctor clean                    # Dry-run cleanup"
