@@ -24,20 +24,18 @@ check_system() {
   load=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2","$3","$4}')
   status_info "Load average (1/5/15 min): ${load}"
 
-  # Memory summary (from vm_stat)
+  # Memory summary
   if command -v vm_stat >/dev/null 2>&1; then
-    local page_size free_pages active_pages inactive_pages speculative_pages wired_pages
+    local page_size active_pages inactive_pages wired_pages
     page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096)
-    free_pages=$(vm_stat | awk '/Pages free/ {gsub("\\.","",$3); print $3}')
     active_pages=$(vm_stat | awk '/Pages active/ {gsub("\\.","",$3); print $3}')
     inactive_pages=$(vm_stat | awk '/Pages inactive/ {gsub("\\.","",$3); print $3}')
-    speculative_pages=$(vm_stat | awk '/Pages speculative/ {gsub("\\.","",$3); print $3}')
     wired_pages=$(vm_stat | awk '/Pages wired down/ {gsub("\\.","",$4); print $4}')
 
-    local free_kb used_kb total_kb
-    free_kb=$(( (free_pages + speculative_pages) * page_size / 1024 ))
+    local total_kb used_kb free_kb
+    total_kb=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1024 ))
     used_kb=$(( (active_pages + inactive_pages + wired_pages) * page_size / 1024 ))
-    total_kb=$(( free_kb + used_kb ))
+    free_kb=$(( total_kb - used_kb ))
 
     status_info "Memory total: $(kb_to_human "$total_kb"), used: $(kb_to_human "$used_kb"), free: $(kb_to_human "$free_kb")"
   fi
