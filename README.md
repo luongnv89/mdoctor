@@ -267,6 +267,7 @@ mdoctor/
 
 ## Documentation
 
+- [Guidebook](docs/GUIDEBOOK.md) -- Quick problem → command lookup
 - [Architecture](docs/ARCHITECTURE.md) -- System design and component overview
 - [Development](docs/DEVELOPMENT.md) -- Local setup and debugging guide
 - [Deployment](docs/DEPLOYMENT.md) -- Distribution and release process
