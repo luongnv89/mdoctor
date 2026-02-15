@@ -92,9 +92,9 @@ check_bluetooth() {
 
   if (( connected_count > 0 )); then
     status_info "Connected Bluetooth devices: ${connected_count}"
-    echo -e "$device_lines" | while IFS= read -r dline; do
+    while IFS= read -r dline; do
       [ -n "$dline" ] && status_info "  ${dline}"
-    done
+    done <<< "$(printf '%b' "$device_lines")"
   else
     status_info "No Bluetooth devices connected."
   fi
