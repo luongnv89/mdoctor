@@ -25,3 +25,15 @@ gui/node_modules/
 # Environment
 .env
 .env.local
+
+.claude
+CLAUDE.md
+
+.codex
+AGENTS.md
+
+.gemini
+.opencode
+.windsurf
+.specify
+openspec/
