@@ -20,13 +20,13 @@ mdoctor is a modular Bash CLI toolkit for macOS diagnostics, cleanup, and fixes.
           │             │
     ┌─────▼────┐  ┌─────▼─────┐
     │ checks/* │  │ cleanups/* │
-    │ 9 modules│  │ 6 modules │
+    │21 modules│  │ 10 modules│
     └─────┬────┘  └─────┬─────┘
           │             │
           └──────┬──────┘
            ┌─────▼────┐
            │   lib/*   │
-           │ 3 modules │
+           │ 7 modules │
            └──────────┘
 ```
 
@@ -52,12 +52,16 @@ mdoctor is a modular Bash CLI toolkit for macOS diagnostics, cleanup, and fixes.
 - `common.sh` -- Colors, icons, status output helpers
 - `logging.sh` -- Markdown report generation and cleanup logging
 - `disk.sh` -- Disk space utilities
+- `metadata.sh` -- Module registry (categories, risk levels)
+- `json.sh` -- Pure-Bash JSON output support
+- `history.sh` -- Health score history & trends
+- `benchmark.sh` -- System benchmark tests
 
 ## Data Flow
 
 ### Health Check Flow
 1. `mdoctor check` invokes `doctor.sh`
-2. Libraries are sourced, then all 9 check modules
+2. Libraries are sourced, then all 21 check modules
 3. Each check function runs and calls `status_ok`/`status_warn`/`status_fail`
 4. Warnings and failures increment global counters
 5. A health score is computed: `100 - (warnings * 4) - (failures * 8)`
