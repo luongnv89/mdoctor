@@ -15,7 +15,7 @@
 
 ## Why mdoctor?
 
-- **Comprehensive** -- 20 health checks across Hardware, System, and Software categories
+- **Comprehensive** -- 21 health checks across Hardware, System, and Software categories
 - **Safe by default** -- health checks are read-only, cleanup runs in dry-run mode
 - **Risk-rated** -- every operation is classified `[SAFE]` `[LOW]` `[MED]` `[HIGH]`
 - **Modular** -- run everything or target a single module
@@ -46,9 +46,9 @@ mdoctor <command> [options]
 
 | Command | Description |
 |---------|-------------|
-| `mdoctor check` | Run full system health audit (20 checks, read-only) |
+| `mdoctor check` | Run full system health audit (21 checks, read-only) |
 | `mdoctor check --json` | JSON output for automation |
-| `mdoctor clean` | Run system cleanup (dry-run by default, 9 modules) |
+| `mdoctor clean` | Run system cleanup (dry-run by default, 10 modules) |
 | `mdoctor fix <target>` | Apply common fixes (9 targets) |
 | `mdoctor info` | Show system information summary |
 | `mdoctor list` | List all modules with category & risk level |
@@ -84,7 +84,7 @@ mdoctor check --json | python3 -m json.tool
 | Category | Modules |
 |----------|---------|
 | **Hardware** | `battery`, `hardware`, `bluetooth`, `usb` |
-| **System** | `system`, `disk`, `updates`, `security`, `startup`, `network`, `performance` |
+| **System** | `system`, `disk`, `updates`, `security`, `startup`, `network`, `performance`, `storage` |
 | **Software** | `homebrew`, `node`, `python`, `devtools`, `shell`, `apps`, `git_config`, `containers` |
 
 The health check:
@@ -121,7 +121,7 @@ mdoctor clean -m xcode
 | Category | Modules |
 |----------|---------|
 | **System** | `trash`, `caches`, `logs`, `downloads`, `crash_reports`, `ios_backups` |
-| **Software** | `browser`, `dev`, `xcode` |
+| **Software** | `browser`, `dev`, `xcode`, `dev_caches` |
 
 ### Fix
 
@@ -206,8 +206,8 @@ mdoctor/
 ├── mdoctor              # Unified CLI entry point
 ├── install.sh           # One-line installer
 ├── uninstall.sh         # Uninstaller
-├── doctor.sh            # Health audit engine (20 checks)
-├── cleanup.sh           # Cleanup engine (9 modules)
+├── doctor.sh            # Health audit engine (21 checks)
+├── cleanup.sh           # Cleanup engine (10 modules)
 ├── lib/                 # Shared libraries
 │   ├── common.sh        # Colors, icons, UI helpers, progress spinner
 │   ├── logging.sh       # Logging and markdown reports
@@ -216,7 +216,7 @@ mdoctor/
 │   ├── json.sh          # Pure-Bash JSON output support
 │   ├── history.sh       # Health score history & trends
 │   └── benchmark.sh     # System benchmark tests
-├── checks/              # Health check modules (20)
+├── checks/              # Health check modules (21)
 │   ├── battery.sh       # Battery health & cycle count
 │   ├── hardware.sh      # CPU, RAM, thermals
 │   ├── bluetooth.sh     # Bluetooth status
@@ -228,6 +228,7 @@ mdoctor/
 │   ├── startup.sh       # Launch agents & login items
 │   ├── network.sh       # Connectivity, DNS, Wi-Fi signal
 │   ├── performance.sh   # Memory pressure, CPU, processes
+│   ├── storage.sh       # Large files & storage analysis
 │   ├── homebrew.sh      # Homebrew checks
 │   ├── node.sh          # Node.js & npm
 │   ├── python.sh        # Python & pip
@@ -236,7 +237,7 @@ mdoctor/
 │   ├── apps.sh          # Crash reports, app health
 │   ├── git_config.sh    # Git & SSH config
 │   └── containers.sh    # Docker & containers
-├── cleanups/            # Cleanup modules (9)
+├── cleanups/            # Cleanup modules (10)
 │   ├── trash.sh         # Trash cleanup
 │   ├── caches.sh        # User caches
 │   ├── logs.sh          # Old logs
@@ -245,7 +246,8 @@ mdoctor/
 │   ├── dev.sh           # Developer tool caches
 │   ├── crash_reports.sh # Old crash/diagnostic reports
 │   ├── ios_backups.sh   # Old iOS device backups
-│   └── xcode.sh         # Xcode DerivedData, archives, simulators
+│   ├── xcode.sh         # Xcode DerivedData, archives, simulators
+│   └── dev_caches.sh    # Developer dependency & package caches
 ├── fixes/               # Fix modules (9)
 │   ├── homebrew.sh      # Homebrew update & repair
 │   ├── dns.sh           # Flush DNS cache
