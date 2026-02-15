@@ -45,6 +45,20 @@ check_network() {
   active_service=$(route get default 2>/dev/null | awk '/interface:/ {print $2}')
   if [ -n "$active_service" ]; then
     status_info "Active network interface: ${active_service}"
+
+    # Local IP address on the active interface
+    local local_ip
+    local_ip=$(ipconfig getifaddr "$active_service" 2>/dev/null || echo "")
+    if [ -n "$local_ip" ]; then
+      status_info "Local IP address: ${local_ip}"
+    fi
+  fi
+
+  # Public IP address
+  local public_ip
+  public_ip=$(curl -4 -s --max-time 3 https://ifconfig.me 2>/dev/null || curl -4 -s --max-time 3 https://api.ipify.org 2>/dev/null || echo "")
+  if [ -n "$public_ip" ]; then
+    status_info "Public IP address: ${public_ip}"
   fi
 
   # Wi-Fi signal strength (if on Wi-Fi)
