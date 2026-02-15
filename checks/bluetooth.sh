@@ -45,36 +45,56 @@ check_bluetooth() {
   fi
 
   # Connected devices
-  local connected_count=0
-  local device_names=""
+  # The output has sections "Connected:" and "Not Connected:" with device names
+  # as indented headers (e.g. "          MX Anywhere 3S:") followed by properties.
+  # We parse between "Connected:" and "Not Connected:" sections.
   local in_connected=0
+  local connected_count=0
+  local device_lines=""
   local line
 
   while IFS= read -r line; do
-    # Detect "Connected:" section
-    if echo "$line" | grep -q "Connected: Yes"; then
+    # Match the top-level "Connected:" section header (6 leading spaces)
+    if echo "$line" | grep -qE '^      Connected:$'; then
       in_connected=1
+      continue
     fi
-    # Collect device names (lines with "Name:" under connected devices)
+    # Stop at "Not Connected:" section or any other top-level section
+    if (( in_connected == 1 )) && echo "$line" | grep -qE '^      [A-Z]'; then
+      in_connected=0
+      continue
+    fi
+    # Device names are indented with ~10 spaces and end with ":"
+    # but are NOT property lines (which contain ": " with a value)
     if (( in_connected == 1 )); then
-      local name
-      name=$(echo "$line" | awk -F': ' '/^[[:space:]]*Name:/ {print $2}')
-      if [ -n "$name" ]; then
+      local trimmed
+      trimmed="${line#"${line%%[![:space:]]*}"}"
+      # Device header: "DeviceName:" with no value after the colon
+      if echo "$trimmed" | grep -qE '^.+:$'; then
+        local dev_name
+        dev_name="${trimmed%:}"
         connected_count=$((connected_count + 1))
-        if [ -n "$device_names" ]; then
-          device_names="${device_names}, ${name}"
+        local dev_type=""
+        # Look ahead for Minor Type in subsequent lines
+        dev_type=$(echo "$bt_info" | awk -v dev="$trimmed" '
+          $0 ~ dev {found=1; next}
+          found && /Minor Type:/ {sub(/.*Minor Type: */, ""); print; exit}
+          found && /^          [^ ]/ {exit}
+        ')
+        if [ -n "$dev_type" ]; then
+          device_lines="${device_lines}${dev_name} (${dev_type})\n"
         else
-          device_names="${name}"
+          device_lines="${device_lines}${dev_name}\n"
         fi
       fi
     fi
   done <<< "$bt_info"
 
-  # Simpler approach: count connected devices
-  local connected
-  connected=$(echo "$bt_info" | grep -c "Connected: Yes" || true)
-  if (( connected > 0 )); then
-    status_info "Connected Bluetooth devices: ${connected}"
+  if (( connected_count > 0 )); then
+    status_info "Connected Bluetooth devices: ${connected_count}"
+    echo -e "$device_lines" | while IFS= read -r dline; do
+      [ -n "$dline" ] && status_info "  ${dline}"
+    done
   else
     status_info "No Bluetooth devices connected."
   fi
