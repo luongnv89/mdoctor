@@ -49,6 +49,9 @@ progress_start() {
   local total="${STEP_TOTAL:-1}"
 
   (
+    # Trap SIGTERM so the subshell exits cleanly without "Terminated" noise
+    trap 'exit 0' TERM
+
     local frames="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
     local bar_width=20
     local i=0
