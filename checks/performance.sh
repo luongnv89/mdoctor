@@ -81,7 +81,33 @@ check_performance() {
   zombie_count=$(ps -eo stat 2>/dev/null | grep -c '^Z' || true)
   if (( zombie_count > 0 )); then
     status_warn "Zombie processes: ${zombie_count}"
-    add_action "Found ${zombie_count} zombie process(es). These are defunct processes that can be cleaned up by killing their parent."
+    # List zombie processes with their parent PIDs
+    local zombie_list
+    zombie_list=$(ps -eo pid,ppid,stat,comm 2>/dev/null | awk '$3 ~ /^Z/ {print $1, $2, $4}')
+    if [ -n "$zombie_list" ]; then
+      status_info "Zombie process details (PID → Parent PID — Command):"
+      local parent_pids=""
+      while IFS= read -r zline; do
+        local zpid zppid zname
+        zpid=$(echo "$zline" | awk '{print $1}')
+        zppid=$(echo "$zline" | awk '{print $2}')
+        zname=$(echo "$zline" | awk '{$1=""; $2=""; print}' | sed 's/^ *//')
+        status_info "  PID ${zpid} → Parent ${zppid} — ${zname}"
+        if [ -n "$parent_pids" ]; then
+          parent_pids="${parent_pids} ${zppid}"
+        else
+          parent_pids="${zppid}"
+        fi
+      done <<< "$zombie_list"
+      # Deduplicate parent PIDs
+      local unique_parents
+      unique_parents=$(echo "$parent_pids" | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/ *$//')
+      if [ -n "$unique_parents" ]; then
+        add_action "Found ${zombie_count} zombie process(es). Kill their parent process(es) to clean up: kill -HUP ${unique_parents}"
+      fi
+    else
+      add_action "Found ${zombie_count} zombie process(es). These are defunct processes that can be cleaned up by killing their parent."
+    fi
   else
     status_ok "No zombie processes."
   fi
