@@ -1,11 +1,36 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 128" fill="none">
-  <!-- Black version for light backgrounds -->
-  <g transform="translate(0, 0)">
-    <path d="M24 88 V56 C24 38.33 38.33 24 56 24 C73.67 24 80 38.33 80 56" stroke="#0A0A0A" stroke-width="10" stroke-linecap="round" fill="none"/>
-    <path d="M80 56 C80 38.33 86.33 24 104 24" stroke="#0A0A0A" stroke-width="10" stroke-linecap="round" fill="none"/>
-    <path d="M104 24 V88" stroke="#0A0A0A" stroke-width="10" stroke-linecap="round" fill="none"/>
-    <path d="M80 56 V88" stroke="#0A0A0A" stroke-width="10" stroke-linecap="round" fill="none"/>
-    <circle cx="24" cy="100" r="8" fill="#0A0A0A"/>
-  </g>
-  <text x="140" y="82" font-family="system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="52" font-weight="600" fill="#0A0A0A" letter-spacing="-1">mdoctor</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 128" fill="none">
+  <!--
+    mdoctor logo — black variant for light backgrounds
+    Mark: near-black stroke + green pulse dot
+    Wordmark: near-black text
+  -->
+
+  <!-- === MARK === -->
+  <path
+    d="M20 92 L20 54 C20 36 33 22 50 22 C67 22 74 36 74 54"
+    stroke="#0A0A0A" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path
+    d="M74 54 C74 36 81 22 98 22 L98 92"
+    stroke="#0A0A0A" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path
+    d="M74 54 L74 92"
+    stroke="#0A0A0A" stroke-width="9" stroke-linecap="round" fill="none"/>
+  <!-- Green pulse dot retained as brand accent -->
+  <circle cx="20" cy="105" r="9" fill="#22C55E"/>
+  <circle cx="20" cy="105" r="4.5" fill="#FFFFFF" opacity="0.22"/>
+
+  <!-- === WORDMARK === -->
+  <text
+    x="144" y="84"
+    font-family="ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code', monospace"
+    font-size="54" font-weight="700"
+    fill="#0A0A0A"
+    letter-spacing="-2">m</text>
+  <text
+    x="191" y="84"
+    font-family="ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code', monospace"
+    font-size="54" font-weight="400"
+    fill="#0A0A0A"
+    opacity="0.70"
+    letter-spacing="-1">doctor</text>
 </svg>

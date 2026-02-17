@@ -1,3 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 64" fill="none">
-  <text x="0" y="48" font-family="system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="52" font-weight="600" fill="#06B6D4" letter-spacing="-1">mdoctor</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 310 72" fill="none">
+  <!--
+    mdoctor wordmark — text only
+    "m" bold teal, "doctor" regular teal at 78% opacity
+  -->
+  <text
+    x="0" y="56"
+    font-family="ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code', monospace"
+    font-size="54" font-weight="700"
+    fill="#0D9488"
+    letter-spacing="-2">m</text>
+  <text
+    x="47" y="56"
+    font-family="ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code', monospace"
+    font-size="54" font-weight="400"
+    fill="#0D9488"
+    opacity="0.78"
+    letter-spacing="-1">doctor</text>
 </svg>

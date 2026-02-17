@@ -1,15 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" fill="none">
-  <!-- Padded app icon -->
+  <!--
+    mdoctor app icon — mark centered in padded square
+    Outer padding: 16px all sides → mark in 128×128 centered region
+  -->
+
+  <!-- Dark rounded background for app icon context -->
+  <rect width="160" height="160" rx="32" fill="#0A0A0A"/>
+
+  <!-- Mark at offset (16,16) within 128×128 inner area -->
   <g transform="translate(16, 16)">
-    <!-- Left arch -->
-    <path d="M24 88 V56 C24 38.33 38.33 24 56 24 C73.67 24 80 38.33 80 56" stroke="#06B6D4" stroke-width="10" stroke-linecap="round" fill="none"/>
-    <!-- Right arch -->
-    <path d="M80 56 C80 38.33 86.33 24 104 24" stroke="#06B6D4" stroke-width="10" stroke-linecap="round" fill="none"/>
-    <!-- Right leg -->
-    <path d="M104 24 V88" stroke="#06B6D4" stroke-width="10" stroke-linecap="round" fill="none"/>
-    <!-- Middle leg -->
-    <path d="M80 56 V88" stroke="#06B6D4" stroke-width="10" stroke-linecap="round" fill="none"/>
-    <!-- Chest piece dot -->
-    <circle cx="24" cy="100" r="8" fill="#06B6D4"/>
+    <!-- Left hump -->
+    <path
+      d="M20 92 L20 54 C20 36 33 22 50 22 C67 22 74 36 74 54"
+      stroke="#0D9488" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <!-- Right hump -->
+    <path
+      d="M74 54 C74 36 81 22 98 22 L98 92"
+      stroke="#0D9488" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <!-- Center leg -->
+    <path
+      d="M74 54 L74 92"
+      stroke="#0D9488" stroke-width="9" stroke-linecap="round" fill="none"/>
+    <!-- Chest piece — green pulse dot -->
+    <circle cx="20" cy="105" r="9" fill="#22C55E"/>
+    <circle cx="20" cy="105" r="4.5" fill="#0A0A0A" opacity="0.22"/>
   </g>
 </svg>
