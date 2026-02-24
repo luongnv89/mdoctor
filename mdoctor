@@ -435,6 +435,7 @@ cmd_clean() {
         echo "  Software:  browser [LOW], dev [LOW], xcode [LOW], dev_caches [LOW]"
         echo
         echo "Whitelist file: ~/.config/mdoctor/cleanup_whitelist"
+        echo "Scope file: ~/.config/mdoctor/cleanup_scope.conf (dev_caches node_modules scan)"
         return 0
         ;;
       *)
@@ -467,6 +468,7 @@ cmd_clean() {
     source "${MDOCTOR_DIR}/lib/logging.sh"
     source "${MDOCTOR_DIR}/lib/disk.sh"
     source "${MDOCTOR_DIR}/lib/safety.sh"
+    source "${MDOCTOR_DIR}/lib/cleanup_scope.sh"
 
     # Initialize progress globals for spinner
     # shellcheck disable=SC2034
@@ -492,6 +494,9 @@ cmd_clean() {
     mkdir -p "$(dirname "$LOGFILE")"
     if declare -f ensure_cleanup_whitelist_file >/dev/null 2>&1; then
       ensure_cleanup_whitelist_file
+    fi
+    if declare -f ensure_cleanup_scope_file >/dev/null 2>&1; then
+      ensure_cleanup_scope_file
     fi
 
     # shellcheck source=/dev/null
@@ -886,6 +891,7 @@ cmd_help() {
   echo "${BOLD}Environment Variables:${RESET}"
   echo "  DAYS_OLD_OVERRIDE=N              Override cleanup age threshold (default: 7)"
   echo "  MDOCTOR_CLEANUP_WHITELIST_FILE   Override cleanup whitelist file path"
+  echo "  MDOCTOR_CLEANUP_SCOPE_FILE       Override cleanup scope config file path"
   echo
   echo "${DIM}Documentation: https://github.com/luongnv89/mdoctor${RESET}"
 }

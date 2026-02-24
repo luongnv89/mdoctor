@@ -55,6 +55,7 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
 - **Outcome:** avoid accidental deletion of valuable caches/models.
 
 ### P2.2 Custom cleanup scope configuration
+- Status: ✅ Done (change: `task-p2-2-custom-cleanup-scope-config`)
 - Add configurable scan paths/include-exclude patterns.
 - **Outcome:** safer use in varied dev environments.
 
@@ -137,3 +138,8 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
   - Outcome: added cleanup whitelist support with auto-created `~/.config/mdoctor/cleanup_whitelist`, path/subtree matching, and skip-on-whitelist behavior.
   - Spec impact: `openspec/specs/cleanup-whitelist/spec.md`.
   - Verification: isolated-home whitelist protect/delete/autocreate tests + `mdoctor clean --help` check.
+
+- 2026-02-24 archived `task-p2-2-custom-cleanup-scope-config` for `P2.2`
+  - Outcome: added configurable cleanup scope (`~/.config/mdoctor/cleanup_scope.conf`) with include paths and exclude globs for stale node_modules scanning.
+  - Spec impact: `openspec/specs/custom-cleanup-scope/spec.md`.
+  - Verification: isolated-home include/exclude/default fallback/autocreate tests + help text check.

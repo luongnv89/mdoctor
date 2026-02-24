@@ -92,9 +92,18 @@ clean_dev_caches() {
   log "Scanning for stale node_modules (unused >${NODE_MODULES_DAYS} days)..."
 
   local search_dirs=()
-  for d in "${HOME}/Projects" "${HOME}/projects" "${HOME}/code" "${HOME}/workspace" "${HOME}/dev" "${HOME}/src"; do
-    [ -d "$d" ] && search_dirs+=("$d")
-  done
+  local d
+
+  if declare -f cleanup_scope_get_search_dirs >/dev/null 2>&1; then
+    while IFS= read -r d; do
+      [ -z "$d" ] && continue
+      [ -d "$d" ] && search_dirs+=("$d")
+    done < <(cleanup_scope_get_search_dirs)
+  else
+    for d in "${HOME}/Projects" "${HOME}/projects" "${HOME}/code" "${HOME}/workspace" "${HOME}/dev" "${HOME}/src"; do
+      [ -d "$d" ] && search_dirs+=("$d")
+    done
+  fi
 
   if (( ${#search_dirs[@]} > 0 )); then
     local nm_count=0
@@ -103,6 +112,14 @@ clean_dev_caches() {
     for search_dir in "${search_dirs[@]}"; do
       while IFS= read -r nm_dir; do
         [ -z "$nm_dir" ] && continue
+
+        if declare -f cleanup_scope_is_excluded >/dev/null 2>&1 && cleanup_scope_is_excluded "$nm_dir"; then
+          local nm_skip
+          nm_skip="${nm_dir/#$HOME/~}"
+          log "Skipping node_modules by cleanup scope: ${nm_skip}"
+          continue
+        fi
+
         local nm_sz
         nm_sz=$(du -sk "$nm_dir" 2>/dev/null | awk '{print $1}')
         nm_sz="${nm_sz:-0}"
