@@ -43,6 +43,12 @@ Current coverage includes:
 - safety validation + whitelist protection
 - dry-run vs force cleanup semantics
 
+Run shell lint policy (high-severity gate):
+
+```bash
+./scripts/lint_shell.sh
+```
+
 ## Testing Individual Modules
 
 You can test a single check or cleanup module in isolation:

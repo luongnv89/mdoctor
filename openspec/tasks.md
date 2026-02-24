@@ -67,6 +67,7 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
 - **Outcome:** prevent regressions in critical paths.
 
 ### P3.2 Shellcheck baseline + policy
+- Status: ✅ Done (change: `task-p3-2-shellcheck-baseline-policy`)
 - Add `.shellcheckrc`; clean high-severity lint; enforce in CI.
 - **Outcome:** maintainable shell quality.
 
@@ -149,3 +150,8 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
   - Outcome: added shell test harness (`tests/run.sh`) with regression tests for command parsing, metadata routing, safety validation/whitelist, and dry-run semantics.
   - Spec impact: `openspec/specs/shell-test-harness/spec.md`.
   - Verification: `./tests/run.sh` (4/4 tests passed).
+
+- 2026-02-24 archived `task-p3-2-shellcheck-baseline-policy` for `P3.2`
+  - Outcome: added `.shellcheckrc` baseline policy, reusable `scripts/lint_shell.sh`, and CI enforcement via shared lint entrypoint.
+  - Spec impact: `openspec/specs/shellcheck-baseline-policy/spec.md`.
+  - Verification: `./scripts/lint_shell.sh` passed with high-severity gate.

@@ -1,0 +1,7 @@
+# mdoctor ShellCheck baseline policy
+
+# Allow "source" of dynamically resolved paths used by module loading.
+external-sources=true
+
+# Common in this repo due to dynamic source paths; checked in runtime tests.
+disable=SC1091
