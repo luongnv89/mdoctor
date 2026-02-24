@@ -4,11 +4,20 @@
 # Centralized deletion safety primitives for cleanup operations
 #
 
-# Error codes
-MDOCTOR_SAFE_ERR_INVALID_PATH=21
-MDOCTOR_SAFE_ERR_PROTECTED_PATH=22
+# -----------------------------------------------------------------------------
+# Error taxonomy (destructive operations)
+# -----------------------------------------------------------------------------
+MDOCTOR_SAFE_ERR_INVALID_TARGET=21
+MDOCTOR_SAFE_ERR_PROTECTED_TARGET=22
 MDOCTOR_SAFE_ERR_SYMLINK_BLOCKED=23
-MDOCTOR_SAFE_ERR_REMOVE_FAILED=24
+MDOCTOR_SAFE_ERR_PERMISSION_DENIED=24
+MDOCTOR_SAFE_ERR_SIP_READONLY=25
+MDOCTOR_SAFE_ERR_RUNTIME_FAILURE=26
+
+# Backward-compat aliases (for existing callers)
+MDOCTOR_SAFE_ERR_INVALID_PATH="$MDOCTOR_SAFE_ERR_INVALID_TARGET"
+MDOCTOR_SAFE_ERR_PROTECTED_PATH="$MDOCTOR_SAFE_ERR_PROTECTED_TARGET"
+MDOCTOR_SAFE_ERR_REMOVE_FAILED="$MDOCTOR_SAFE_ERR_RUNTIME_FAILURE"
 
 _safety_log() {
   if declare -f log >/dev/null 2>&1; then
@@ -16,6 +25,60 @@ _safety_log() {
   else
     echo "$*"
   fi
+}
+
+safety_error_name() {
+  local code="${1:-0}"
+  case "$code" in
+    21) echo "INVALID_TARGET" ;;
+    22) echo "PROTECTED_TARGET" ;;
+    23) echo "SYMLINK_BLOCKED" ;;
+    24) echo "PERMISSION_DENIED" ;;
+    25) echo "SIP_OR_READONLY" ;;
+    26) echo "RUNTIME_FAILURE" ;;
+    *)  echo "UNKNOWN" ;;
+  esac
+}
+
+safety_error_hint() {
+  local code="${1:-0}"
+  local path="${2:-target}"
+
+  case "$code" in
+    21)
+      echo "Use an absolute, non-traversal path. Re-check computed target: ${path}"
+      ;;
+    22)
+      echo "Target is protected by safety policy. Choose a narrower cache/temp path instead: ${path}"
+      ;;
+    23)
+      echo "Symlink deletion is blocked by default. Use explicit symlink-allow flow only when audited: ${path}"
+      ;;
+    24)
+      echo "Permission denied. Check ownership/permissions, Full Disk Access, or sudo policy for: ${path}"
+      ;;
+    25)
+      echo "Likely SIP/read-only restriction. Avoid protected/system paths or run from writable scope: ${path}"
+      ;;
+    26)
+      echo "Runtime failure. Inspect previous error details and retry with a narrower path: ${path}"
+      ;;
+    *)
+      echo "Unknown failure category. Check logs and command output for details."
+      ;;
+  esac
+}
+
+_safety_error() {
+  local code="${1:-$MDOCTOR_SAFE_ERR_RUNTIME_FAILURE}"
+  local path="${2:-unknown}"
+  local detail="${3:-safety operation failed}"
+
+  local name
+  name="$(safety_error_name "$code")"
+
+  _safety_log "[SAFE][ERROR:${name}][code=${code}] ${detail}"
+  _safety_log "[SAFE][HINT:${name}] $(safety_error_hint "$code" "$path")"
 }
 
 _normalize_path() {
@@ -66,31 +129,31 @@ validate_deletion_path() {
   path="$(_normalize_path "$raw_path")"
 
   if [ -z "$path" ]; then
-    _safety_log "[SAFE] invalid deletion path: empty"
-    return "$MDOCTOR_SAFE_ERR_INVALID_PATH"
+    _safety_error "$MDOCTOR_SAFE_ERR_INVALID_TARGET" "$raw_path" "invalid deletion target: empty path"
+    return "$MDOCTOR_SAFE_ERR_INVALID_TARGET"
   fi
 
   case "$path" in
     /*) ;;
     *)
-      _safety_log "[SAFE] invalid deletion path (must be absolute): $path"
-      return "$MDOCTOR_SAFE_ERR_INVALID_PATH"
+      _safety_error "$MDOCTOR_SAFE_ERR_INVALID_TARGET" "$path" "invalid deletion target: must be absolute"
+      return "$MDOCTOR_SAFE_ERR_INVALID_TARGET"
       ;;
   esac
 
   if [[ "$path" =~ (^|/)\.\.(/|$) ]]; then
-    _safety_log "[SAFE] invalid deletion path (traversal detected): $path"
-    return "$MDOCTOR_SAFE_ERR_INVALID_PATH"
+    _safety_error "$MDOCTOR_SAFE_ERR_INVALID_TARGET" "$path" "invalid deletion target: traversal detected"
+    return "$MDOCTOR_SAFE_ERR_INVALID_TARGET"
   fi
 
   if [[ "$path" == *$'\n'* ]] || [[ "$path" == *$'\r'* ]] || [[ "$path" == *$'\t'* ]]; then
-    _safety_log "[SAFE] invalid deletion path (control chars): $path"
-    return "$MDOCTOR_SAFE_ERR_INVALID_PATH"
+    _safety_error "$MDOCTOR_SAFE_ERR_INVALID_TARGET" "$path" "invalid deletion target: control characters"
+    return "$MDOCTOR_SAFE_ERR_INVALID_TARGET"
   fi
 
   if is_protected_deletion_path "$path"; then
-    _safety_log "[SAFE] blocked protected path: $path"
-    return "$MDOCTOR_SAFE_ERR_PROTECTED_PATH"
+    _safety_error "$MDOCTOR_SAFE_ERR_PROTECTED_TARGET" "$path" "blocked protected deletion target"
+    return "$MDOCTOR_SAFE_ERR_PROTECTED_TARGET"
   fi
 
   return 0
@@ -107,7 +170,7 @@ safe_remove() {
   validate_deletion_path "$path" || return $?
 
   if [ -L "$path" ] && [ "$allow_symlink" != true ]; then
-    _safety_log "[SAFE] blocked symlink removal (use --allow-symlink): $path"
+    _safety_error "$MDOCTOR_SAFE_ERR_SYMLINK_BLOCKED" "$path" "blocked symlink deletion without explicit allow"
     return "$MDOCTOR_SAFE_ERR_SYMLINK_BLOCKED"
   fi
 
@@ -120,11 +183,24 @@ safe_remove() {
     return 0
   fi
 
-  rm -rf -- "$path"
-  local rc=$?
-  if [ "$rc" -ne 0 ]; then
-    _safety_log "[SAFE][ERROR] failed to remove path (exit $rc): $path"
-    return "$MDOCTOR_SAFE_ERR_REMOVE_FAILED"
+  local rm_out=""
+  local rm_rc=0
+  rm_out=$(rm -rf -- "$path" 2>&1) || rm_rc=$?
+
+  if [ "$rm_rc" -ne 0 ]; then
+    local mapped="$MDOCTOR_SAFE_ERR_RUNTIME_FAILURE"
+
+    case "$rm_out" in
+      *"Read-only file system"*|*"Operation not permitted"*)
+        mapped="$MDOCTOR_SAFE_ERR_SIP_READONLY"
+        ;;
+      *"Permission denied"*)
+        mapped="$MDOCTOR_SAFE_ERR_PERMISSION_DENIED"
+        ;;
+    esac
+
+    _safety_error "$mapped" "$path" "failed to remove target: $path${rm_out:+ | ${rm_out}}"
+    return "$mapped"
   fi
 
   _safety_log "[SAFE][REMOVED] $path"
@@ -180,6 +256,19 @@ safe_find_delete() {
 
   find_cmd+=(-print0)
 
+  local matches_file
+  local err_file
+  matches_file=$(mktemp "${TMPDIR:-/tmp}/mdoctor-safe-find.matches.XXXXXX")
+  err_file=$(mktemp "${TMPDIR:-/tmp}/mdoctor-safe-find.err.XXXXXX")
+
+  if ! "${find_cmd[@]}" >"$matches_file" 2>"$err_file"; then
+    local find_err
+    find_err=$(tr '\n' ' ' <"$err_file" 2>/dev/null || true)
+    rm -f "$matches_file" "$err_file"
+    _safety_error "$MDOCTOR_SAFE_ERR_RUNTIME_FAILURE" "$base_dir" "failed to enumerate deletion candidates: ${find_err:-find error}"
+    return "$MDOCTOR_SAFE_ERR_RUNTIME_FAILURE"
+  fi
+
   local count=0
   local rc=0
   local match=""
@@ -187,7 +276,9 @@ safe_find_delete() {
   while IFS= read -r -d '' match; do
     count=$((count + 1))
     safe_remove "$match" --allow-symlink || rc=$?
-  done < <("${find_cmd[@]}" 2>/dev/null)
+  done <"$matches_file"
+
+  rm -f "$matches_file" "$err_file"
 
   if [ "$count" -eq 0 ]; then
     _safety_log "[SAFE] no deletion candidates in: $base_dir"

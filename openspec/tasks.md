@@ -25,6 +25,7 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
 - **Outcome:** consistent behavior and fewer foot-guns.
 
 ### P0.4 Error taxonomy for destructive failures
+- Status: ✅ Done (change: `task-p0-4-destructive-error-taxonomy`)
 - Standardize error codes/categories (permission denied, SIP/readonly, invalid target, runtime failure).
 - Surface actionable messages in CLI output.
 - **Outcome:** faster triage and safer retries.
@@ -107,3 +108,8 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
   - Outcome: migrated all `cleanups/*.sh` destructive paths to safety primitives and removed inline destructive patterns.
   - Spec impact: `openspec/specs/cleanup-safety-migration/spec.md`.
   - Verification: static grep checks + `bash -n` + dry-run smoke for all cleanup modules.
+
+- 2026-02-24 archived `task-p0-4-destructive-error-taxonomy` for `P0.4`
+  - Outcome: introduced standardized destructive error taxonomy + actionable hint logging and improved runtime failure handling in `safe_find_delete`.
+  - Spec impact: `openspec/specs/destructive-error-taxonomy/spec.md`.
+  - Verification: syntax checks + representative taxonomy smoke tests + `./mdoctor clean -m trash`.
