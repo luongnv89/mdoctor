@@ -43,6 +43,7 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
 - **Outcome:** easier support and reproducibility.
 
 ### P1.3 Pre-flight safety summary
+- Status: ✅ Done (change: `task-p1-3-preflight-safety-summary`)
 - Before destructive runs (`--force`), show what will be touched + estimated reclaim size.
 - **Outcome:** explicit operator confirmation context.
 
@@ -125,3 +126,8 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
   - Outcome: added `--debug` support for check/clean/fix and structured debug diagnostics across runners and runtime flows.
   - Spec impact: `openspec/specs/debug-mode-diagnostics/spec.md`.
   - Verification: `mdoctor check --debug -m battery`, `mdoctor clean --debug -m trash`, `mdoctor clean --debug`, `mdoctor fix --debug`.
+
+- 2026-02-24 archived `task-p1-3-preflight-safety-summary` for `P1.3`
+  - Outcome: added force-mode pre-flight safety summaries for module and full cleanup runs, including touched targets and estimated reclaim size.
+  - Spec impact: `openspec/specs/preflight-safety-summary/spec.md`.
+  - Verification: isolated-home force tests for `mdoctor clean --force -m trash` and `cleanup.sh --force --debug`, plus non-force behavior check.

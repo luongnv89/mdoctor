@@ -106,6 +106,147 @@ error() {
   echo "${RED}Error:${RESET} $*" >&2
 }
 
+md_path_size_kb() {
+  local path="${1-}"
+  if [ -z "$path" ] || [ ! -e "$path" ]; then
+    echo 0
+    return 0
+  fi
+  du -sk "$path" 2>/dev/null | awk '{print $1+0}'
+}
+
+md_find_size_kb() {
+  local base="${1-}"
+  shift || true
+
+  if [ -z "$base" ] || [ ! -d "$base" ]; then
+    echo 0
+    return 0
+  fi
+
+  local total=0
+  local p=""
+  while IFS= read -r -d '' p; do
+    local sz=0
+    sz=$(du -sk "$p" 2>/dev/null | awk '{print $1+0}')
+    total=$((total + sz))
+  done < <(find "$base" "$@" -print0 2>/dev/null)
+
+  echo "$total"
+}
+
+md_human_kb() {
+  local kb="${1:-0}"
+  if declare -f human_readable_kb >/dev/null 2>&1; then
+    human_readable_kb "$kb"
+    return 0
+  fi
+  if (( kb >= 1048576 )); then
+    awk -v v="$kb" 'BEGIN {printf "%.2f GB", v/1048576}'
+  elif (( kb >= 1024 )); then
+    awk -v v="$kb" 'BEGIN {printf "%.2f MB", v/1024}'
+  else
+    printf "%d KB" "$kb"
+  fi
+}
+
+cmd_clean_preflight_summary_module() {
+  local module="${1-}"
+  local days="${2:-7}"
+  local total_kb=0
+
+  echo
+  echo "${BOLD}${YELLOW}== Pre-flight Safety Summary (force mode) ==${RESET}"
+  echo "Module: ${module}"
+  echo "This run will perform destructive cleanup operations."
+  echo "Touched targets:"
+
+  local add_path
+  add_path() {
+    local label="$1"
+    local path="$2"
+    local sz=0
+    sz=$(md_path_size_kb "$path")
+    total_kb=$((total_kb + sz))
+    printf "  - %-30s %s (~%s)\n" "$label" "$path" "$(md_human_kb "$sz")"
+  }
+
+  case "$module" in
+    trash)
+      add_path "Trash" "${HOME}/.Trash"
+      ;;
+    caches)
+      add_path "User caches" "${HOME}/Library/Caches"
+      ;;
+    logs)
+      local logs_kb=0
+      logs_kb=$(md_find_size_kb "${HOME}/Library/Logs" -type f -mtime "+${days}")
+      total_kb=$((total_kb + logs_kb))
+      printf "  - %-30s %s (~%s)\n" "Old logs (>${days}d)" "${HOME}/Library/Logs" "$(md_human_kb "$logs_kb")"
+      ;;
+    downloads)
+      local dl_kb=0
+      dl_kb=$(md_find_size_kb "${HOME}/Downloads" -type f -size +500M -mtime "+${days}")
+      total_kb=$((total_kb + dl_kb))
+      printf "  - %-30s %s (~%s)\n" "Large downloads (>${days}d)" "${HOME}/Downloads" "$(md_human_kb "$dl_kb")"
+      ;;
+    browser)
+      add_path "Chrome cache" "${HOME}/Library/Caches/Google/Chrome"
+      add_path "Safari cache" "${HOME}/Library/Caches/com.apple.Safari"
+      add_path "Firefox cache" "${HOME}/Library/Caches/Firefox"
+      ;;
+    dev)
+      add_path "pip cache" "${HOME}/Library/Caches/pip"
+      add_path "pip cache (XDG)" "${HOME}/.cache/pip"
+      add_path "npm cache" "${HOME}/.npm"
+      add_path "npm cache (Library)" "${HOME}/Library/Caches/npm"
+      add_path "Yarn cache" "${HOME}/Library/Caches/Yarn"
+      add_path "pnpm store" "${HOME}/Library/pnpm/store"
+      echo "  - Homebrew cleanup/autoremove (size estimate: n/a)"
+      echo "  - Docker prune (size estimate: n/a)"
+      ;;
+    crash_reports)
+      local cr_user=0
+      local cr_sys=0
+      cr_user=$(md_find_size_kb "${HOME}/Library/Logs/DiagnosticReports" -type f "(" -name "*.crash" -o -name "*.diag" -o -name "*.ips" ")" -mtime "+${days}")
+      cr_sys=$(md_find_size_kb "/Library/Logs/DiagnosticReports" -type f "(" -name "*.crash" -o -name "*.diag" -o -name "*.ips" ")" -mtime "+${days}")
+      total_kb=$((total_kb + cr_user + cr_sys))
+      printf "  - %-30s %s (~%s)\n" "User crash reports" "${HOME}/Library/Logs/DiagnosticReports" "$(md_human_kb "$cr_user")"
+      printf "  - %-30s %s (~%s)\n" "System crash reports" "/Library/Logs/DiagnosticReports" "$(md_human_kb "$cr_sys")"
+      ;;
+    ios_backups)
+      local ios_kb=0
+      ios_kb=$(md_find_size_kb "${HOME}/Library/Application Support/MobileSync/Backup" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
+      total_kb=$((total_kb + ios_kb))
+      printf "  - %-30s %s (~%s)\n" "iOS backups (>${days}d)" "${HOME}/Library/Application Support/MobileSync/Backup" "$(md_human_kb "$ios_kb")"
+      ;;
+    xcode)
+      add_path "Xcode DerivedData" "${HOME}/Library/Developer/Xcode/DerivedData"
+      local arc_kb=0
+      arc_kb=$(md_find_size_kb "${HOME}/Library/Developer/Xcode/Archives" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
+      total_kb=$((total_kb + arc_kb))
+      printf "  - %-30s %s (~%s)\n" "Xcode Archives (>${days}d)" "${HOME}/Library/Developer/Xcode/Archives" "$(md_human_kb "$arc_kb")"
+      add_path "CoreSimulator caches" "${HOME}/Library/Developer/CoreSimulator/Caches"
+      echo "  - xcrun simctl delete unavailable (size estimate: n/a)"
+      ;;
+    dev_caches)
+      add_path "npm cache" "${HOME}/.npm"
+      add_path "pip cache" "${HOME}/.cache/pip"
+      add_path "Maven repo" "${HOME}/.m2/repository"
+      add_path "Gradle caches" "${HOME}/.gradle/caches"
+      add_path "Go module cache" "${HOME}/go/pkg/mod/cache"
+      add_path "Cargo cache" "${HOME}/.cargo/registry/cache"
+      add_path "Xcode DerivedData" "${HOME}/Library/Developer/Xcode/DerivedData"
+      echo "  - Docker prune (size estimate: n/a)"
+      ;;
+  esac
+
+  echo
+  echo "Estimated reclaim size: ~$(md_human_kb "$total_kb")"
+  echo "${YELLOW}Note:${RESET} estimate is approximate and excludes some command-based cleanup results."
+  echo
+}
+
 ########################################
 # COMMAND: check
 ########################################
@@ -343,6 +484,7 @@ cmd_clean() {
     if [ "$force" = true ]; then
       # shellcheck disable=SC2034
       DRY_RUN=false
+      cmd_clean_preflight_summary_module "$module" "${DAYS_OLD}"
     fi
 
     mkdir -p "$(dirname "$LOGFILE")"

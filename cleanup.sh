@@ -118,6 +118,86 @@ _finish_cleanup_session() {
 
 trap _finish_cleanup_session EXIT
 
+cleanup_preflight_path_kb() {
+	local path="${1-}"
+	if [ -z "$path" ] || [ ! -e "$path" ]; then
+		echo 0
+		return 0
+	fi
+	du -sk "$path" 2>/dev/null | awk '{print $1+0}'
+}
+
+cleanup_preflight_find_kb() {
+	local base="${1-}"
+	shift || true
+
+	if [ -z "$base" ] || [ ! -d "$base" ]; then
+		echo 0
+		return 0
+	fi
+
+	local total=0
+	local p=""
+	while IFS= read -r -d '' p; do
+		local sz=0
+		sz=$(du -sk "$p" 2>/dev/null | awk '{print $1+0}')
+		total=$((total + sz))
+	done < <(find "$base" "$@" -print0 2>/dev/null)
+
+	echo "$total"
+}
+
+cleanup_force_preflight_summary() {
+	local days="${DAYS_OLD:-7}"
+	local total_kb=0
+
+	echo
+	echo "${BOLD:-}${YELLOW:-}== Pre-flight Safety Summary (force mode) ==${RESET:-}"
+	echo "Modules touched: trash, caches, logs, downloads, crash_reports, ios_backups, xcode, dev_caches"
+	echo "Touched targets:"
+
+	local path sz
+	for path in \
+		"${HOME}/.Trash" \
+		"${HOME}/Library/Caches" \
+		"${HOME}/Library/Developer/Xcode/DerivedData" \
+		"${HOME}/Library/Developer/CoreSimulator/Caches" \
+		"${HOME}/.npm" \
+		"${HOME}/.cache/pip" \
+		"${HOME}/.m2/repository" \
+		"${HOME}/.gradle/caches" \
+		"${HOME}/go/pkg/mod/cache" \
+		"${HOME}/.cargo/registry/cache"; do
+		sz=$(cleanup_preflight_path_kb "$path")
+		total_kb=$((total_kb + sz))
+		printf "  - %-45s (~%s)\n" "$path" "$(human_readable_kb "$sz")"
+	done
+
+	local logs_kb dl_kb crash_user_kb crash_sys_kb ios_kb archives_kb
+	logs_kb=$(cleanup_preflight_find_kb "${HOME}/Library/Logs" -type f -mtime "+${days}")
+	dl_kb=$(cleanup_preflight_find_kb "${HOME}/Downloads" -type f -size +500M -mtime "+${days}")
+	crash_user_kb=$(cleanup_preflight_find_kb "${HOME}/Library/Logs/DiagnosticReports" -type f "(" -name "*.crash" -o -name "*.diag" -o -name "*.ips" ")" -mtime "+${days}")
+	crash_sys_kb=$(cleanup_preflight_find_kb "/Library/Logs/DiagnosticReports" -type f "(" -name "*.crash" -o -name "*.diag" -o -name "*.ips" ")" -mtime "+${days}")
+	ios_kb=$(cleanup_preflight_find_kb "${HOME}/Library/Application Support/MobileSync/Backup" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
+	archives_kb=$(cleanup_preflight_find_kb "${HOME}/Library/Developer/Xcode/Archives" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
+
+	total_kb=$((total_kb + logs_kb + dl_kb + crash_user_kb + crash_sys_kb + ios_kb + archives_kb))
+
+	printf "  - %-45s (~%s)\n" "${HOME}/Library/Logs (files older than ${days}d)" "$(human_readable_kb "$logs_kb")"
+	printf "  - %-45s (~%s)\n" "${HOME}/Downloads (>500MB, older than ${days}d)" "$(human_readable_kb "$dl_kb")"
+	printf "  - %-45s (~%s)\n" "${HOME}/Library/Logs/DiagnosticReports" "$(human_readable_kb "$crash_user_kb")"
+	printf "  - %-45s (~%s)\n" "/Library/Logs/DiagnosticReports" "$(human_readable_kb "$crash_sys_kb")"
+	printf "  - %-45s (~%s)\n" "${HOME}/Library/Application Support/MobileSync/Backup (> ${days}d)" "$(human_readable_kb "$ios_kb")"
+	printf "  - %-45s (~%s)\n" "${HOME}/Library/Developer/Xcode/Archives (> ${days}d)" "$(human_readable_kb "$archives_kb")"
+
+	echo "  - docker system prune -af --volumes (size estimate: n/a)"
+	echo "  - xcrun simctl delete unavailable (size estimate: n/a)"
+	echo
+	echo "Estimated reclaim size: ~$(human_readable_kb "$total_kb")"
+	echo "${YELLOW:-}Note:${RESET:-} estimate is approximate and excludes dynamic command-based reclaim sizes."
+	echo
+}
+
 ########################################
 # MAIN
 ########################################
@@ -132,6 +212,10 @@ main() {
 	local freed_hr
 
 	used_before_kb="$(disk_used_kb)"
+
+	if [ "$DRY_RUN" = false ]; then
+		cleanup_force_preflight_summary
+	fi
 
 	header "Starting macOS cleanup (DRY_RUN=${DRY_RUN})"
 	debug_log "cleanup.sh start dry_run=${DRY_RUN} days_old=${DAYS_OLD}"
