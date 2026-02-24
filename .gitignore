@@ -36,4 +36,4 @@ AGENTS.md
 .opencode
 .windsurf
 .specify
-openspec/
+# openspec/  # tracked for OpenSpec task-loop workflow

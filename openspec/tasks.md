@@ -1,0 +1,97 @@
+# mdoctor × Mole Comparison — Implementation Plan (OpenSpec-driven)
+
+Goal: improve mdoctor using proven patterns from Mole without losing mdoctor's simpler health-first UX.
+
+Execution rule: one task at a time via OpenSpec change folders under `openspec/changes/`.
+
+## Phase P0 — Safety Foundation (critical)
+
+### P0.1 Safe command execution core
+- Status: ✅ Done (change: `task-p0-1-safe-command-runner`)
+- Replace string+`eval` command execution with safer command runner primitives.
+- Add explicit handling for dry-run, stderr reporting, and non-zero exit propagation.
+- **Outcome:** no core cleanup path depends on `eval`.
+
+### P0.2 Safe deletion primitives
+- Add centralized safe deletion APIs (`safe_remove`, `safe_find_delete` style helpers).
+- Enforce path validation (absolute paths, traversal guard, protected paths, symlink handling).
+- **Outcome:** destructive operations have a single safety gate.
+
+### P0.3 Cleanup module migration to safety APIs
+- Refactor all `cleanups/*.sh` to use safety APIs.
+- Remove direct `rm -rf` / risky inline find-delete usage from modules.
+- **Outcome:** consistent behavior and fewer foot-guns.
+
+### P0.4 Error taxonomy for destructive failures
+- Standardize error codes/categories (permission denied, SIP/readonly, invalid target, runtime failure).
+- Surface actionable messages in CLI output.
+- **Outcome:** faster triage and safer retries.
+
+## Phase P1 — Reliability & Operability
+
+### P1.1 Persistent operation logging
+- Add `~/.config/mdoctor/operations.log` with per-run start/end summary and action records.
+- **Outcome:** post-mortem traceability.
+
+### P1.2 Debug mode
+- Introduce `--debug` for cleanup/fix/check commands with structured diagnostics.
+- **Outcome:** easier support and reproducibility.
+
+### P1.3 Pre-flight safety summary
+- Before destructive runs (`--force`), show what will be touched + estimated reclaim size.
+- **Outcome:** explicit operator confirmation context.
+
+## Phase P2 — Safe User Controls
+
+### P2.1 Cleanup whitelist
+- Add user whitelist config to protect paths from cleanup.
+- **Outcome:** avoid accidental deletion of valuable caches/models.
+
+### P2.2 Custom cleanup scope configuration
+- Add configurable scan paths/include-exclude patterns.
+- **Outcome:** safer use in varied dev environments.
+
+## Phase P3 — Quality Gates
+
+### P3.1 Shell test harness
+- Add tests for command parsing, metadata routing, safety validation, and dry-run semantics.
+- **Outcome:** prevent regressions in critical paths.
+
+### P3.2 Shellcheck baseline + policy
+- Add `.shellcheckrc`; clean high-severity lint; enforce in CI.
+- **Outcome:** maintainable shell quality.
+
+### P3.3 CI expansion
+- Split CI into lint/test/release-sanity jobs.
+- **Outcome:** faster feedback and clearer failures.
+
+## Phase P4 — Product Polish
+
+### P4.1 Update command
+- Add `mdoctor update` (stable channel first; nightly optional later).
+- **Outcome:** easier upgrades.
+
+### P4.2 Optional interactive cleanup mode
+- Add optional interactive selection mode for cleanup targets.
+- **Outcome:** safer manual operation for non-expert users.
+
+### P4.3 Safety and recovery docs
+- Improve docs on safety model, reversibility, and known limitations.
+- **Outcome:** better trust and onboarding.
+
+## Delivery order
+1. P0 (mandatory before broad feature work)
+2. P1
+3. P2
+4. P3
+5. P4
+
+## Tracking
+- Mark task complete only after: code + validation + OpenSpec archive.
+- Keep each change atomic to one task ID.
+
+## Archive Log
+- 2026-02-24 archived `task-p0-1-safe-command-runner` for `P0.1`
+  - Outcome: removed `eval` from shared command runner and introduced explicit safe/legacy runner functions.
+  - Spec impact: `openspec/specs/command-execution-safety/spec.md`.
+  - Verification: `./mdoctor clean --help`, `./mdoctor clean`, `./mdoctor clean -m trash`.
