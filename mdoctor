@@ -403,6 +403,7 @@ cmd_clean() {
   local force=false
   local module=""
   local debug_flag=false
+  local interactive=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -413,6 +414,10 @@ cmd_clean() {
       --module|-m)
         module="$2"
         shift 2
+        ;;
+      --interactive|-i)
+        interactive=true
+        shift
         ;;
       --debug)
         debug_flag=true
@@ -427,6 +432,7 @@ cmd_clean() {
         echo "Options:"
         echo "  -f, --force           Actually delete files (no dry-run)"
         echo "  -m, --module <name>   Run only a specific cleanup module"
+        echo "  -i, --interactive     Interactively choose cleanup modules"
         echo "  --debug               Enable structured debug diagnostics"
         echo "  -h, --help            Show this help"
         echo
@@ -454,11 +460,40 @@ cmd_clean() {
 
   echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
 
-  if [ -n "$module" ]; then
-    # Run a single cleanup module
-    local clean_file="${MDOCTOR_DIR}/cleanups/${module}.sh"
+  local -a cleanup_modules=(trash caches logs downloads browser dev crash_reports ios_backups xcode dev_caches)
+
+  is_valid_cleanup_module() {
+    local needle="$1"
+    local item
+    for item in "${cleanup_modules[@]}"; do
+      [ "$item" = "$needle" ] && return 0
+    done
+    return 1
+  }
+
+  cleanup_module_description() {
+    case "$1" in
+      trash)         echo "Empty Trash" ;;
+      caches)        echo "User cache directories" ;;
+      logs)          echo "Old log files" ;;
+      downloads)     echo "Large files in Downloads" ;;
+      browser)       echo "Browser cache cleanup" ;;
+      dev)           echo "Developer tool caches" ;;
+      crash_reports) echo "Old crash/diagnostic reports" ;;
+      ios_backups)   echo "Old iOS backups" ;;
+      xcode)         echo "Xcode DerivedData, archives, simulators" ;;
+      dev_caches)    echo "Dependency/package manager caches" ;;
+      *)             echo "" ;;
+    esac
+  }
+
+  run_single_cleanup_module() {
+    local selected_module="$1"
+    local selected_force="$2"
+
+    local clean_file="${MDOCTOR_DIR}/cleanups/${selected_module}.sh"
     if [ ! -f "$clean_file" ]; then
-      error "Unknown cleanup module: ${module}"
+      error "Unknown cleanup module: ${selected_module}"
       echo "Available modules: trash, caches, logs, downloads, browser, dev,"
       echo "  crash_reports, ios_backups, xcode, dev_caches"
       return 1
@@ -477,7 +512,7 @@ cmd_clean() {
     # shellcheck disable=SC2034
     STEP_TOTAL=1
     init_colors
-    debug_log "cmd_clean module=${module} force=${force} debug=${MDOCTOR_DEBUG}"
+    debug_log "cmd_clean module=${selected_module} force=${selected_force} debug=${MDOCTOR_DEBUG}"
 
     # Set globals (used by sourced cleanup modules via run_cmd)
     # shellcheck disable=SC2034
@@ -486,10 +521,10 @@ cmd_clean() {
     # shellcheck disable=SC2034
     DAYS_OLD="${DAYS_OLD_OVERRIDE:-7}"
 
-    if [ "$force" = true ]; then
+    if [ "$selected_force" = true ]; then
       # shellcheck disable=SC2034
       DRY_RUN=false
-      cmd_clean_preflight_summary_module "$module" "${DAYS_OLD}"
+      cmd_clean_preflight_summary_module "$selected_module" "${DAYS_OLD}"
     fi
 
     mkdir -p "$(dirname "$LOGFILE")"
@@ -503,17 +538,16 @@ cmd_clean() {
     # shellcheck source=/dev/null
     source "$clean_file"
 
-    op_session_start "clean:module:${module}"
+    op_session_start "clean:module:${selected_module}"
 
     # Start spinner for single cleanup module
     # shellcheck disable=SC2034
     STEP_CURRENT=1
-    progress_start "Cleaning ${module}..."
+    progress_start "Cleaning ${selected_module}..."
 
     local module_rc=0
 
-    # Map module name to function
-    case "$module" in
+    case "$selected_module" in
       trash)          clean_trash || module_rc=$? ;;
       caches)         clean_user_caches || module_rc=$? ;;
       logs)           clean_logs || module_rc=$? ;;
@@ -526,7 +560,6 @@ cmd_clean() {
       dev_caches)     clean_dev_caches || module_rc=$? ;;
     esac
 
-    # Stop spinner after single-module clean
     progress_stop
 
     if [ "$module_rc" -eq 0 ]; then
@@ -535,18 +568,118 @@ cmd_clean() {
       op_session_end "error:${module_rc}"
       return "$module_rc"
     fi
-  else
-    # Run full cleanup
-    local -a cleanup_args=()
-    if [ "$force" = true ]; then
-      cleanup_args+=(--force)
-    fi
-    if [ "$debug_flag" = true ]; then
-      cleanup_args+=(--debug)
+  }
+
+  select_interactive_modules() {
+    local i=1
+    local selected=""
+    local input token idx selected_module
+    local -a picks=()
+
+    echo >&2
+    echo "${BOLD}Interactive cleanup mode${RESET}" >&2
+    echo "Select modules to run:" >&2
+
+    for selected_module in "${cleanup_modules[@]}"; do
+      printf "  [%d] %-14s %s\n" "$i" "$selected_module" "$(cleanup_module_description "$selected_module")" >&2
+      i=$((i + 1))
+    done
+
+    echo >&2
+    echo "Enter numbers (comma-separated), 'all', or press Enter to cancel:" >&2
+    printf "> " >&2
+    IFS= read -r input || true
+
+    input="${input//[[:space:]]/}"
+
+    if [ -z "$input" ]; then
+      return 1
     fi
 
-    MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" "${cleanup_args[@]}"
+    if [ "$input" = "all" ] || [ "$input" = "ALL" ]; then
+      printf '%s\n' "${cleanup_modules[*]}"
+      return 0
+    fi
+
+    IFS=',' read -r -a picks <<< "$input"
+
+    for token in "${picks[@]}"; do
+      [ -z "$token" ] && continue
+      case "$token" in
+        *[!0-9]*)
+          error "Invalid selection token: ${token}"
+          return 2
+          ;;
+      esac
+
+      idx=$((token))
+      if [ "$idx" -lt 1 ] || [ "$idx" -gt "${#cleanup_modules[@]}" ]; then
+        error "Selection out of range: ${token}"
+        return 2
+      fi
+
+      selected_module="${cleanup_modules[$((idx - 1))]}"
+      case " ${selected} " in
+        *" ${selected_module} "*) ;;
+        *) selected="${selected}${selected:+ }${selected_module}" ;;
+      esac
+    done
+
+    if [ -z "$selected" ]; then
+      error "No valid modules selected."
+      return 2
+    fi
+
+    printf '%s\n' "$selected"
+  }
+
+  if [ "$interactive" = true ] && [ -n "$module" ]; then
+    error "Use either --module or --interactive, not both."
+    return 1
   fi
+
+  if [ -n "$module" ]; then
+    if ! is_valid_cleanup_module "$module"; then
+      error "Unknown cleanup module: ${module}"
+      echo "Available modules: trash, caches, logs, downloads, browser, dev,"
+      echo "  crash_reports, ios_backups, xcode, dev_caches"
+      return 1
+    fi
+    run_single_cleanup_module "$module" "$force"
+    return $?
+  fi
+
+  if [ "$interactive" = true ]; then
+    local selected_line selection_rc=0 all_rc=0 selected_module
+    selected_line="$(select_interactive_modules)" || selection_rc=$?
+
+    if [ "$selection_rc" -eq 1 ]; then
+      echo "No modules selected. Cancelled."
+      return 0
+    fi
+    if [ "$selection_rc" -ne 0 ]; then
+      return "$selection_rc"
+    fi
+
+    for selected_module in $selected_line; do
+      echo
+      echo "${BOLD}== Running cleanup module: ${selected_module} ==${RESET}"
+      run_single_cleanup_module "$selected_module" "$force" || all_rc=$?
+    done
+
+    return "$all_rc"
+  fi
+
+  # Run full cleanup
+  local -a cleanup_args=()
+  if [ "$force" = true ]; then
+    cleanup_args+=(--force)
+  fi
+  if [ "$debug_flag" = true ]; then
+    cleanup_args+=(--debug)
+  fi
+
+  MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" "${cleanup_args[@]}"
 }
 
 ########################################

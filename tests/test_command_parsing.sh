@@ -15,6 +15,7 @@ cd "$ROOT_DIR"
 
 assert_contains "$TMPDIR_TEST/check_help.txt" "--debug"
 assert_contains "$TMPDIR_TEST/clean_help.txt" "--debug"
+assert_contains "$TMPDIR_TEST/clean_help.txt" "--interactive"
 assert_contains "$TMPDIR_TEST/clean_help.txt" "Whitelist file"
 assert_contains "$TMPDIR_TEST/clean_help.txt" "Scope file"
 assert_contains "$TMPDIR_TEST/fix_help.txt" "--debug"

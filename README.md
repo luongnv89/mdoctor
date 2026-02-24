@@ -117,6 +117,13 @@ mdoctor clean -m crash_reports --force
 mdoctor clean -m xcode
 ```
 
+Interactive cleanup selection:
+
+```bash
+mdoctor clean --interactive
+mdoctor clean --interactive --force
+```
+
 #### Cleanup Modules (all `[LOW]` risk)
 
 | Category | Modules |

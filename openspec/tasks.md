@@ -84,6 +84,7 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
 - **Outcome:** easier upgrades.
 
 ### P4.2 Optional interactive cleanup mode
+- Status: ✅ Done (change: `task-p4-2-interactive-cleanup-mode`)
 - Add optional interactive selection mode for cleanup targets.
 - **Outcome:** safer manual operation for non-expert users.
 
@@ -167,3 +168,8 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
   - Outcome: added `mdoctor update` command (stable channel), check mode, and git-based fast-forward update flow with clear fallback messaging.
   - Spec impact: `openspec/specs/update-command/spec.md`.
   - Verification: `bash -n mdoctor`, `./mdoctor update --help`, `./mdoctor update --check`, `./scripts/lint_shell.sh`, `./tests/run.sh`.
+
+- 2026-02-24 archived `task-p4-2-interactive-cleanup-mode` for `P4.2`
+  - Outcome: added interactive cleanup selection (`mdoctor clean --interactive`) with numeric/all picks, validation, and per-module execution preserving dry-run/force behavior.
+  - Spec impact: `openspec/specs/interactive-cleanup-mode/spec.md`.
+  - Verification: `bash -n mdoctor tests/test_interactive_cleanup.sh`, `./scripts/lint_shell.sh`, `./tests/run.sh`.
