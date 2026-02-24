@@ -126,6 +126,8 @@ mdoctor clean                        # Dry-run all 10 modules
 mdoctor clean --force                # Run all 10 modules for real
 mdoctor clean -m <module>            # Dry-run one module
 mdoctor clean -m <module> --force    # Run one module for real
+mdoctor clean --interactive          # Guided module selection
+mdoctor clean --interactive --force  # Guided destructive run
 ```
 
 ---
@@ -184,4 +186,6 @@ mdoctor info         # System information summary
 mdoctor list         # List all modules with categories and risk levels
 mdoctor history      # View health score trends over time
 mdoctor benchmark    # Run disk, network, CPU speed tests
+mdoctor update --check  # Check for stable updates
+mdoctor update         # Apply latest stable update
 ```

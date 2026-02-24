@@ -42,6 +42,7 @@ Current coverage includes:
 - metadata/list routing checks
 - safety validation + whitelist protection
 - dry-run vs force cleanup semantics
+- interactive cleanup selection behavior
 
 Run shell lint policy (high-severity gate):
 
@@ -53,6 +54,12 @@ CI lanes map to local commands:
 - **Lint** → `./scripts/lint_shell.sh` + repository `bash -n` syntax pass
 - **Test** → `./tests/run.sh` + smoke commands (`mdoctor help/version/info/check/clean`)
 - **Release Sanity** → isolated installer/uninstaller flow using env-overridden temp paths
+
+Optional Bash 3.2 parity check (useful before CI changes):
+
+```bash
+docker run --rm -v "$PWD":/repo -w /repo bash:3.2 bash ./tests/run.sh
+```
 
 For local installer sanity on non-macOS environments (CI/dev only), use:
 

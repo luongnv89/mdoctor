@@ -223,6 +223,24 @@ Override cleanup age threshold (default 7 days):
 DAYS_OLD_OVERRIDE=14 mdoctor clean --force
 ```
 
+Cleanup whitelist path override:
+
+```bash
+MDOCTOR_CLEANUP_WHITELIST_FILE="$HOME/.config/mdoctor/cleanup_whitelist" mdoctor clean
+```
+
+Cleanup scope path override (dev_caches stale `node_modules` scan):
+
+```bash
+MDOCTOR_CLEANUP_SCOPE_FILE="$HOME/.config/mdoctor/cleanup_scope.conf" mdoctor clean -m dev_caches
+```
+
+Update remote/branch override (advanced use):
+
+```bash
+MDOCTOR_UPDATE_REMOTE=origin MDOCTOR_UPDATE_BRANCH=main mdoctor update --check
+```
+
 ## Project Structure
 
 ```
@@ -234,12 +252,14 @@ mdoctor/
 ├── cleanup.sh           # Cleanup engine (10 modules)
 ├── lib/                 # Shared libraries
 │   ├── common.sh        # Colors, icons, UI helpers, progress spinner
-│   ├── logging.sh       # Logging and markdown reports
+│   ├── logging.sh       # Logging + operation session records
 │   ├── disk.sh          # Disk utilities
 │   ├── metadata.sh      # Module registry (categories, risk levels)
 │   ├── json.sh          # Pure-Bash JSON output support
 │   ├── history.sh       # Health score history & trends
-│   └── benchmark.sh     # System benchmark tests
+│   ├── benchmark.sh     # System benchmark tests
+│   ├── safety.sh        # Deletion safety primitives + whitelist policy
+│   └── cleanup_scope.sh # Dev cache scope include/exclude config
 ├── checks/              # Health check modules (21)
 │   ├── battery.sh       # Battery health & cycle count
 │   ├── hardware.sh      # CPU, RAM, thermals
@@ -282,7 +302,15 @@ mdoctor/
 │   ├── audio.sh         # Restart Core Audio
 │   ├── wifi.sh          # Fix Wi-Fi connection
 │   └── timemachine.sh   # Time Machine repair
+├── scripts/
+│   └── lint_shell.sh    # Shared ShellCheck policy entrypoint (local + CI)
+├── tests/
+│   ├── run.sh
+│   ├── helpers/assert.sh
+│   └── test_*.sh        # Regression coverage for parsing/safety/cleanup behavior
+├── openspec/            # Task-scoped change artifacts and archived specs
 └── docs/                # Documentation
+    ├── GUIDEBOOK.md
     ├── ARCHITECTURE.md
     ├── DEVELOPMENT.md
     ├── DEPLOYMENT.md

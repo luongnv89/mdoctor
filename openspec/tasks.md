@@ -100,6 +100,11 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
 - Bump release version and consolidate milestone delivery notes in changelog.
 - **Outcome:** clean handoff for tag/release publication.
 
+### P5.2 Documentation synchronization sweep
+- Status: ✅ Done (change: `task-p5-2-docs-sync`)
+- Synchronize README + docs with current architecture, workflows, and post-release maintenance fixes.
+- **Outcome:** docs align with shipped behavior and CI reality.
+
 ## Delivery order
 1. P0 (mandatory before broad feature work)
 2. P1
@@ -192,3 +197,8 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
   - Outcome: bumped release version to `2.1.0` and consolidated P0–P4 milestone outcomes in changelog for release publication.
   - Spec impact: `openspec/specs/release-versioning/spec.md`.
   - Verification: `bash -n mdoctor`, `./mdoctor version`, `./scripts/lint_shell.sh`, `./tests/run.sh`.
+
+- 2026-02-24 archived `task-p5-2-docs-sync` for `P5.2`
+  - Outcome: synchronized README and docs set (architecture/development/deployment/guidebook/changelog) with current CLI behavior, safety/quality workflows, and post-release CI compatibility fixes.
+  - Spec impact: `openspec/specs/documentation-sync/spec.md`.
+  - Verification: docs reference/path checks + `./scripts/lint_shell.sh`, `./tests/run.sh`.

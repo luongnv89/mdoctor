@@ -2,80 +2,92 @@
 
 ## Overview
 
-mdoctor is a modular Bash CLI toolkit for macOS diagnostics, cleanup, and fixes. It follows a plugin-like architecture where each concern is isolated in its own script file.
+mdoctor is a modular Bash CLI for macOS diagnostics, cleanup, fixes, and maintenance updates.
+
+Core properties:
+- CLI-first command router (`mdoctor`)
+- engine scripts for full workflows (`doctor.sh`, `cleanup.sh`)
+- module-based checks/cleanups/fixes
+- centralized safety + logging primitives
+- test/lint/CI quality gates
 
 ## Component Diagram
 
+```mermaid
+graph TD
+  CLI[mdoctor]
+
+  CLI --> CHECK[doctor.sh]
+  CLI --> CLEAN[cleanup.sh]
+  CLI --> FIX[fixes/*.sh]
+  CLI --> INFO[inline commands: info/list/history/benchmark/version/update]
+
+  CHECK --> CHECKS[checks/*.sh (21)]
+  CLEAN --> CLEANUPS[cleanups/*.sh (10)]
+
+  CHECKS --> LIB[lib/*.sh]
+  CLEANUPS --> LIB
+  FIX --> LIB
+
+  LIB --> SAFETY[lib/safety.sh]
+  LIB --> SCOPE[lib/cleanup_scope.sh]
+  LIB --> LOGGING[lib/logging.sh]
+  LIB --> METADATA[lib/metadata.sh]
+
+  TESTS[tests/run.sh + test_*.sh] --> CLI
+  CI[GitHub Actions CI] --> LINT[scripts/lint_shell.sh]
+  CI --> TESTS
+  CI --> RELEASE_SANITY[installer/uninstaller isolated-path sanity]
 ```
-                  ┌──────────┐
-                  │  mdoctor  │  Unified CLI entry point
-                  └─────┬────┘
-                        │
-          ┌─────────────┼─────────────┐
-          │             │             │
-    ┌─────▼────┐  ┌─────▼────┐  ┌────▼─────┐
-    │ doctor.sh │  │cleanup.sh│  │  fix     │
-    │  (check)  │  │ (clean)  │  │(inline)  │
-    └─────┬────┘  └─────┬────┘  └──────────┘
-          │             │
-    ┌─────▼────┐  ┌─────▼─────┐
-    │ checks/* │  │ cleanups/* │
-    │21 modules│  │ 10 modules│
-    └─────┬────┘  └─────┬─────┘
-          │             │
-          └──────┬──────┘
-           ┌─────▼────┐
-           │   lib/*   │
-           │ 7 modules │
-           └──────────┘
-```
 
-## Layers
+## Layer Responsibilities
 
-### CLI Layer (`mdoctor`)
-- Parses commands and options
-- Routes to the correct engine or inline handler
-- Provides `--help` for each subcommand
-- Resolves its own install path by following symlinks
+### 1) CLI Layer (`mdoctor`)
+- Parses subcommands/options
+- Dispatches to engines/modules
+- Handles command-level UX (`--help`, `--debug`, `--interactive`, `update`)
 
-### Engine Layer (`doctor.sh`, `cleanup.sh`)
-- Orchestrates module execution
-- Manages global state (scores, counters, dry-run mode)
-- Generates summary reports
+### 2) Engine Layer (`doctor.sh`, `cleanup.sh`)
+- Runs full check/cleanup workflows
+- Coordinates shared state and summaries
+- Produces reports and logs
 
-### Module Layer (`checks/*`, `cleanups/*`)
-- Each file contains one or more related functions
-- Modules are sourced (not executed) by the engine
-- Modules use shared library functions for consistent output
+### 3) Module Layer (`checks/*`, `cleanups/*`, `fixes/*`)
+- Each file is focused on one concern
+- Modules are sourced (shared state, no extra process boundaries)
 
-### Library Layer (`lib/*`)
-- `common.sh` -- Colors, icons, status output helpers
-- `logging.sh` -- Markdown report generation and cleanup logging
-- `disk.sh` -- Disk space utilities
-- `metadata.sh` -- Module registry (categories, risk levels)
-- `json.sh` -- Pure-Bash JSON output support
-- `history.sh` -- Health score history & trends
-- `benchmark.sh` -- System benchmark tests
+### 4) Library Layer (`lib/*`)
+- `common.sh` UI/status/progress helpers
+- `logging.sh` report + operation session logging
+- `safety.sh` guarded deletion APIs and destructive error taxonomy
+- `cleanup_scope.sh` include/exclude scope config for dev cache scans
+- `metadata.sh`, `json.sh`, `history.sh`, `benchmark.sh`, `disk.sh`
 
-## Data Flow
+## Key Runtime Flows
 
-### Health Check Flow
-1. `mdoctor check` invokes `doctor.sh`
-2. Libraries are sourced, then all 21 check modules
-3. Each check function runs and calls `status_ok`/`status_warn`/`status_fail`
-4. Warnings and failures increment global counters
-5. A health score is computed: `100 - (warnings * 4) - (failures * 8)`
-6. A markdown report is written to `/tmp/`
+### Health check flow
+1. `mdoctor check` → `doctor.sh`
+2. Check modules execute read-only diagnostics
+3. Warning/failure counters build health score
+4. Report/log output is generated
 
-### Cleanup Flow
-1. `mdoctor clean` invokes `cleanup.sh`
-2. Dry-run mode is default; `--force` disables it
-3. Each cleanup function calls `run_cmd` which either logs or executes
-4. Disk usage is measured before and after to calculate freed space
+### Cleanup flow
+1. `mdoctor clean` defaults to dry-run
+2. Optional `--force` enables deletion after pre-flight summary
+3. Cleanup modules call centralized safety primitives (`safe_remove*`, `safe_find_delete`)
+4. Whitelist/scope controls are applied where relevant
+5. Operation session is recorded to `~/.config/mdoctor/operations.log`
 
-## Design Decisions
+### Update flow
+1. `mdoctor update --check` fetches and compares `origin/main`
+2. `mdoctor update` fast-forwards checkout when updates exist
 
-- **Pure Bash** -- No external dependencies beyond standard macOS tools
-- **Read-only by default** -- `check` never modifies the system; `clean` defaults to dry-run
-- **Modular sourcing** -- Modules are sourced, not subprocesses, for shared state access
-- **Symlink-aware** -- The CLI resolves symlinks so it works when installed via `/usr/local/bin`
+## Safety Model (summary)
+
+- Dry-run by default
+- Force-mode pre-flight visibility
+- Protected path validation + symlink restrictions
+- Whitelist and scope user controls
+- Structured error taxonomy and operation logs
+
+See also: [SAFETY.md](SAFETY.md).

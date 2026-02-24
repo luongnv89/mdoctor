@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- CI lint script compatibility with Bash 3.2 (removed `mapfile` dependency in `scripts/lint_shell.sh`)
+- Test harness portability on macOS runners for temporary directories in cleanup tests
+- Bash 3.2 empty-array edge cases:
+  - whitelist matching in `lib/safety.sh`
+  - full cleanup dispatch in `mdoctor clean`
+
 ## [2.1.0] - 2026-02-24
 
 ### Added
