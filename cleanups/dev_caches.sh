@@ -31,7 +31,7 @@ clean_dev_caches() {
         local sz_hr
         sz_hr=$(kb_to_human "$sz_kb")
         log "${label}: ${sz_hr} (${cache_dir})"
-        run_cmd "rm -rf \"${cache_dir}\"/*"
+        safe_remove_children "${cache_dir}" || true
         total_kb=$((total_kb + sz_kb))
       else
         log "${label}: empty, skipping."
@@ -83,7 +83,7 @@ clean_dev_caches() {
   # ── Docker ──
   if command -v docker >/dev/null 2>&1; then
     log "Docker detected – pruning unused data."
-    run_cmd "docker system prune -af --volumes"
+    run_cmd_args docker system prune -af --volumes
   else
     log "Docker not found; skipping."
   fi
@@ -113,7 +113,7 @@ clean_dev_caches() {
           nm_parent=$(dirname "$nm_dir")
           nm_parent="${nm_parent/#$HOME/~}"
           log "Stale node_modules: ${nm_hr} — ${nm_parent}"
-          run_cmd "rm -rf \"${nm_dir}\""
+          safe_remove "${nm_dir}" || true
           nm_total_kb=$((nm_total_kb + nm_sz))
           nm_count=$((nm_count + 1))
         fi

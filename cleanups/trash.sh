@@ -7,7 +7,7 @@
 clean_trash() {
   header "Emptying Trash (~/.Trash)"
   if [ -d "${HOME}/.Trash" ]; then
-    run_cmd "rm -rf \"${HOME}/.Trash\"/*"
+    safe_remove_children "${HOME}/.Trash" || true
   else
     log "Trash folder not found."
   fi

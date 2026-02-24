@@ -64,5 +64,5 @@ clean_ios_backups() {
   log "Found ${found} backup(s) totaling ${total_hr}."
 
   # In force mode, remove backups older than threshold
-  run_cmd "find \"${backup_dir}\" -mindepth 1 -maxdepth 1 -type d -mtime +${days} -print -exec rm -rf {} +"
+  safe_find_delete "${backup_dir}" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}" || true
 }

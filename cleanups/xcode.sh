@@ -24,7 +24,7 @@ clean_xcode() {
         dd_hr="${dd_size} KB"
       fi
       log "Xcode DerivedData: ${dd_hr}"
-      run_cmd "rm -rf \"${derived_data}\"/*"
+      safe_remove_children "${derived_data}" || true
     fi
   else
     log "No Xcode DerivedData directory found."
@@ -34,13 +34,13 @@ clean_xcode() {
   local archives="${HOME}/Library/Developer/Xcode/Archives"
   if [ -d "$archives" ]; then
     log "Cleaning Xcode Archives older than ${days} days..."
-    run_cmd "find \"${archives}\" -type d -mindepth 1 -maxdepth 1 -mtime +${days} -print -exec rm -rf {} +"
+    safe_find_delete "${archives}" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}" || true
   fi
 
   # Unavailable simulators
   if command -v xcrun >/dev/null 2>&1; then
     log "Removing unavailable simulators..."
-    run_cmd "xcrun simctl delete unavailable"
+    run_cmd_args xcrun simctl delete unavailable
   fi
 
   # Simulator caches
@@ -58,7 +58,7 @@ clean_xcode() {
         sc_hr="${sc_size} KB"
       fi
       log "Simulator caches: ${sc_hr}"
-      run_cmd "rm -rf \"${sim_caches}\"/*"
+      safe_remove_children "${sim_caches}" || true
     fi
   fi
 }

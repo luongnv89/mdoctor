@@ -10,36 +10,36 @@ clean_dev_stuff() {
   # Homebrew
   if command -v brew >/dev/null 2>&1; then
     log "Homebrew detected – running cleanup."
-    run_cmd "brew cleanup -s"
-    run_cmd "brew autoremove"
+    run_cmd_args brew cleanup -s
+    run_cmd_args brew autoremove
   else
     log "Homebrew not found; skipping."
   fi
 
   # Common language/tool caches (pip, npm, yarn, pnpm)
   if [ -d "${HOME}/Library/Caches/pip" ]; then
-    run_cmd "rm -rf \"${HOME}/Library/Caches/pip\"/*"
+    safe_remove_children "${HOME}/Library/Caches/pip" || true
   fi
   if [ -d "${HOME}/.cache/pip" ]; then
-    run_cmd "rm -rf \"${HOME}/.cache/pip\"/*"
+    safe_remove_children "${HOME}/.cache/pip" || true
   fi
   if [ -d "${HOME}/.npm" ]; then
-    run_cmd "rm -rf \"${HOME}/.npm\"/*"
+    safe_remove_children "${HOME}/.npm" || true
   fi
   if [ -d "${HOME}/Library/Caches/npm" ]; then
-    run_cmd "rm -rf \"${HOME}/Library/Caches/npm\"/*"
+    safe_remove_children "${HOME}/Library/Caches/npm" || true
   fi
   if [ -d "${HOME}/Library/Caches/Yarn" ]; then
-    run_cmd "rm -rf \"${HOME}/Library/Caches/Yarn\"/*"
+    safe_remove_children "${HOME}/Library/Caches/Yarn" || true
   fi
   if [ -d "${HOME}/Library/pnpm/store" ]; then
-    run_cmd "rm -rf \"${HOME}/Library/pnpm/store\"/*"
+    safe_remove_children "${HOME}/Library/pnpm/store" || true
   fi
 
   # Docker (removes ALL unused containers/images/volumes)
   if command -v docker >/dev/null 2>&1; then
     log "Docker detected – pruning unused data."
-    run_cmd "docker system prune -af --volumes"
+    run_cmd_args docker system prune -af --volumes
   else
     log "Docker not found; skipping."
   fi

@@ -19,6 +19,7 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
 - **Outcome:** destructive operations have a single safety gate.
 
 ### P0.3 Cleanup module migration to safety APIs
+- Status: ✅ Done (change: `task-p0-3-cleanup-module-safety-migration`)
 - Refactor all `cleanups/*.sh` to use safety APIs.
 - Remove direct `rm -rf` / risky inline find-delete usage from modules.
 - **Outcome:** consistent behavior and fewer foot-guns.
@@ -101,3 +102,8 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
   - Outcome: added `lib/safety.sh` with `validate_deletion_path`, `safe_remove`, `safe_remove_children`, and `safe_find_delete`.
   - Spec impact: `openspec/specs/deletion-safety-primitives/spec.md`.
   - Verification: syntax checks + temp-path smoke tests + `./mdoctor clean --help` + `./mdoctor clean -m trash`.
+
+- 2026-02-24 archived `task-p0-3-cleanup-module-safety-migration` for `P0.3`
+  - Outcome: migrated all `cleanups/*.sh` destructive paths to safety primitives and removed inline destructive patterns.
+  - Spec impact: `openspec/specs/cleanup-safety-migration/spec.md`.
+  - Verification: static grep checks + `bash -n` + dry-run smoke for all cleanup modules.

@@ -9,16 +9,16 @@ clean_browser_caches() {
 
   # Google Chrome
   if [ -d "${HOME}/Library/Caches/Google/Chrome" ]; then
-    run_cmd "rm -rf \"${HOME}/Library/Caches/Google/Chrome\"/*"
+    safe_remove_children "${HOME}/Library/Caches/Google/Chrome" || true
   fi
 
   # Safari
   if [ -d "${HOME}/Library/Caches/com.apple.Safari" ]; then
-    run_cmd "rm -rf \"${HOME}/Library/Caches/com.apple.Safari\"/*"
+    safe_remove_children "${HOME}/Library/Caches/com.apple.Safari" || true
   fi
 
   # Firefox
   if [ -d "${HOME}/Library/Caches/Firefox" ]; then
-    run_cmd "rm -rf \"${HOME}/Library/Caches/Firefox\"/*"
+    safe_remove_children "${HOME}/Library/Caches/Firefox" || true
   fi
 }

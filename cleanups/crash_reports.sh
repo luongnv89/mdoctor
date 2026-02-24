@@ -20,6 +20,6 @@ clean_crash_reports() {
     fi
 
     log "Scanning ${dir} for .crash, .diag, .ips files older than ${days} days..."
-    run_cmd "find \"${dir}\" -type f \\( -name '*.crash' -o -name '*.diag' -o -name '*.ips' \\) -mtime +${days} -print -delete"
+    safe_find_delete "$dir" -type f "(" -name "*.crash" -o -name "*.diag" -o -name "*.ips" ")" -mtime "+${days}" || true
   done
 }
