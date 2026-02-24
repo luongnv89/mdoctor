@@ -99,6 +99,8 @@ The health check:
 
 Dry-run mode (shows what would be deleted, nothing removed):
 
+> Safety model and recovery guidance: see [`docs/SAFETY.md`](docs/SAFETY.md).
+
 ```bash
 mdoctor clean
 ```
@@ -284,6 +286,7 @@ mdoctor/
     ├── ARCHITECTURE.md
     ├── DEVELOPMENT.md
     ├── DEPLOYMENT.md
+    ├── SAFETY.md
     └── CHANGELOG.md
 ```
 
@@ -293,6 +296,7 @@ mdoctor/
 - [Architecture](docs/ARCHITECTURE.md) -- System design and component overview
 - [Development](docs/DEVELOPMENT.md) -- Local setup and debugging guide
 - [Deployment](docs/DEPLOYMENT.md) -- Distribution and release process
+- [Safety & Recovery](docs/SAFETY.md) -- Cleanup safety model, recovery playbook, known limitations
 - [Changelog](docs/CHANGELOG.md) -- Version history
 - [Contributing](CONTRIBUTING.md) -- How to contribute
 - [Security](SECURITY.md) -- Vulnerability reporting

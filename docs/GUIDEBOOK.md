@@ -153,6 +153,8 @@ mdoctor fix all         # Run all fixes
 
 ## Tips
 
+**Read safety + recovery guidance first** — See [SAFETY.md](SAFETY.md) for whitelist/scope controls, logs, recovery flow, and known limitations.
+
 **Preview before deleting** — All `mdoctor clean` commands run in dry-run mode by default. Review the output, then re-run with `--force` to actually delete.
 
 **Change the age threshold** — Cleanup modules skip files newer than 7 days. Override with:

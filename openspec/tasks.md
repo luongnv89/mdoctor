@@ -89,6 +89,7 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
 - **Outcome:** safer manual operation for non-expert users.
 
 ### P4.3 Safety and recovery docs
+- Status: ✅ Done (change: `task-p4-3-safety-recovery-docs`)
 - Improve docs on safety model, reversibility, and known limitations.
 - **Outcome:** better trust and onboarding.
 
@@ -173,3 +174,8 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
   - Outcome: added interactive cleanup selection (`mdoctor clean --interactive`) with numeric/all picks, validation, and per-module execution preserving dry-run/force behavior.
   - Spec impact: `openspec/specs/interactive-cleanup-mode/spec.md`.
   - Verification: `bash -n mdoctor tests/test_interactive_cleanup.sh`, `./scripts/lint_shell.sh`, `./tests/run.sh`.
+
+- 2026-02-24 archived `task-p4-3-safety-recovery-docs` for `P4.3`
+  - Outcome: added dedicated safety/recovery guide (`docs/SAFETY.md`) and linked it from README + guidebook for better operator trust and incident handling.
+  - Spec impact: `openspec/specs/safety-recovery-docs/spec.md`.
+  - Verification: docs link/path consistency checks + `./mdoctor clean --help`, `./mdoctor update --help`, `./scripts/lint_shell.sh`, `./tests/run.sh`.
