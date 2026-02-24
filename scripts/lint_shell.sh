@@ -4,7 +4,10 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-mapfile -t files < <(
+files=()
+while IFS= read -r f; do
+  files+=("$f")
+done < <(
   find . \( -name '*.sh' -o -name 'mdoctor' \) \
     -not -path './.specify/*' \
     -not -path './.claude/*' \
