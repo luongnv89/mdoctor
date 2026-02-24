@@ -297,6 +297,7 @@ cmd_clean() {
     source "${MDOCTOR_DIR}/lib/common.sh"
     source "${MDOCTOR_DIR}/lib/logging.sh"
     source "${MDOCTOR_DIR}/lib/disk.sh"
+    source "${MDOCTOR_DIR}/lib/safety.sh"
 
     # Initialize progress globals for spinner
     # shellcheck disable=SC2034

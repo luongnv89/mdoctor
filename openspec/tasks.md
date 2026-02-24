@@ -13,6 +13,7 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
 - **Outcome:** no core cleanup path depends on `eval`.
 
 ### P0.2 Safe deletion primitives
+- Status: ✅ Done (change: `task-p0-2-safe-deletion-primitives`)
 - Add centralized safe deletion APIs (`safe_remove`, `safe_find_delete` style helpers).
 - Enforce path validation (absolute paths, traversal guard, protected paths, symlink handling).
 - **Outcome:** destructive operations have a single safety gate.
@@ -95,3 +96,8 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
   - Outcome: removed `eval` from shared command runner and introduced explicit safe/legacy runner functions.
   - Spec impact: `openspec/specs/command-execution-safety/spec.md`.
   - Verification: `./mdoctor clean --help`, `./mdoctor clean`, `./mdoctor clean -m trash`.
+
+- 2026-02-24 archived `task-p0-2-safe-deletion-primitives` for `P0.2`
+  - Outcome: added `lib/safety.sh` with `validate_deletion_path`, `safe_remove`, `safe_remove_children`, and `safe_find_delete`.
+  - Spec impact: `openspec/specs/deletion-safety-primitives/spec.md`.
+  - Verification: syntax checks + temp-path smoke tests + `./mdoctor clean --help` + `./mdoctor clean -m trash`.

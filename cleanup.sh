@@ -21,6 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/common.sh"
 source "${SCRIPT_DIR}/lib/logging.sh"
 source "${SCRIPT_DIR}/lib/disk.sh"
+source "${SCRIPT_DIR}/lib/safety.sh"
 
 # Source cleanup modules
 source "${SCRIPT_DIR}/cleanups/trash.sh"
