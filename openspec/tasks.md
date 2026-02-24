@@ -50,6 +50,7 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
 ## Phase P2 — Safe User Controls
 
 ### P2.1 Cleanup whitelist
+- Status: ✅ Done (change: `task-p2-1-cleanup-whitelist`)
 - Add user whitelist config to protect paths from cleanup.
 - **Outcome:** avoid accidental deletion of valuable caches/models.
 
@@ -131,3 +132,8 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
   - Outcome: added force-mode pre-flight safety summaries for module and full cleanup runs, including touched targets and estimated reclaim size.
   - Spec impact: `openspec/specs/preflight-safety-summary/spec.md`.
   - Verification: isolated-home force tests for `mdoctor clean --force -m trash` and `cleanup.sh --force --debug`, plus non-force behavior check.
+
+- 2026-02-24 archived `task-p2-1-cleanup-whitelist` for `P2.1`
+  - Outcome: added cleanup whitelist support with auto-created `~/.config/mdoctor/cleanup_whitelist`, path/subtree matching, and skip-on-whitelist behavior.
+  - Spec impact: `openspec/specs/cleanup-whitelist/spec.md`.
+  - Verification: isolated-home whitelist protect/delete/autocreate tests + `mdoctor clean --help` check.

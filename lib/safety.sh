@@ -19,6 +19,11 @@ MDOCTOR_SAFE_ERR_INVALID_PATH="$MDOCTOR_SAFE_ERR_INVALID_TARGET"
 MDOCTOR_SAFE_ERR_PROTECTED_PATH="$MDOCTOR_SAFE_ERR_PROTECTED_TARGET"
 MDOCTOR_SAFE_ERR_REMOVE_FAILED="$MDOCTOR_SAFE_ERR_RUNTIME_FAILURE"
 
+# Cleanup whitelist config
+MDOCTOR_CLEANUP_WHITELIST_FILE="${MDOCTOR_CLEANUP_WHITELIST_FILE:-${HOME}/.config/mdoctor/cleanup_whitelist}"
+_MDOCTOR_WHITELIST_LOADED=false
+_MDOCTOR_WHITELIST=()
+
 _safety_log() {
   if declare -f log >/dev/null 2>&1; then
     log "$*"
@@ -103,6 +108,91 @@ _normalize_path() {
   echo "$path"
 }
 
+ensure_cleanup_whitelist_file() {
+  local file="$MDOCTOR_CLEANUP_WHITELIST_FILE"
+  local dir
+  dir="$(dirname "$file")"
+
+  mkdir -p "$dir"
+  if [ ! -f "$file" ]; then
+    cat >"$file" <<'EOF'
+# mdoctor cleanup whitelist
+# One path per line. Blank lines and lines starting with # are ignored.
+#
+# Rules:
+# - Exact path protects that path and its descendants.
+# - Use trailing /* to protect descendants of a path.
+# - ~ is expanded to your home directory.
+#
+# Examples:
+# ~/.ollama/models
+# ~/.cache/huggingface
+# ~/.m2/repository/*
+EOF
+  fi
+}
+
+load_cleanup_whitelist() {
+  if [ "$_MDOCTOR_WHITELIST_LOADED" = true ]; then
+    return 0
+  fi
+
+  ensure_cleanup_whitelist_file
+  _MDOCTOR_WHITELIST=()
+
+  local line=""
+  while IFS= read -r line || [ -n "$line" ]; do
+    # trim leading/trailing spaces
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+
+    [ -z "$line" ] && continue
+    case "$line" in
+      \#*) continue ;;
+    esac
+
+    # expand leading ~ only
+    line="${line/#\~/$HOME}"
+    _MDOCTOR_WHITELIST+=("$line")
+  done <"$MDOCTOR_CLEANUP_WHITELIST_FILE"
+
+  _MDOCTOR_WHITELIST_LOADED=true
+}
+
+is_whitelisted_cleanup_path() {
+  local path
+  path="$(_normalize_path "${1-}")"
+
+  [ -z "$path" ] && return 1
+
+  load_cleanup_whitelist
+
+  local entry=""
+  local entry_norm=""
+  local base=""
+  for entry in "${_MDOCTOR_WHITELIST[@]}"; do
+    entry_norm="$(_normalize_path "$entry")"
+    [ -z "$entry_norm" ] && continue
+
+    case "$entry_norm" in
+      */\*)
+        base="${entry_norm%/*}"
+        base="$(_normalize_path "$base")"
+        if [ "$path" = "$base" ] || [[ "$path" == "$base/"* ]]; then
+          return 0
+        fi
+        ;;
+      *)
+        if [ "$path" = "$entry_norm" ] || [[ "$path" == "$entry_norm/"* ]]; then
+          return 0
+        fi
+        ;;
+    esac
+  done
+
+  return 1
+}
+
 is_protected_deletion_path() {
   local path
   path="$(_normalize_path "${1-}")"
@@ -172,6 +262,14 @@ safe_remove() {
   fi
 
   validate_deletion_path "$path" || return $?
+
+  if is_whitelisted_cleanup_path "$path"; then
+    _safety_log "[SAFE][SKIP:WHITELIST] $path"
+    if declare -f op_record >/dev/null 2>&1; then
+      op_record "SKIP_WHITELIST" "$path"
+    fi
+    return 0
+  fi
 
   if [ -L "$path" ] && [ "$allow_symlink" != true ]; then
     _safety_error "$MDOCTOR_SAFE_ERR_SYMLINK_BLOCKED" "$path" "blocked symlink deletion without explicit allow"

@@ -213,6 +213,10 @@ main() {
 
 	used_before_kb="$(disk_used_kb)"
 
+	if declare -f ensure_cleanup_whitelist_file >/dev/null 2>&1; then
+		ensure_cleanup_whitelist_file
+	fi
+
 	if [ "$DRY_RUN" = false ]; then
 		cleanup_force_preflight_summary
 	fi

@@ -433,6 +433,8 @@ cmd_clean() {
         echo "  System:    trash [LOW], caches [LOW], logs [LOW], downloads [LOW],"
         echo "             crash_reports [LOW], ios_backups [LOW]"
         echo "  Software:  browser [LOW], dev [LOW], xcode [LOW], dev_caches [LOW]"
+        echo
+        echo "Whitelist file: ~/.config/mdoctor/cleanup_whitelist"
         return 0
         ;;
       *)
@@ -488,6 +490,9 @@ cmd_clean() {
     fi
 
     mkdir -p "$(dirname "$LOGFILE")"
+    if declare -f ensure_cleanup_whitelist_file >/dev/null 2>&1; then
+      ensure_cleanup_whitelist_file
+    fi
 
     # shellcheck source=/dev/null
     source "$clean_file"
@@ -880,6 +885,7 @@ cmd_help() {
   echo
   echo "${BOLD}Environment Variables:${RESET}"
   echo "  DAYS_OLD_OVERRIDE=N              Override cleanup age threshold (default: 7)"
+  echo "  MDOCTOR_CLEANUP_WHITELIST_FILE   Override cleanup whitelist file path"
   echo
   echo "${DIM}Documentation: https://github.com/luongnv89/mdoctor${RESET}"
 }
