@@ -76,6 +76,26 @@ step() {
 }
 
 ########################################
+# OPERATION SESSION LIFECYCLE
+########################################
+
+OP_SESSION_ACTIVE=false
+
+_finish_cleanup_session() {
+	local rc=$?
+	progress_stop || true
+	if [ "$OP_SESSION_ACTIVE" = true ] && declare -f op_session_end >/dev/null 2>&1; then
+		if [ "$rc" -eq 0 ]; then
+			op_session_end "ok"
+		else
+			op_session_end "error:${rc}"
+		fi
+	fi
+}
+
+trap _finish_cleanup_session EXIT
+
+########################################
 # MAIN
 ########################################
 
@@ -151,5 +171,8 @@ main() {
 		log "Estimated space freed: ${freed_hr}."
 	fi
 }
+
+op_session_start "clean:full"
+OP_SESSION_ACTIVE=true
 
 main "$@"

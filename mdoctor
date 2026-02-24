@@ -323,27 +323,38 @@ cmd_clean() {
     # shellcheck source=/dev/null
     source "$clean_file"
 
+    op_session_start "clean:module:${module}"
+
     # Start spinner for single cleanup module
     # shellcheck disable=SC2034
     STEP_CURRENT=1
     progress_start "Cleaning ${module}..."
 
+    local module_rc=0
+
     # Map module name to function
     case "$module" in
-      trash)          clean_trash ;;
-      caches)         clean_user_caches ;;
-      logs)           clean_logs ;;
-      downloads)      clean_downloads_large_files ;;
-      browser)        clean_browser_caches ;;
-      dev)            clean_dev_stuff ;;
-      crash_reports)  clean_crash_reports ;;
-      ios_backups)    clean_ios_backups ;;
-      xcode)          clean_xcode ;;
-      dev_caches)     clean_dev_caches ;;
+      trash)          clean_trash || module_rc=$? ;;
+      caches)         clean_user_caches || module_rc=$? ;;
+      logs)           clean_logs || module_rc=$? ;;
+      downloads)      clean_downloads_large_files || module_rc=$? ;;
+      browser)        clean_browser_caches || module_rc=$? ;;
+      dev)            clean_dev_stuff || module_rc=$? ;;
+      crash_reports)  clean_crash_reports || module_rc=$? ;;
+      ios_backups)    clean_ios_backups || module_rc=$? ;;
+      xcode)          clean_xcode || module_rc=$? ;;
+      dev_caches)     clean_dev_caches || module_rc=$? ;;
     esac
 
     # Stop spinner after single-module clean
     progress_stop
+
+    if [ "$module_rc" -eq 0 ]; then
+      op_session_end "ok"
+    else
+      op_session_end "error:${module_rc}"
+      return "$module_rc"
+    fi
   else
     # Run full cleanup
     if [ "$force" = true ]; then

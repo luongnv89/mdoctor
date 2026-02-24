@@ -79,6 +79,10 @@ _safety_error() {
 
   _safety_log "[SAFE][ERROR:${name}][code=${code}] ${detail}"
   _safety_log "[SAFE][HINT:${name}] $(safety_error_hint "$code" "$path")"
+
+  if declare -f op_error >/dev/null 2>&1; then
+    op_error "$name" "$path" "$detail"
+  fi
 }
 
 _normalize_path() {
@@ -180,6 +184,9 @@ safe_remove() {
 
   if [ "${DRY_RUN:-true}" = true ]; then
     _safety_log "[DRY RUN][SAFE_REMOVE] $path"
+    if declare -f op_record >/dev/null 2>&1; then
+      op_record "DRY_RUN_REMOVE" "$path"
+    fi
     return 0
   fi
 
@@ -204,6 +211,9 @@ safe_remove() {
   fi
 
   _safety_log "[SAFE][REMOVED] $path"
+  if declare -f op_record >/dev/null 2>&1; then
+    op_record "REMOVE" "$path"
+  fi
   return 0
 }
 
@@ -282,6 +292,9 @@ safe_find_delete() {
 
   if [ "$count" -eq 0 ]; then
     _safety_log "[SAFE] no deletion candidates in: $base_dir"
+    if declare -f op_record >/dev/null 2>&1; then
+      op_record "NO_DELETE_CANDIDATE" "$base_dir"
+    fi
   fi
 
   return "$rc"

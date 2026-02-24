@@ -33,6 +33,7 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
 ## Phase P1 — Reliability & Operability
 
 ### P1.1 Persistent operation logging
+- Status: ✅ Done (change: `task-p1-1-persistent-operation-logging`)
 - Add `~/.config/mdoctor/operations.log` with per-run start/end summary and action records.
 - **Outcome:** post-mortem traceability.
 
@@ -113,3 +114,8 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
   - Outcome: introduced standardized destructive error taxonomy + actionable hint logging and improved runtime failure handling in `safe_find_delete`.
   - Spec impact: `openspec/specs/destructive-error-taxonomy/spec.md`.
   - Verification: syntax checks + representative taxonomy smoke tests + `./mdoctor clean -m trash`.
+
+- 2026-02-24 archived `task-p1-1-persistent-operation-logging` for `P1.1`
+  - Outcome: added persistent `~/.config/mdoctor/operations.log` with session start/end summaries and action/error records.
+  - Spec impact: `openspec/specs/persistent-operation-logging/spec.md`.
+  - Verification: `./mdoctor clean -m trash`, `./mdoctor clean`, and log content checks.
