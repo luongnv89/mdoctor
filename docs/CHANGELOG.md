@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.1.0] - 2026-02-24
+
+### Added
+- Centralized deletion safety primitives with guarded APIs (`safe_remove`, `safe_remove_children`, `safe_find_delete`) and protection checks
+- Destructive error taxonomy with actionable hints (`INVALID_TARGET`, `PROTECTED_TARGET`, `SYMLINK_BLOCKED`, `PERMISSION_DENIED`, `SIP_OR_READONLY`, `RUNTIME_FAILURE`)
+- Persistent operation logging at `~/.config/mdoctor/operations.log`
+- Structured `--debug` diagnostics for `check`, `clean`, and `fix`
+- Cleanup whitelist support (`~/.config/mdoctor/cleanup_whitelist`)
+- Custom cleanup scope config for stale `node_modules` scanning (`~/.config/mdoctor/cleanup_scope.conf`)
+- Shell regression harness (`tests/run.sh`) with coverage for parsing, metadata routing, safety, dry-run semantics, and interactive cleanup
+- `mdoctor update` command (stable channel) with check mode (`mdoctor update --check`)
+- Interactive cleanup module selection (`mdoctor clean --interactive`)
+- Dedicated safety and recovery documentation (`docs/SAFETY.md`)
+
+### Changed
+- Cleanup modules migrated to centralized safety primitives
+- Force-mode cleanup now provides explicit pre-flight safety summaries
+- CI expanded into lint/test/release-sanity lanes with shared local scripts for parity
+- Shell lint policy standardized via `.shellcheckrc` and `scripts/lint_shell.sh`
+- Installer/uninstaller gained optional env overrides for isolated CI/dev sanity runs
+
+### Fixed
+- Removed shared cleanup runner dependence on `eval`-based command execution
+- Improved destructive failure reporting consistency across cleanup paths
+
 ## [2.0.0] - 2026-02-14
 
 ### Added

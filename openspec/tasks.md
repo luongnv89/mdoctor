@@ -93,12 +93,20 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
 - Improve docs on safety model, reversibility, and known limitations.
 - **Outcome:** better trust and onboarding.
 
+## Phase P5 — Release Readiness
+
+### P5.1 Version bump + changelog consolidation
+- Status: ✅ Done (change: `task-p5-1-release-version-changelog`)
+- Bump release version and consolidate milestone delivery notes in changelog.
+- **Outcome:** clean handoff for tag/release publication.
+
 ## Delivery order
 1. P0 (mandatory before broad feature work)
 2. P1
 3. P2
 4. P3
 5. P4
+6. P5
 
 ## Tracking
 - Mark task complete only after: code + validation + OpenSpec archive.
@@ -179,3 +187,8 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
   - Outcome: added dedicated safety/recovery guide (`docs/SAFETY.md`) and linked it from README + guidebook for better operator trust and incident handling.
   - Spec impact: `openspec/specs/safety-recovery-docs/spec.md`.
   - Verification: docs link/path consistency checks + `./mdoctor clean --help`, `./mdoctor update --help`, `./scripts/lint_shell.sh`, `./tests/run.sh`.
+
+- 2026-02-24 archived `task-p5-1-release-version-changelog` for `P5.1`
+  - Outcome: bumped release version to `2.1.0` and consolidated P0–P4 milestone outcomes in changelog for release publication.
+  - Spec impact: `openspec/specs/release-versioning/spec.md`.
+  - Verification: `bash -n mdoctor`, `./mdoctor version`, `./scripts/lint_shell.sh`, `./tests/run.sh`.
