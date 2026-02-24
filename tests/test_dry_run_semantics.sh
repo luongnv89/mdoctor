@@ -4,7 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/tests/helpers/assert.sh"
 
-TMPHOME="$(mktemp -d)"
+ORIG_HOME="${HOME}"
+TMPHOME="$(mktemp -d "${ORIG_HOME}/.mdoctor-test-dryrun.XXXXXX")"
 trap 'rm -rf "$TMPHOME"' EXIT
 
 mkdir -p "$TMPHOME/.Trash"
