@@ -29,6 +29,20 @@ chmod +x mdoctor doctor.sh cleanup.sh
 mdoctor help
 ```
 
+## Test Harness (recommended)
+
+Run the shell regression suite:
+
+```bash
+./tests/run.sh
+```
+
+Current coverage includes:
+- command parsing/help behavior
+- metadata/list routing checks
+- safety validation + whitelist protection
+- dry-run vs force cleanup semantics
+
 ## Testing Individual Modules
 
 You can test a single check or cleanup module in isolation:

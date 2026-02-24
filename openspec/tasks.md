@@ -62,6 +62,7 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
 ## Phase P3 — Quality Gates
 
 ### P3.1 Shell test harness
+- Status: ✅ Done (change: `task-p3-1-shell-test-harness`)
 - Add tests for command parsing, metadata routing, safety validation, and dry-run semantics.
 - **Outcome:** prevent regressions in critical paths.
 
@@ -143,3 +144,8 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
   - Outcome: added configurable cleanup scope (`~/.config/mdoctor/cleanup_scope.conf`) with include paths and exclude globs for stale node_modules scanning.
   - Spec impact: `openspec/specs/custom-cleanup-scope/spec.md`.
   - Verification: isolated-home include/exclude/default fallback/autocreate tests + help text check.
+
+- 2026-02-24 archived `task-p3-1-shell-test-harness` for `P3.1`
+  - Outcome: added shell test harness (`tests/run.sh`) with regression tests for command parsing, metadata routing, safety validation/whitelist, and dry-run semantics.
+  - Spec impact: `openspec/specs/shell-test-harness/spec.md`.
+  - Verification: `./tests/run.sh` (4/4 tests passed).
