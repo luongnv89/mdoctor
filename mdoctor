@@ -15,6 +15,7 @@
 #   list       List all modules with category & risk
 #   history    View health score trends over time
 #   benchmark  Run disk, network, CPU benchmarks
+#   update     Update mdoctor to latest stable release
 #   version    Show mdoctor version
 #   help       Show this help message
 #
@@ -839,6 +840,136 @@ cmd_version() {
 }
 
 ########################################
+# COMMAND: update
+########################################
+
+cmd_update() {
+  local check_only=false
+  local channel="stable"
+  local debug_flag=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --check)
+        check_only=true
+        shift
+        ;;
+      --channel)
+        if [[ $# -lt 2 || -z "${2:-}" ]]; then
+          error "Missing value for --channel"
+          return 1
+        fi
+        channel="$2"
+        shift 2
+        ;;
+      --debug)
+        debug_flag=true
+        shift
+        ;;
+      --help|-h)
+        echo "Usage: mdoctor update [options]"
+        echo
+        echo "Update mdoctor to the latest stable release."
+        echo
+        echo "Options:"
+        echo "  --check              Check for updates without applying"
+        echo "  --channel <name>     Update channel (supported: stable)"
+        echo "  --debug              Enable structured debug diagnostics"
+        echo "  -h, --help           Show this help"
+        echo
+        echo "Environment Variables:"
+        echo "  MDOCTOR_UPDATE_REMOTE   Override git remote (default: origin)"
+        echo "  MDOCTOR_UPDATE_BRANCH   Override git branch (default: main)"
+        return 0
+        ;;
+      *)
+        error "Unknown option: $1"
+        echo "Run 'mdoctor update --help' for usage."
+        return 1
+        ;;
+    esac
+  done
+
+  if [ "$debug_flag" = true ]; then
+    MDOCTOR_DEBUG=true
+    export MDOCTOR_DEBUG
+  fi
+
+  if [ "$channel" != "stable" ]; then
+    error "Unsupported update channel: ${channel}"
+    echo "Supported channels: stable"
+    return 1
+  fi
+
+  if ! command -v git >/dev/null 2>&1; then
+    error "git is required for updates but not found."
+    return 1
+  fi
+
+  if [ ! -d "${MDOCTOR_DIR}/.git" ]; then
+    error "Update requires a git checkout at ${MDOCTOR_DIR}."
+    echo "Reinstall with: curl -fsSL https://raw.githubusercontent.com/luongnv89/mdoctor/main/install.sh | bash"
+    return 1
+  fi
+
+  local remote="${MDOCTOR_UPDATE_REMOTE:-origin}"
+  local branch="${MDOCTOR_UPDATE_BRANCH:-main}"
+  local remote_ref="${remote}/${branch}"
+
+  if [ "${MDOCTOR_DEBUG}" = "true" ]; then
+    echo "${DIM}[debug]${RESET} update remote=${remote} branch=${branch} check_only=${check_only}"
+  fi
+
+  echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
+  echo "Checking updates from ${remote_ref}..."
+
+  if ! git -C "$MDOCTOR_DIR" fetch --quiet "$remote" "$branch"; then
+    error "Failed to fetch updates from ${remote_ref}."
+    return 1
+  fi
+
+  local local_sha remote_sha local_short remote_short
+  local_sha="$(git -C "$MDOCTOR_DIR" rev-parse HEAD 2>/dev/null || true)"
+  remote_sha="$(git -C "$MDOCTOR_DIR" rev-parse "$remote_ref" 2>/dev/null || true)"
+
+  if [ -z "$local_sha" ] || [ -z "$remote_sha" ]; then
+    error "Unable to resolve local/remote git refs for update check."
+    return 1
+  fi
+
+  local_short="$(git -C "$MDOCTOR_DIR" rev-parse --short "$local_sha")"
+  remote_short="$(git -C "$MDOCTOR_DIR" rev-parse --short "$remote_sha")"
+
+  if [ "$local_sha" = "$remote_sha" ]; then
+    echo "Already up to date (${local_short})."
+    return 0
+  fi
+
+  echo "Update available: ${local_short} -> ${remote_short}"
+
+  if [ "$check_only" = true ]; then
+    return 0
+  fi
+
+  if ! git -C "$MDOCTOR_DIR" pull --ff-only "$remote" "$branch"; then
+    error "Update failed. Repository may have local changes or diverged history."
+    echo "Try resolving git state manually in: ${MDOCTOR_DIR}"
+    return 1
+  fi
+
+  chmod +x "${MDOCTOR_DIR}/mdoctor" "${MDOCTOR_DIR}/doctor.sh" "${MDOCTOR_DIR}/cleanup.sh" 2>/dev/null || true
+  if [ -d "${MDOCTOR_DIR}/fixes" ]; then
+    chmod +x "${MDOCTOR_DIR}"/fixes/*.sh 2>/dev/null || true
+  fi
+
+  local new_short
+  new_short="$(git -C "$MDOCTOR_DIR" rev-parse --short HEAD 2>/dev/null || echo "$remote_short")"
+
+  echo "Update complete: ${local_short} -> ${new_short}"
+  echo "Current version: $(${MDOCTOR_DIR}/mdoctor version 2>/dev/null || echo "mdoctor ${MDOCTOR_VERSION_FULL}")"
+}
+
+########################################
 # COMMAND: help
 ########################################
 
@@ -854,6 +985,7 @@ cmd_help() {
   printf "  ${GREEN}%-12s${RESET} %s\n" "list"      "List all modules with category & risk level"
   printf "  ${GREEN}%-12s${RESET} %s\n" "history"   "View health score trends over time"
   printf "  ${GREEN}%-12s${RESET} %s\n" "benchmark" "Run disk, network, CPU benchmarks"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "update"    "Update mdoctor to latest stable release"
   printf "  ${GREEN}%-12s${RESET} %s\n" "version"   "Show mdoctor version"
   printf "  ${GREEN}%-12s${RESET} %s\n" "help"      "Show this help message"
   echo
@@ -886,12 +1018,16 @@ cmd_help() {
   echo "  mdoctor list                     # Show all modules"
   echo "  mdoctor history                  # View score trends"
   echo "  mdoctor benchmark                # Run speed tests"
+  echo "  mdoctor update --check           # Check if stable updates are available"
+  echo "  mdoctor update                   # Update to latest stable release"
   echo "  mdoctor info                     # Quick system overview"
   echo
   echo "${BOLD}Environment Variables:${RESET}"
   echo "  DAYS_OLD_OVERRIDE=N              Override cleanup age threshold (default: 7)"
   echo "  MDOCTOR_CLEANUP_WHITELIST_FILE   Override cleanup whitelist file path"
   echo "  MDOCTOR_CLEANUP_SCOPE_FILE       Override cleanup scope config file path"
+  echo "  MDOCTOR_UPDATE_REMOTE            Override update git remote (default: origin)"
+  echo "  MDOCTOR_UPDATE_BRANCH            Override update git branch (default: main)"
   echo
   echo "${DIM}Documentation: https://github.com/luongnv89/mdoctor${RESET}"
 }
@@ -912,6 +1048,7 @@ main() {
     list)      cmd_list ;;
     history)   cmd_history "$@" ;;
     benchmark) cmd_benchmark ;;
+    update)    cmd_update "$@" ;;
     version)   cmd_version ;;
     -v|--version) cmd_version ;;
     help|-h|--help) cmd_help ;;

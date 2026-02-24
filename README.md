@@ -54,6 +54,7 @@ mdoctor <command> [options]
 | `mdoctor list` | List all modules with category & risk level |
 | `mdoctor history` | View health score trends over time |
 | `mdoctor benchmark` | Run disk, network, CPU speed tests |
+| `mdoctor update` | Update to latest stable release |
 | `mdoctor version` | Show version |
 | `mdoctor help` | Show help |
 
@@ -180,6 +181,20 @@ Show all available modules with categories and risk levels:
 
 ```bash
 mdoctor list
+```
+
+### Update
+
+Check whether a stable update is available:
+
+```bash
+mdoctor update --check
+```
+
+Apply the latest stable update:
+
+```bash
+mdoctor update
 ```
 
 ## Risk Levels

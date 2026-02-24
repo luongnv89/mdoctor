@@ -17,7 +17,19 @@ curl -fsSL https://raw.githubusercontent.com/luongnv89/mdoctor/main/install.sh |
 
 ## Updating
 
-Users re-run the same install command. The installer detects the existing directory and runs `git pull --ff-only`.
+Preferred path:
+
+```bash
+mdoctor update
+```
+
+Check-only mode:
+
+```bash
+mdoctor update --check
+```
+
+Fallback path (still supported): re-run installer. The installer detects the existing directory and runs `git pull --ff-only`.
 
 ## Uninstalling
 

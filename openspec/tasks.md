@@ -79,6 +79,7 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
 ## Phase P4 — Product Polish
 
 ### P4.1 Update command
+- Status: ✅ Done (change: `task-p4-1-update-command`)
 - Add `mdoctor update` (stable channel first; nightly optional later).
 - **Outcome:** easier upgrades.
 
@@ -161,3 +162,8 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
   - Outcome: split CI into lint/test/release-sanity lanes, added regression harness execution in CI, and added isolated installer/uninstaller sanity flow.
   - Spec impact: `openspec/specs/ci-expansion/spec.md`.
   - Verification: `./scripts/lint_shell.sh`, `./tests/run.sh`, and isolated install/uninstall smoke with env overrides.
+
+- 2026-02-24 archived `task-p4-1-update-command` for `P4.1`
+  - Outcome: added `mdoctor update` command (stable channel), check mode, and git-based fast-forward update flow with clear fallback messaging.
+  - Spec impact: `openspec/specs/update-command/spec.md`.
+  - Verification: `bash -n mdoctor`, `./mdoctor update --help`, `./mdoctor update --check`, `./scripts/lint_shell.sh`, `./tests/run.sh`.
