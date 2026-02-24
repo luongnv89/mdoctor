@@ -315,6 +315,7 @@ mdoctor/
     ├── DEVELOPMENT.md
     ├── DEPLOYMENT.md
     ├── SAFETY.md
+    ├── LINUX_DEBIAN_PLAN.md
     └── CHANGELOG.md
 ```
 
@@ -325,6 +326,7 @@ mdoctor/
 - [Development](docs/DEVELOPMENT.md) -- Local setup and debugging guide
 - [Deployment](docs/DEPLOYMENT.md) -- Distribution and release process
 - [Safety & Recovery](docs/SAFETY.md) -- Cleanup safety model, recovery playbook, known limitations
+- [Linux Debian Plan](docs/LINUX_DEBIAN_PLAN.md) -- phased roadmap for Debian-based Linux support
 - [Changelog](docs/CHANGELOG.md) -- Version history
 - [Contributing](CONTRIBUTING.md) -- How to contribute
 - [Security](SECURITY.md) -- Vulnerability reporting

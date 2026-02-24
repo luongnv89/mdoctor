@@ -105,6 +105,48 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
 - Synchronize README + docs with current architecture, workflows, and post-release maintenance fixes.
 - **Outcome:** docs align with shipped behavior and CI reality.
 
+## Phase P6 — Linux (Debian-based only)
+
+### P6.0 Debian support roadmap
+- Status: ✅ Done (change: `task-p6-0-debian-support-plan`)
+- Define phased plan and constraints for Debian-only Linux support rollout.
+- **Outcome:** clear, sequenced implementation path.
+
+### P6.1 Platform abstraction foundation
+- Status: ⏳ Planned
+- Add platform detection + adapters (`lib/platform.sh`) and unsupported gating.
+- **Outcome:** stable base for multi-platform behavior.
+
+### P6.2 Debian check module support
+- Status: ⏳ Planned
+- Port read-only checks for Debian/Ubuntu-compatible tooling.
+- **Outcome:** useful Linux diagnostics without macOS hard dependencies.
+
+### P6.3 Debian cleanup baseline
+- Status: ⏳ Planned
+- Implement Debian-safe cleanup modules with existing safety primitives.
+- **Outcome:** safe disk-recovery flows on Linux.
+
+### P6.4 Debian fix target baseline
+- Status: ⏳ Planned
+- Add Debian-compatible fix targets with risk labels.
+- **Outcome:** actionable remediation commands.
+
+### P6.5 Installer/update Linux hardening
+- Status: ⏳ Planned
+- Ensure install/update/uninstall flows work on Debian systems.
+- **Outcome:** predictable lifecycle management.
+
+### P6.6 CI matrix expansion (macOS + Ubuntu)
+- Status: ⏳ Planned
+- Run lint/tests/smoke on Ubuntu and macOS.
+- **Outcome:** cross-platform regression protection.
+
+### P6.7 Debian docs + release readiness
+- Status: ⏳ Planned
+- Publish Debian support boundaries, caveats, and usage docs.
+- **Outcome:** clear user expectations and rollout readiness.
+
 ## Delivery order
 1. P0 (mandatory before broad feature work)
 2. P1
@@ -112,6 +154,7 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
 4. P3
 5. P4
 6. P5
+7. P6
 
 ## Tracking
 - Mark task complete only after: code + validation + OpenSpec archive.
@@ -202,3 +245,8 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
   - Outcome: synchronized README and docs set (architecture/development/deployment/guidebook/changelog) with current CLI behavior, safety/quality workflows, and post-release CI compatibility fixes.
   - Spec impact: `openspec/specs/documentation-sync/spec.md`.
   - Verification: docs reference/path checks + `./scripts/lint_shell.sh`, `./tests/run.sh`.
+
+- 2026-02-24 archived `task-p6-0-debian-support-plan` for `P6.0`
+  - Outcome: created Debian-only Linux support roadmap with phased execution gates and explicit non-goals.
+  - Spec impact: `openspec/specs/linux-debian-support-plan/spec.md`.
+  - Verification: plan/docs consistency checks.
