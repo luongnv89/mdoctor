@@ -15,10 +15,10 @@ set -euo pipefail
 # Configuration
 ########################################
 
-REPO_URL="https://github.com/luongnv89/mdoctor.git"
-INSTALL_DIR="${HOME}/.mdoctor"
-BIN_DIR="/usr/local/bin"
-BINARY_NAME="mdoctor"
+REPO_URL="${MDOCTOR_REPO_URL:-https://github.com/luongnv89/mdoctor.git}"
+INSTALL_DIR="${MDOCTOR_INSTALL_DIR:-${HOME}/.mdoctor}"
+BIN_DIR="${MDOCTOR_BIN_DIR:-/usr/local/bin}"
+BINARY_NAME="${MDOCTOR_BINARY_NAME:-mdoctor}"
 
 ########################################
 # Colors
@@ -49,8 +49,8 @@ fail()    { echo "${RED}[error]${RESET} $*" >&2; exit 1; }
 # Pre-flight checks
 ########################################
 
-# Must be macOS
-if [[ "$(uname -s)" != "Darwin" ]]; then
+# Must be macOS unless explicitly bypassed for CI/local installer sanity tests
+if [[ "${MDOCTOR_SKIP_PLATFORM_CHECK:-false}" != "true" ]] && [[ "$(uname -s)" != "Darwin" ]]; then
   fail "mdoctor is designed for macOS only. Detected: $(uname -s)"
 fi
 

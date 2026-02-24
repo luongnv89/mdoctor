@@ -7,8 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  shellcheck:
-    name: ShellCheck
+  lint:
+    name: Lint
     runs-on: macos-latest
 
     steps:
@@ -21,13 +21,6 @@ jobs:
         run: |
           chmod +x scripts/lint_shell.sh
           ./scripts/lint_shell.sh
-
-  syntax-check:
-    name: Bash Syntax Check
-    runs-on: macos-latest
-
-    steps:
-      - uses: actions/checkout@v4
 
       - name: Check bash syntax for all scripts
         run: |
@@ -43,15 +36,19 @@ jobs:
             bash -n "$script"
           done
 
-  smoke-test:
-    name: Smoke Test
+  test:
+    name: Test
     runs-on: macos-latest
+    needs: lint
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Make scripts executable
-        run: chmod +x mdoctor doctor.sh cleanup.sh
+        run: chmod +x mdoctor doctor.sh cleanup.sh tests/run.sh tests/test_*.sh tests/helpers/assert.sh
+
+      - name: Run shell regression harness
+        run: ./tests/run.sh
 
       - name: mdoctor help
         run: ./mdoctor help
@@ -70,3 +67,38 @@ jobs:
 
       - name: mdoctor check single module
         run: ./mdoctor check -m network
+
+  release-sanity:
+    name: Release Sanity
+    runs-on: macos-latest
+    needs: [lint, test]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make install scripts executable
+        run: chmod +x install.sh uninstall.sh
+
+      - name: Installer/uninstaller isolated-path sanity
+        run: |
+          set -euo pipefail
+
+          TMP_ROOT="$(mktemp -d)"
+          TMP_INSTALL="$TMP_ROOT/install"
+          TMP_BIN="$TMP_ROOT/bin"
+          mkdir -p "$TMP_BIN"
+
+          MDOCTOR_REPO_URL="$PWD" \
+          MDOCTOR_INSTALL_DIR="$TMP_INSTALL" \
+          MDOCTOR_BIN_DIR="$TMP_BIN" \
+          MDOCTOR_BINARY_NAME="mdoctor" \
+          ./install.sh
+
+          "$TMP_BIN/mdoctor" version
+          "$TMP_BIN/mdoctor" help >/dev/null
+
+          MDOCTOR_INSTALL_DIR="$TMP_INSTALL" \
+          MDOCTOR_BIN_LINK="$TMP_BIN/mdoctor" \
+          ./uninstall.sh
+
+          test ! -e "$TMP_BIN/mdoctor"

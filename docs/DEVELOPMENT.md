@@ -49,6 +49,21 @@ Run shell lint policy (high-severity gate):
 ./scripts/lint_shell.sh
 ```
 
+CI lanes map to local commands:
+- **Lint** → `./scripts/lint_shell.sh` + repository `bash -n` syntax pass
+- **Test** → `./tests/run.sh` + smoke commands (`mdoctor help/version/info/check/clean`)
+- **Release Sanity** → isolated installer/uninstaller flow using env-overridden temp paths
+
+For local installer sanity on non-macOS environments (CI/dev only), use:
+
+```bash
+MDOCTOR_SKIP_PLATFORM_CHECK=true \
+MDOCTOR_REPO_URL="$PWD" \
+MDOCTOR_INSTALL_DIR="$(mktemp -d)/install" \
+MDOCTOR_BIN_DIR="$(mktemp -d)" \
+./install.sh
+```
+
 ## Testing Individual Modules
 
 You can test a single check or cleanup module in isolation:

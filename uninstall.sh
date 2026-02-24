@@ -9,8 +9,8 @@
 
 set -euo pipefail
 
-INSTALL_DIR="${HOME}/.mdoctor"
-BIN_LINK="/usr/local/bin/mdoctor"
+INSTALL_DIR="${MDOCTOR_INSTALL_DIR:-${HOME}/.mdoctor}"
+BIN_LINK="${MDOCTOR_BIN_LINK:-/usr/local/bin/mdoctor}"
 
 if command -v tput >/dev/null 2>&1 && [ -t 1 ]; then
   GREEN="$(tput setaf 2)"

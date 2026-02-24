@@ -72,6 +72,7 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
 - **Outcome:** maintainable shell quality.
 
 ### P3.3 CI expansion
+- Status: ✅ Done (change: `task-p3-3-ci-expansion`)
 - Split CI into lint/test/release-sanity jobs.
 - **Outcome:** faster feedback and clearer failures.
 
@@ -155,3 +156,8 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
   - Outcome: added `.shellcheckrc` baseline policy, reusable `scripts/lint_shell.sh`, and CI enforcement via shared lint entrypoint.
   - Spec impact: `openspec/specs/shellcheck-baseline-policy/spec.md`.
   - Verification: `./scripts/lint_shell.sh` passed with high-severity gate.
+
+- 2026-02-24 archived `task-p3-3-ci-expansion` for `P3.3`
+  - Outcome: split CI into lint/test/release-sanity lanes, added regression harness execution in CI, and added isolated installer/uninstaller sanity flow.
+  - Spec impact: `openspec/specs/ci-expansion/spec.md`.
+  - Verification: `./scripts/lint_shell.sh`, `./tests/run.sh`, and isolated install/uninstall smoke with env overrides.
