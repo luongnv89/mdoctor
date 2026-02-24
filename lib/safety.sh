@@ -170,7 +170,7 @@ is_whitelisted_cleanup_path() {
   local entry=""
   local entry_norm=""
   local base=""
-  for entry in "${_MDOCTOR_WHITELIST[@]}"; do
+  for entry in "${_MDOCTOR_WHITELIST[@]+"${_MDOCTOR_WHITELIST[@]}"}"; do
     entry_norm="$(_normalize_path "$entry")"
     [ -z "$entry_norm" ] && continue
 
