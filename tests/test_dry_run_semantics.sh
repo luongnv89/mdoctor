@@ -5,7 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/tests/helpers/assert.sh"
 
 ORIG_HOME="${HOME}"
-TMPHOME="$(mktemp -d "${ORIG_HOME}/.mdoctor-test-dryrun.XXXXXX")"
+TMPHOME="${ORIG_HOME}/.mdoctor-test-dryrun.$$.$RANDOM"
+mkdir -p "$TMPHOME"
 trap 'rm -rf "$TMPHOME"' EXIT
 
 mkdir -p "$TMPHOME/.Trash"
