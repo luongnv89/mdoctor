@@ -671,15 +671,15 @@ cmd_clean() {
   fi
 
   # Run full cleanup
-  local -a cleanup_args=()
-  if [ "$force" = true ]; then
-    cleanup_args+=(--force)
+  if [ "$force" = true ] && [ "$debug_flag" = true ]; then
+    MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" --force --debug
+  elif [ "$force" = true ]; then
+    MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" --force
+  elif [ "$debug_flag" = true ]; then
+    MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" --debug
+  else
+    MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh"
   fi
-  if [ "$debug_flag" = true ]; then
-    cleanup_args+=(--debug)
-  fi
-
-  MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" "${cleanup_args[@]}"
 }
 
 ########################################
