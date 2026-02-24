@@ -109,6 +109,7 @@ REPORT_MD=""
 main() {
   # Initialize colors and UI
   init_colors
+  debug_log "doctor.sh start json=${JSON_ENABLED:-false}"
 
   # Initialize markdown report
   md_init
@@ -119,12 +120,14 @@ main() {
   echo
 
   # Hardware checks
+  debug_log "doctor.sh phase=hardware checks=4"
   check_battery
   check_hardware
   check_bluetooth
   check_usb
 
   # System checks
+  debug_log "doctor.sh phase=system checks=8"
   check_system
   check_disk
   check_updates_basic
@@ -135,6 +138,7 @@ main() {
   check_storage
 
   # Software checks
+  debug_log "doctor.sh phase=software checks=9"
   check_homebrew
   check_node_npm
   check_python
@@ -173,6 +177,7 @@ main() {
 
   echo "Health score: ${BOLD}${score}/100${RESET} (${rating})"
   echo "Warnings: ${WARN_COUNT}, Failures: ${FAIL_COUNT}"
+  debug_log "doctor.sh summary score=${score} rating=${rating} warnings=${WARN_COUNT} failures=${FAIL_COUNT}"
   echo
 
   md_append ""

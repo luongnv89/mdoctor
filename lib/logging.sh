@@ -36,6 +36,21 @@ log() {
   echo "[$(timestamp)] $*" | tee -a "${LOGFILE:-/tmp/cleanup.log}"
 }
 
+debug_enabled() {
+  [ "${MDOCTOR_DEBUG:-false}" = true ] || [ "${MDOCTOR_DEBUG:-0}" = "1" ]
+}
+
+debug_log() {
+  debug_enabled || return 0
+  local msg="$*"
+  local line="[$(timestamp)] [DEBUG] ${msg}"
+  echo "$line" >&2
+  printf '%s\n' "$line" >> "${LOGFILE:-/tmp/cleanup.log}"
+  if declare -f op_record >/dev/null 2>&1; then
+    op_record "DEBUG" "mdoctor" "$msg"
+  fi
+}
+
 ########################################
 # PERSISTENT OPERATION LOG
 ########################################
@@ -165,17 +180,21 @@ run_cmd_args() {
 
   if [ "${DRY_RUN:-true}" = true ]; then
     log "[DRY RUN] $cmd_display"
+    debug_log "run_cmd_args dry-run command=${cmd_display}"
     op_record "DRY_RUN_CMD" "$cmd_display"
     return 0
   fi
 
   log "[RUN] $cmd_display"
+  debug_log "run_cmd_args exec command=${cmd_display}"
   "$@"
   local rc=$?
   if [ "$rc" -ne 0 ]; then
     log "[ERROR] command failed (exit $rc): $cmd_display"
+    debug_log "run_cmd_args failed exit=${rc} command=${cmd_display}"
     op_error "CMD_FAIL" "$cmd_display" "exit=$rc"
   else
+    debug_log "run_cmd_args success command=${cmd_display}"
     op_record "RUN_CMD" "$cmd_display" "exit=0"
   fi
   return "$rc"
@@ -191,17 +210,21 @@ run_cmd_legacy() {
 
   if [ "${DRY_RUN:-true}" = true ]; then
     log "[DRY RUN][LEGACY] $cmd"
+    debug_log "run_cmd_legacy dry-run command=${cmd}"
     op_record "DRY_RUN_CMD_LEGACY" "$cmd"
     return 0
   fi
 
   log "[RUN][LEGACY] $cmd"
+  debug_log "run_cmd_legacy exec command=${cmd}"
   bash -c "$cmd"
   local rc=$?
   if [ "$rc" -ne 0 ]; then
     log "[ERROR] legacy command failed (exit $rc): $cmd"
+    debug_log "run_cmd_legacy failed exit=${rc} command=${cmd}"
     op_error "CMD_FAIL_LEGACY" "$cmd" "exit=$rc"
   else
+    debug_log "run_cmd_legacy success command=${cmd}"
     op_record "RUN_CMD_LEGACY" "$cmd" "exit=0"
   fi
   return "$rc"

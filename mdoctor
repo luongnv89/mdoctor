@@ -65,6 +65,9 @@ resolve_script_dir() {
 
 MDOCTOR_DIR="$(resolve_script_dir)"
 
+# Runtime diagnostics flag (can be enabled per-command via --debug)
+MDOCTOR_DEBUG="${MDOCTOR_DEBUG:-false}"
+
 ########################################
 # COLORS
 ########################################
@@ -110,6 +113,7 @@ error() {
 cmd_check() {
   local module=""
   local json_flag=false
+  local debug_flag=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -121,6 +125,10 @@ cmd_check() {
         json_flag=true
         shift
         ;;
+      --debug)
+        debug_flag=true
+        shift
+        ;;
       --help|-h)
         echo "Usage: mdoctor check [options]"
         echo
@@ -129,6 +137,7 @@ cmd_check() {
         echo "Options:"
         echo "  -m, --module <name>   Run only a specific check module"
         echo "  --json                Output results as JSON"
+        echo "  --debug               Enable structured debug diagnostics"
         echo "  -h, --help            Show this help"
         echo
         echo "Check modules (all [SAFE] read-only):"
@@ -147,6 +156,11 @@ cmd_check() {
 
   if [ "$json_flag" = true ]; then
     export JSON_ENABLED=true
+  fi
+
+  if [ "$debug_flag" = true ]; then
+    MDOCTOR_DEBUG=true
+    export MDOCTOR_DEBUG
   fi
 
   echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
@@ -187,6 +201,7 @@ cmd_check() {
     REPORT_MD=""
 
     init_colors
+    debug_log "cmd_check module=${module} json=${json_flag} debug=${MDOCTOR_DEBUG}"
 
     # shellcheck source=/dev/null
     source "$check_file"
@@ -231,9 +246,9 @@ cmd_check() {
   else
     # Run full doctor
     if [ "$json_flag" = true ]; then
-      JSON_ENABLED=true bash "${MDOCTOR_DIR}/doctor.sh"
+      JSON_ENABLED=true MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/doctor.sh"
     else
-      bash "${MDOCTOR_DIR}/doctor.sh"
+      MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/doctor.sh"
     fi
   fi
 }
@@ -245,6 +260,7 @@ cmd_check() {
 cmd_clean() {
   local force=false
   local module=""
+  local debug_flag=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -256,6 +272,10 @@ cmd_clean() {
         module="$2"
         shift 2
         ;;
+      --debug)
+        debug_flag=true
+        shift
+        ;;
       --help|-h)
         echo "Usage: mdoctor clean [options]"
         echo
@@ -265,6 +285,7 @@ cmd_clean() {
         echo "Options:"
         echo "  -f, --force           Actually delete files (no dry-run)"
         echo "  -m, --module <name>   Run only a specific cleanup module"
+        echo "  --debug               Enable structured debug diagnostics"
         echo "  -h, --help            Show this help"
         echo
         echo "Cleanup modules:"
@@ -280,6 +301,11 @@ cmd_clean() {
         ;;
     esac
   done
+
+  if [ "$debug_flag" = true ]; then
+    MDOCTOR_DEBUG=true
+    export MDOCTOR_DEBUG
+  fi
 
   echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
 
@@ -305,6 +331,7 @@ cmd_clean() {
     # shellcheck disable=SC2034
     STEP_TOTAL=1
     init_colors
+    debug_log "cmd_clean module=${module} force=${force} debug=${MDOCTOR_DEBUG}"
 
     # Set globals (used by sourced cleanup modules via run_cmd)
     # shellcheck disable=SC2034
@@ -357,11 +384,15 @@ cmd_clean() {
     fi
   else
     # Run full cleanup
+    local -a cleanup_args=()
     if [ "$force" = true ]; then
-      bash "${MDOCTOR_DIR}/cleanup.sh" --force
-    else
-      bash "${MDOCTOR_DIR}/cleanup.sh"
+      cleanup_args+=(--force)
     fi
+    if [ "$debug_flag" = true ]; then
+      cleanup_args+=(--debug)
+    fi
+
+    MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" "${cleanup_args[@]}"
   fi
 }
 
@@ -371,11 +402,12 @@ cmd_clean() {
 
 cmd_fix() {
   local target=""
+  local debug_flag=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --help|-h)
-        echo "Usage: mdoctor fix [target]"
+        echo "Usage: mdoctor fix [--debug] <target>"
         echo
         echo "Apply common fixes for macOS issues."
         echo
@@ -392,8 +424,13 @@ cmd_fix() {
         echo "  all           Run all fixes"
         echo
         echo "Options:"
+        echo "  --debug       Enable structured debug diagnostics"
         echo "  -h, --help    Show this help"
         return 0
+        ;;
+      --debug)
+        debug_flag=true
+        shift
         ;;
       *)
         target="$1"
@@ -402,8 +439,16 @@ cmd_fix() {
     esac
   done
 
+  if [ "$debug_flag" = true ]; then
+    MDOCTOR_DEBUG=true
+    export MDOCTOR_DEBUG
+  fi
+
+  source "${MDOCTOR_DIR}/lib/logging.sh"
+  debug_log "cmd_fix target=${target:-<none>} debug=${MDOCTOR_DEBUG}"
+
   if [ -z "$target" ]; then
-    echo "Usage: mdoctor fix <target>"
+    echo "Usage: mdoctor fix [--debug] <target>"
     echo
     echo "Available targets: homebrew, dns, disk, permissions, spotlight,"
     echo "  bluetooth, audio, wifi, timemachine, all"
@@ -419,7 +464,11 @@ cmd_fix() {
       if [ -f "$fix_file" ]; then
         # shellcheck source=/dev/null
         source "$fix_file"
+        debug_log "fix target start=${target}"
         "fix_${target}"
+        local fix_rc=$?
+        debug_log "fix target end=${target} rc=${fix_rc}"
+        return "$fix_rc"
       else
         error "Fix module not found: ${fix_file}"
         return 1
@@ -427,15 +476,23 @@ cmd_fix() {
       ;;
     all)
       local t
+      local all_rc=0
       for t in homebrew dns disk permissions spotlight bluetooth audio wifi; do
         local f="${MDOCTOR_DIR}/fixes/${t}.sh"
         if [ -f "$f" ]; then
           # shellcheck source=/dev/null
           source "$f"
-          "fix_${t}"
+          debug_log "fix target start=${t}"
+          local target_rc=0
+          "fix_${t}" || target_rc=$?
+          if [ "$target_rc" -ne 0 ]; then
+            all_rc=$target_rc
+          fi
+          debug_log "fix target end=${t} rc=${target_rc}"
           echo
         fi
       done
+      return "$all_rc"
       ;;
     *)
       error "Unknown fix target: ${target}"
@@ -665,11 +722,14 @@ cmd_help() {
   echo "  mdoctor check                    # Full health audit (21 checks)"
   echo "  mdoctor check -m battery         # Check only battery health"
   echo "  mdoctor check --json             # JSON output for automation"
+  echo "  mdoctor check --debug            # Check with structured debug diagnostics"
   echo "  mdoctor clean                    # Dry-run cleanup"
   echo "  mdoctor clean --force            # Actually clean up"
+  echo "  mdoctor clean --debug            # Cleanup with structured debug diagnostics"
   echo "  mdoctor clean -m crash_reports   # Clean only crash reports"
   echo "  mdoctor fix homebrew             # Fix Homebrew issues"
   echo "  mdoctor fix wifi                 # Fix Wi-Fi connection"
+  echo "  mdoctor fix --debug wifi         # Fix with structured debug diagnostics"
   echo "  mdoctor fix all                  # Run all fixes"
   echo "  mdoctor list                     # Show all modules"
   echo "  mdoctor history                  # View score trends"

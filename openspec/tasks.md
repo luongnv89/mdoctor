@@ -38,6 +38,7 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
 - **Outcome:** post-mortem traceability.
 
 ### P1.2 Debug mode
+- Status: ✅ Done (change: `task-p1-2-debug-mode-structured-diagnostics`)
 - Introduce `--debug` for cleanup/fix/check commands with structured diagnostics.
 - **Outcome:** easier support and reproducibility.
 
@@ -119,3 +120,8 @@ Execution rule: one task at a time via OpenSpec change folders under `openspec/c
   - Outcome: added persistent `~/.config/mdoctor/operations.log` with session start/end summaries and action/error records.
   - Spec impact: `openspec/specs/persistent-operation-logging/spec.md`.
   - Verification: `./mdoctor clean -m trash`, `./mdoctor clean`, and log content checks.
+
+- 2026-02-24 archived `task-p1-2-debug-mode-structured-diagnostics` for `P1.2`
+  - Outcome: added `--debug` support for check/clean/fix and structured debug diagnostics across runners and runtime flows.
+  - Spec impact: `openspec/specs/debug-mode-diagnostics/spec.md`.
+  - Verification: `mdoctor check --debug -m battery`, `mdoctor clean --debug -m trash`, `mdoctor clean --debug`, `mdoctor fix --debug`.

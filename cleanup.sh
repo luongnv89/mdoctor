@@ -7,6 +7,7 @@
 # Usage:
 #   ./cleanup.sh           # dry run
 #   ./cleanup.sh --force   # actually delete
+#   ./cleanup.sh --debug   # dry run + structured debug diagnostics
 #
 
 set -euo pipefail
@@ -41,13 +42,35 @@ source "${SCRIPT_DIR}/cleanups/dev_caches.sh"
 
 DRY_RUN=true
 LOGFILE="${HOME}/Library/Logs/macos_cleanup.log"
+MDOCTOR_DEBUG="${MDOCTOR_DEBUG:-false}"
 # shellcheck disable=SC2034
 DAYS_OLD="${DAYS_OLD_OVERRIDE:-7}"
 
-# If --force is passed, disable dry-run
-if [[ "${1-}" == "--force" ]]; then
-	DRY_RUN=false
-fi
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+		--force|-f)
+			DRY_RUN=false
+			shift
+			;;
+		--debug)
+			MDOCTOR_DEBUG=true
+			export MDOCTOR_DEBUG
+			shift
+			;;
+		--help|-h)
+			echo "Usage: ./cleanup.sh [--force] [--debug]"
+			echo
+			echo "  --force, -f   Actually delete files (default is dry-run)"
+			echo "  --debug       Enable structured debug diagnostics"
+			exit 0
+			;;
+		*)
+			echo "Unknown option: $1" >&2
+			echo "Usage: ./cleanup.sh [--force] [--debug]" >&2
+			exit 1
+			;;
+	esac
+done
 
 ########################################
 # PROGRESS HANDLING
@@ -111,6 +134,7 @@ main() {
 	used_before_kb="$(disk_used_kb)"
 
 	header "Starting macOS cleanup (DRY_RUN=${DRY_RUN})"
+	debug_log "cleanup.sh start dry_run=${DRY_RUN} days_old=${DAYS_OLD}"
 	log "$(disk_usage)"
 
 	# Core generic cleanups – safe-ish for any macOS user
@@ -170,6 +194,8 @@ main() {
 	else
 		log "Estimated space freed: ${freed_hr}."
 	fi
+
+	debug_log "cleanup.sh end dry_run=${DRY_RUN} estimated_freed=${freed_hr}"
 }
 
 op_session_start "clean:full"
