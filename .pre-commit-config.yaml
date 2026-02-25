@@ -16,5 +16,20 @@ repos:
     rev: v0.10.0.1
     hooks:
       - id: shellcheck
-        args: ["-e", "SC1091"]  # Ignore "not following sourced file" warnings
+        args: ["-S", "error", "-e", "SC1091"]  # Match lint_shell.sh policy: errors only
         types: [shell]
+
+  - repo: local
+    hooks:
+      - id: bash-syntax
+        name: bash syntax check
+        entry: bash -n
+        language: system
+        types: [shell]
+
+      - id: test-suite
+        name: test suite
+        entry: ./tests/run.sh
+        language: script
+        pass_filenames: false
+        stages: [pre-push]

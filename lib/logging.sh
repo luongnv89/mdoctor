@@ -15,10 +15,11 @@ md_append() {
 }
 
 md_init() {
-  REPORT_MD="/tmp/macos_doctor_$(date +%Y%m%d_%H%M%S).md"
+  REPORT_MD="/tmp/mdoctor_report_$(date +%Y%m%d_%H%M%S).md"
   : > "$REPORT_MD"  # truncate/create
-  md_append "# macOS Doctor Report"
+  md_append "# mdoctor System Health Report"
   md_append ""
+  md_append "- Platform: **${MDOCTOR_OS_NAME:-$(uname -s)}**"
   md_append "- Generated on: **$(date)**"
   md_append "- Hostname: **$(hostname)**"
   md_append ""

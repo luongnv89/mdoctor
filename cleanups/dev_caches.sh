@@ -41,26 +41,19 @@ clean_dev_caches() {
 
   # ── npm ──
   _clean_cache "npm cache" "${HOME}/.npm"
-  _clean_cache "npm cache (Library)" "${HOME}/Library/Caches/npm"
 
   # ── Yarn ──
-  _clean_cache "Yarn cache" "${HOME}/Library/Caches/Yarn"
   _clean_cache "Yarn cache (v2+)" "${HOME}/.yarn/cache"
 
   # ── pnpm ──
-  _clean_cache "pnpm store" "${HOME}/Library/pnpm/store"
   _clean_cache "pnpm store (XDG)" "${HOME}/.local/share/pnpm/store"
 
   # ── pip ──
-  _clean_cache "pip cache" "${HOME}/Library/Caches/pip"
   _clean_cache "pip cache (XDG)" "${HOME}/.cache/pip"
 
   # ── Conda packages ──
   _clean_cache "Conda packages (miniconda3)" "${HOME}/miniconda3/pkgs"
   _clean_cache "Conda packages (anaconda3)" "${HOME}/anaconda3/pkgs"
-
-  # ── Homebrew ──
-  _clean_cache "Homebrew cache" "${HOME}/Library/Caches/Homebrew"
 
   # ── Maven ──
   _clean_cache "Maven repository" "${HOME}/.m2/repository"
@@ -74,11 +67,16 @@ clean_dev_caches() {
   # ── Cargo ──
   _clean_cache "Cargo registry cache" "${HOME}/.cargo/registry/cache"
 
-  # ── CocoaPods ──
-  _clean_cache "CocoaPods cache" "${HOME}/Library/Caches/CocoaPods"
-
-  # ── Xcode DerivedData ──
-  _clean_cache "Xcode DerivedData" "${HOME}/Library/Developer/Xcode/DerivedData"
+  # macOS-specific cache paths
+  if is_macos; then
+    _clean_cache "npm cache (Library)" "${HOME}/Library/Caches/npm"
+    _clean_cache "Yarn cache (Library)" "${HOME}/Library/Caches/Yarn"
+    _clean_cache "pnpm store (Library)" "${HOME}/Library/pnpm/store"
+    _clean_cache "pip cache (Library)" "${HOME}/Library/Caches/pip"
+    _clean_cache "Homebrew cache" "${HOME}/Library/Caches/Homebrew"
+    _clean_cache "CocoaPods cache" "${HOME}/Library/Caches/CocoaPods"
+    _clean_cache "Xcode DerivedData" "${HOME}/Library/Developer/Xcode/DerivedData"
+  fi
 
   # ── Docker ──
   if command -v docker >/dev/null 2>&1; then

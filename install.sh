@@ -49,14 +49,33 @@ fail()    { echo "${RED}[error]${RESET} $*" >&2; exit 1; }
 # Pre-flight checks
 ########################################
 
-# Must be macOS unless explicitly bypassed for CI/local installer sanity tests
-if [[ "${MDOCTOR_SKIP_PLATFORM_CHECK:-false}" != "true" ]] && [[ "$(uname -s)" != "Darwin" ]]; then
-  fail "mdoctor is designed for macOS only. Detected: $(uname -s)"
+# Must be macOS or Linux (Debian-family) unless explicitly bypassed for CI
+if [[ "${MDOCTOR_SKIP_PLATFORM_CHECK:-false}" != "true" ]]; then
+  case "$(uname -s)" in
+    Darwin) ;;
+    Linux)
+      if [ -r /etc/os-release ]; then
+        # shellcheck source=/dev/null
+        . /etc/os-release
+        case "${ID:-}" in
+          debian|ubuntu|linuxmint|pop|raspbian|elementary|zorin|kali) ;;
+          *) fail "mdoctor supports Debian-family Linux only. Detected distro: ${ID:-unknown}" ;;
+        esac
+      else
+        fail "Cannot determine Linux distribution (missing /etc/os-release)."
+      fi
+      ;;
+    *) fail "mdoctor supports macOS and Debian/Ubuntu Linux. Detected: $(uname -s)" ;;
+  esac
 fi
 
 # Need git
 if ! command -v git >/dev/null 2>&1; then
-  fail "git is required but not found. Install Xcode CLT: xcode-select --install"
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    fail "git is required but not found. Install Xcode CLT: xcode-select --install"
+  else
+    fail "git is required but not found. Install with: sudo apt install git"
+  fi
 fi
 
 ########################################
@@ -71,7 +90,7 @@ echo ' | |\/| | | | |/ _ \ / __| __/ _ \| '\''__|'
 echo ' | |  | | |_| | (_) | (__| || (_) | |   '
 echo ' |_|  |_|____/ \___/ \___|\__\___/|_|   '
 echo "${RESET}"
-echo "${DIM}  Keep your Mac healthy${RESET}"
+echo "${DIM}  Keep your system healthy${RESET}"
 echo
 
 ########################################

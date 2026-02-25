@@ -5,9 +5,11 @@
 #
 
 clean_trash() {
-  header "Emptying Trash (~/.Trash)"
-  if [ -d "${HOME}/.Trash" ]; then
-    safe_remove_children "${HOME}/.Trash" || true
+  local trash_dir
+  trash_dir="$(platform_trash_dir)"
+  header "Emptying Trash (${trash_dir})"
+  if [ -d "$trash_dir" ]; then
+    safe_remove_children "$trash_dir" || true
   else
     log "Trash folder not found."
   fi

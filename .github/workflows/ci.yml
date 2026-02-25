@@ -37,7 +37,7 @@ jobs:
           done
 
   test:
-    name: Test
+    name: Test (macOS)
     runs-on: macos-latest
     needs: lint
 
@@ -68,10 +68,53 @@ jobs:
       - name: mdoctor check single module
         run: ./mdoctor check -m network
 
+  test-linux:
+    name: Test (Linux/Ubuntu)
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make scripts executable
+        run: chmod +x mdoctor doctor.sh cleanup.sh tests/run.sh tests/test_*.sh tests/helpers/assert.sh
+
+      - name: Run shell regression harness
+        run: timeout 300 ./tests/run.sh
+
+      - name: mdoctor help
+        run: ./mdoctor help
+
+      - name: mdoctor version
+        run: ./mdoctor version
+
+      - name: mdoctor info
+        run: ./mdoctor info
+
+      - name: mdoctor check single module (system)
+        run: timeout 60 ./mdoctor check -m system
+
+      - name: mdoctor clean (dry-run)
+        run: timeout 120 ./mdoctor clean
+
+      - name: mdoctor list
+        run: ./mdoctor list
+
+  test-bash32:
+    name: Test (Bash 3.2 compat)
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run test suite under Bash 3.2
+        run: timeout 300 docker run --rm -v "$PWD":/repo -w /repo bash:3.2 bash ./tests/run.sh
+
   release-sanity:
     name: Release Sanity
     runs-on: macos-latest
-    needs: [lint, test]
+    needs: [lint, test, test-linux]
 
     steps:
       - uses: actions/checkout@v4

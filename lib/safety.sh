@@ -214,6 +214,16 @@ is_protected_deletion_path() {
     esac
   fi
 
+  # Linux system-critical paths
+  case "$path" in
+    /boot|/boot/*|/proc|/proc/*|/sys|/sys/*|/dev|/dev/*|/run|/run/*)
+      return 0
+      ;;
+    /snap|/snap/*|/lost+found|/lib|/lib/*|/lib64|/lib64/*)
+      return 0
+      ;;
+  esac
+
   return 1
 }
 

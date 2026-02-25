@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # cleanup.sh
-# Generic manual cleanup script for macOS with progress + summary.
+# Generic manual cleanup script for macOS / Linux (Debian) with progress + summary.
 #
 # Default: DRY RUN (shows what would be deleted, nothing actually removed).
 # Usage:
@@ -19,6 +19,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source library modules
+source "${SCRIPT_DIR}/lib/platform.sh"
 source "${SCRIPT_DIR}/lib/common.sh"
 source "${SCRIPT_DIR}/lib/logging.sh"
 source "${SCRIPT_DIR}/lib/disk.sh"
@@ -33,16 +34,21 @@ source "${SCRIPT_DIR}/cleanups/downloads.sh"
 source "${SCRIPT_DIR}/cleanups/browser.sh"
 source "${SCRIPT_DIR}/cleanups/dev.sh"
 source "${SCRIPT_DIR}/cleanups/crash_reports.sh"
-source "${SCRIPT_DIR}/cleanups/ios_backups.sh"
-source "${SCRIPT_DIR}/cleanups/xcode.sh"
+if is_macos; then
+  source "${SCRIPT_DIR}/cleanups/ios_backups.sh"
+  source "${SCRIPT_DIR}/cleanups/xcode.sh"
+fi
 source "${SCRIPT_DIR}/cleanups/dev_caches.sh"
+if is_linux; then
+  source "${SCRIPT_DIR}/cleanups/apt.sh"
+fi
 
 ########################################
 # CONFIGURATION
 ########################################
 
 DRY_RUN=true
-LOGFILE="${HOME}/Library/Logs/macos_cleanup.log"
+LOGFILE="$(platform_log_dir)/mdoctor_cleanup.log"
 MDOCTOR_DEBUG="${MDOCTOR_DEBUG:-false}"
 # shellcheck disable=SC2034
 DAYS_OLD="${DAYS_OLD_OVERRIDE:-7}"
@@ -78,7 +84,11 @@ done
 ########################################
 
 PROGRESS_CURRENT=0
-PROGRESS_TOTAL=8 # update if you add/remove core steps below
+if is_macos; then
+	PROGRESS_TOTAL=8 # trash, caches, logs, downloads, crash_reports, ios_backups, xcode, dev_caches
+else
+	PROGRESS_TOTAL=7 # trash, caches, logs, downloads, crash_reports, dev_caches, apt
+fi
 
 # Alias for progress bar functions (they use STEP_CURRENT/STEP_TOTAL)
 # shellcheck disable=SC2034
@@ -154,15 +164,20 @@ cleanup_force_preflight_summary() {
 
 	echo
 	echo "${BOLD:-}${YELLOW:-}== Pre-flight Safety Summary (force mode) ==${RESET:-}"
-	echo "Modules touched: trash, caches, logs, downloads, crash_reports, ios_backups, xcode, dev_caches"
+
+	if is_macos; then
+		echo "Modules touched: trash, caches, logs, downloads, crash_reports, ios_backups, xcode, dev_caches"
+	else
+		echo "Modules touched: trash, caches, logs, downloads, crash_reports, dev_caches, apt"
+	fi
 	echo "Touched targets:"
 
 	local path sz
+
+	# Common cross-platform dev cache paths
 	for path in \
-		"${HOME}/.Trash" \
-		"${HOME}/Library/Caches" \
-		"${HOME}/Library/Developer/Xcode/DerivedData" \
-		"${HOME}/Library/Developer/CoreSimulator/Caches" \
+		"$(platform_trash_dir)" \
+		"$(platform_cache_dir)" \
 		"${HOME}/.npm" \
 		"${HOME}/.cache/pip" \
 		"${HOME}/.m2/repository" \
@@ -174,25 +189,53 @@ cleanup_force_preflight_summary() {
 		printf "  - %-45s (~%s)\n" "$path" "$(human_readable_kb "$sz")"
 	done
 
-	local logs_kb dl_kb crash_user_kb crash_sys_kb ios_kb archives_kb
-	logs_kb=$(cleanup_preflight_find_kb "${HOME}/Library/Logs" -type f -mtime "+${days}")
+	# macOS-only paths
+	if is_macos; then
+		for path in \
+			"${HOME}/Library/Developer/Xcode/DerivedData" \
+			"${HOME}/Library/Developer/CoreSimulator/Caches"; do
+			sz=$(cleanup_preflight_path_kb "$path")
+			total_kb=$((total_kb + sz))
+			printf "  - %-45s (~%s)\n" "$path" "$(human_readable_kb "$sz")"
+		done
+	fi
+
+	local logs_kb dl_kb
+	local log_dir
+	log_dir="$(platform_user_log_dir)"
+	logs_kb=$(cleanup_preflight_find_kb "$log_dir" -type f -mtime "+${days}")
 	dl_kb=$(cleanup_preflight_find_kb "${HOME}/Downloads" -type f -size +500M -mtime "+${days}")
-	crash_user_kb=$(cleanup_preflight_find_kb "${HOME}/Library/Logs/DiagnosticReports" -type f "(" -name "*.crash" -o -name "*.diag" -o -name "*.ips" ")" -mtime "+${days}")
-	crash_sys_kb=$(cleanup_preflight_find_kb "/Library/Logs/DiagnosticReports" -type f "(" -name "*.crash" -o -name "*.diag" -o -name "*.ips" ")" -mtime "+${days}")
-	ios_kb=$(cleanup_preflight_find_kb "${HOME}/Library/Application Support/MobileSync/Backup" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
-	archives_kb=$(cleanup_preflight_find_kb "${HOME}/Library/Developer/Xcode/Archives" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
+	total_kb=$((total_kb + logs_kb + dl_kb))
 
-	total_kb=$((total_kb + logs_kb + dl_kb + crash_user_kb + crash_sys_kb + ios_kb + archives_kb))
-
-	printf "  - %-45s (~%s)\n" "${HOME}/Library/Logs (files older than ${days}d)" "$(human_readable_kb "$logs_kb")"
+	printf "  - %-45s (~%s)\n" "${log_dir} (files older than ${days}d)" "$(human_readable_kb "$logs_kb")"
 	printf "  - %-45s (~%s)\n" "${HOME}/Downloads (>500MB, older than ${days}d)" "$(human_readable_kb "$dl_kb")"
-	printf "  - %-45s (~%s)\n" "${HOME}/Library/Logs/DiagnosticReports" "$(human_readable_kb "$crash_user_kb")"
-	printf "  - %-45s (~%s)\n" "/Library/Logs/DiagnosticReports" "$(human_readable_kb "$crash_sys_kb")"
-	printf "  - %-45s (~%s)\n" "${HOME}/Library/Application Support/MobileSync/Backup (> ${days}d)" "$(human_readable_kb "$ios_kb")"
-	printf "  - %-45s (~%s)\n" "${HOME}/Library/Developer/Xcode/Archives (> ${days}d)" "$(human_readable_kb "$archives_kb")"
+
+	# Platform-specific crash dirs
+	local crash_dir crash_kb
+	while IFS= read -r crash_dir; do
+		crash_kb=$(cleanup_preflight_find_kb "$crash_dir" -type f -mtime "+${days}")
+		total_kb=$((total_kb + crash_kb))
+		printf "  - %-45s (~%s)\n" "$crash_dir" "$(human_readable_kb "$crash_kb")"
+	done < <(platform_crash_dirs)
+
+	if is_macos; then
+		local ios_kb archives_kb
+		ios_kb=$(cleanup_preflight_find_kb "${HOME}/Library/Application Support/MobileSync/Backup" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
+		archives_kb=$(cleanup_preflight_find_kb "${HOME}/Library/Developer/Xcode/Archives" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
+		total_kb=$((total_kb + ios_kb + archives_kb))
+		printf "  - %-45s (~%s)\n" "${HOME}/Library/Application Support/MobileSync/Backup (> ${days}d)" "$(human_readable_kb "$ios_kb")"
+		printf "  - %-45s (~%s)\n" "${HOME}/Library/Developer/Xcode/Archives (> ${days}d)" "$(human_readable_kb "$archives_kb")"
+		echo "  - xcrun simctl delete unavailable (size estimate: n/a)"
+	fi
+
+	if is_linux; then
+		local apt_kb
+		apt_kb=$(cleanup_preflight_path_kb "/var/cache/apt/archives")
+		total_kb=$((total_kb + apt_kb))
+		printf "  - %-45s (~%s)\n" "/var/cache/apt/archives" "$(human_readable_kb "$apt_kb")"
+	fi
 
 	echo "  - docker system prune -af --volumes (size estimate: n/a)"
-	echo "  - xcrun simctl delete unavailable (size estimate: n/a)"
 	echo
 	echo "Estimated reclaim size: ~$(human_readable_kb "$total_kb")"
 	echo "${YELLOW:-}Note:${RESET:-} estimate is approximate and excludes dynamic command-based reclaim sizes."
@@ -225,7 +268,7 @@ main() {
 		cleanup_force_preflight_summary
 	fi
 
-	header "Starting macOS cleanup (DRY_RUN=${DRY_RUN})"
+	header "Starting cleanup (DRY_RUN=${DRY_RUN}, platform=$(platform_name))"
 	debug_log "cleanup.sh start dry_run=${DRY_RUN} days_old=${DAYS_OLD}"
 	log "$(disk_usage)"
 
@@ -246,14 +289,21 @@ main() {
 	step "Cleaning crash reports"
 	clean_crash_reports
 
-	step "Checking iOS backups"
-	clean_ios_backups
+	if is_macos; then
+		step "Checking iOS backups"
+		clean_ios_backups
 
-	step "Xcode cleanup"
-	clean_xcode
+		step "Xcode cleanup"
+		clean_xcode
+	fi
 
 	step "Developer caches cleanup"
 	clean_dev_caches
+
+	if is_linux; then
+		step "APT cache cleanup"
+		clean_apt_cache
+	fi
 
 	# OPTIONAL: Uncomment if you want these too (and bump PROGRESS_TOTAL)
 	# step "Cleaning browser caches"

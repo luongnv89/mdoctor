@@ -9,34 +9,62 @@ check_performance() {
   step "Performance & Memory"
 
   # Memory pressure level
-  local pressure
-  pressure=$(sysctl -n kern.memorystatus_vm_pressure_level 2>/dev/null || echo "")
-  if [ -n "$pressure" ]; then
-    case "$pressure" in
-      1) status_ok "Memory pressure: normal" ;;
-      2) status_warn "Memory pressure: elevated (warn)"
-         add_action "Memory pressure is elevated. Close unused applications to free RAM." ;;
-      4) status_fail "Memory pressure: critical"
-         add_action "Memory pressure is critical. Close applications immediately to prevent slowdowns." ;;
-      *) status_info "Memory pressure level: ${pressure}" ;;
-    esac
-  fi
+  if is_macos; then
+    local pressure
+    pressure=$(sysctl -n kern.memorystatus_vm_pressure_level 2>/dev/null || echo "")
+    if [ -n "$pressure" ]; then
+      case "$pressure" in
+        1) status_ok "Memory pressure: normal" ;;
+        2) status_warn "Memory pressure: elevated (warn)"
+           add_action "Memory pressure is elevated. Close unused applications to free RAM." ;;
+        4) status_fail "Memory pressure: critical"
+           add_action "Memory pressure is critical. Close applications immediately to prevent slowdowns." ;;
+        *) status_info "Memory pressure level: ${pressure}" ;;
+      esac
+    fi
 
-  # Swap usage
-  local swap_used
-  swap_used=$(sysctl -n vm.swapusage 2>/dev/null | awk -F'= ' '{for(i=1;i<=NF;i++) if($i~/used/) print $i}' | awk '{print $1}')
-  if [ -z "$swap_used" ]; then
-    swap_used=$(sysctl -n vm.swapusage 2>/dev/null | grep -o 'used = [0-9.]*M' | awk '{print $3}' || echo "")
-  fi
-  local swap_total
-  swap_total=$(sysctl -n vm.swapusage 2>/dev/null || echo "")
-  if [ -n "$swap_total" ]; then
-    status_info "Swap: ${swap_total}"
+    # Swap usage
+    local swap_total
+    swap_total=$(sysctl -n vm.swapusage 2>/dev/null || echo "")
+    if [ -n "$swap_total" ]; then
+      status_info "Swap: ${swap_total}"
+    fi
+  else
+    # Linux: memory pressure via MemAvailable ratio
+    if [ -r /proc/meminfo ]; then
+      local mem_total_kb mem_avail_kb
+      mem_total_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+      mem_avail_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+      if [ -n "$mem_total_kb" ] && [ -n "$mem_avail_kb" ] && (( mem_total_kb > 0 )); then
+        local avail_pct=$(( mem_avail_kb * 100 / mem_total_kb ))
+        if (( avail_pct < 10 )); then
+          status_fail "Memory pressure: critical (${avail_pct}% available)"
+          add_action "Memory pressure is critical. Close applications immediately."
+        elif (( avail_pct < 25 )); then
+          status_warn "Memory pressure: elevated (${avail_pct}% available)"
+          add_action "Memory pressure is elevated. Close unused applications to free RAM."
+        else
+          status_ok "Memory pressure: normal (${avail_pct}% available)"
+        fi
+      fi
+
+      # Swap
+      local swap_total_kb swap_used_kb
+      swap_total_kb=$(awk '/^SwapTotal:/ {print $2}' /proc/meminfo)
+      swap_used_kb=$(( swap_total_kb - $(awk '/^SwapFree:/ {print $2}' /proc/meminfo) ))
+      if (( swap_total_kb > 0 )); then
+        status_info "Swap: $(kb_to_human "$swap_used_kb") used / $(kb_to_human "$swap_total_kb") total"
+      fi
+    fi
   fi
 
   # Top 5 CPU-consuming processes
   local top_cpu
-  top_cpu=$(ps -arcwwxo "pid,%cpu,comm" 2>/dev/null | head -6 | tail -5)
+  if is_macos; then
+    top_cpu=$(ps -arcwwxo "pid,%cpu,comm" 2>/dev/null | head -6 | tail -5)
+  else
+    top_cpu=$(ps -eo pid,%cpu,comm --sort=-%cpu 2>/dev/null | head -6 | tail -5)
+  fi
   if [ -n "$top_cpu" ]; then
     status_info "Top CPU processes:"
     local line
@@ -53,7 +81,11 @@ check_performance() {
 
   # Top 5 memory-consuming processes
   local top_mem
-  top_mem=$(ps -amcwwxo "pid,rss,comm" 2>/dev/null | head -6 | tail -5)
+  if is_macos; then
+    top_mem=$(ps -amcwwxo "pid,rss,comm" 2>/dev/null | head -6 | tail -5)
+  else
+    top_mem=$(ps -eo pid,rss,comm --sort=-rss 2>/dev/null | head -6 | tail -5)
+  fi
   if [ -n "$top_mem" ]; then
     status_info "Top memory processes:"
     local line
@@ -114,8 +146,13 @@ check_performance() {
 
   # Load average assessment
   local cores load1
-  cores=$(sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
-  load1=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}')
+  if is_macos; then
+    cores=$(sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
+    load1=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}')
+  else
+    cores=$(nproc 2>/dev/null || echo 4)
+    load1=$(awk '{print $1}' /proc/loadavg 2>/dev/null || echo "")
+  fi
   if [ -n "$load1" ] && [ -n "$cores" ]; then
     local load_int
     load_int=$(awk -v l="$load1" 'BEGIN {printf "%d", l * 100}')

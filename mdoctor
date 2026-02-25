@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# mdoctor - Unified macOS Doctor CLI
+# mdoctor - Unified System Doctor CLI
 #
-# A single entry-point for checking, cleaning, fixing, and diagnosing macOS.
+# A single entry-point for checking, cleaning, fixing, and diagnosing macOS / Linux (Debian).
 #
 # Usage:
 #   mdoctor <command> [options]
@@ -66,6 +66,9 @@ resolve_script_dir() {
 
 MDOCTOR_DIR="$(resolve_script_dir)"
 
+# Source platform detection early (before any platform-conditional logic)
+source "${MDOCTOR_DIR}/lib/platform.sh"
+
 # Runtime diagnostics flag (can be enabled per-command via --debug)
 MDOCTOR_DEBUG="${MDOCTOR_DEBUG:-false}"
 
@@ -99,7 +102,7 @@ banner() {
   echo ' | |  | | |_| | (_) | (__| || (_) | |   '
   echo ' |_|  |_|____/ \___/ \___|\__\___/|_|   '
   echo "${RESET}"
-  echo "${DIM}  macOS Doctor v${MDOCTOR_VERSION_FULL} - Keep your Mac healthy${RESET}"
+  echo "${DIM}  System Doctor v${MDOCTOR_VERSION_FULL} - Keep your system healthy${RESET}"
   echo
 }
 
@@ -174,16 +177,18 @@ cmd_clean_preflight_summary_module() {
 
   case "$module" in
     trash)
-      add_path "Trash" "${HOME}/.Trash"
+      add_path "Trash" "$(platform_trash_dir)"
       ;;
     caches)
-      add_path "User caches" "${HOME}/Library/Caches"
+      add_path "User caches" "$(platform_cache_dir)"
       ;;
     logs)
+      local log_dir
+      log_dir="$(platform_user_log_dir)"
       local logs_kb=0
-      logs_kb=$(md_find_size_kb "${HOME}/Library/Logs" -type f -mtime "+${days}")
+      logs_kb=$(md_find_size_kb "$log_dir" -type f -mtime "+${days}")
       total_kb=$((total_kb + logs_kb))
-      printf "  - %-30s %s (~%s)\n" "Old logs (>${days}d)" "${HOME}/Library/Logs" "$(md_human_kb "$logs_kb")"
+      printf "  - %-30s %s (~%s)\n" "Old logs (>${days}d)" "$log_dir" "$(md_human_kb "$logs_kb")"
       ;;
     downloads)
       local dl_kb=0
@@ -192,28 +197,35 @@ cmd_clean_preflight_summary_module() {
       printf "  - %-30s %s (~%s)\n" "Large downloads (>${days}d)" "${HOME}/Downloads" "$(md_human_kb "$dl_kb")"
       ;;
     browser)
-      add_path "Chrome cache" "${HOME}/Library/Caches/Google/Chrome"
-      add_path "Safari cache" "${HOME}/Library/Caches/com.apple.Safari"
-      add_path "Firefox cache" "${HOME}/Library/Caches/Firefox"
+      if is_macos; then
+        add_path "Chrome cache" "${HOME}/Library/Caches/Google/Chrome"
+        add_path "Safari cache" "${HOME}/Library/Caches/com.apple.Safari"
+        add_path "Firefox cache" "${HOME}/Library/Caches/Firefox"
+      else
+        add_path "Chrome cache" "${HOME}/.cache/google-chrome"
+        add_path "Firefox cache" "${HOME}/.cache/mozilla/firefox"
+        add_path "Chromium cache" "${HOME}/.cache/chromium"
+      fi
       ;;
     dev)
-      add_path "pip cache" "${HOME}/Library/Caches/pip"
-      add_path "pip cache (XDG)" "${HOME}/.cache/pip"
+      add_path "pip cache" "${HOME}/.cache/pip"
       add_path "npm cache" "${HOME}/.npm"
-      add_path "npm cache (Library)" "${HOME}/Library/Caches/npm"
-      add_path "Yarn cache" "${HOME}/Library/Caches/Yarn"
-      add_path "pnpm store" "${HOME}/Library/pnpm/store"
-      echo "  - Homebrew cleanup/autoremove (size estimate: n/a)"
+      if is_macos; then
+        add_path "pip cache (Library)" "${HOME}/Library/Caches/pip"
+        add_path "npm cache (Library)" "${HOME}/Library/Caches/npm"
+        add_path "Yarn cache" "${HOME}/Library/Caches/Yarn"
+        add_path "pnpm store" "${HOME}/Library/pnpm/store"
+        echo "  - Homebrew cleanup/autoremove (size estimate: n/a)"
+      fi
       echo "  - Docker prune (size estimate: n/a)"
       ;;
     crash_reports)
-      local cr_user=0
-      local cr_sys=0
-      cr_user=$(md_find_size_kb "${HOME}/Library/Logs/DiagnosticReports" -type f "(" -name "*.crash" -o -name "*.diag" -o -name "*.ips" ")" -mtime "+${days}")
-      cr_sys=$(md_find_size_kb "/Library/Logs/DiagnosticReports" -type f "(" -name "*.crash" -o -name "*.diag" -o -name "*.ips" ")" -mtime "+${days}")
-      total_kb=$((total_kb + cr_user + cr_sys))
-      printf "  - %-30s %s (~%s)\n" "User crash reports" "${HOME}/Library/Logs/DiagnosticReports" "$(md_human_kb "$cr_user")"
-      printf "  - %-30s %s (~%s)\n" "System crash reports" "/Library/Logs/DiagnosticReports" "$(md_human_kb "$cr_sys")"
+      local crash_dir crash_kb
+      while IFS= read -r crash_dir; do
+        crash_kb=$(md_find_size_kb "$crash_dir" -type f -mtime "+${days}")
+        total_kb=$((total_kb + crash_kb))
+        printf "  - %-30s %s (~%s)\n" "Crash reports" "$crash_dir" "$(md_human_kb "$crash_kb")"
+      done < <(platform_crash_dirs)
       ;;
     ios_backups)
       local ios_kb=0
@@ -230,6 +242,10 @@ cmd_clean_preflight_summary_module() {
       add_path "CoreSimulator caches" "${HOME}/Library/Developer/CoreSimulator/Caches"
       echo "  - xcrun simctl delete unavailable (size estimate: n/a)"
       ;;
+    apt)
+      add_path "APT cache" "/var/cache/apt/archives"
+      echo "  - apt autoremove (size estimate: n/a)"
+      ;;
     dev_caches)
       add_path "npm cache" "${HOME}/.npm"
       add_path "pip cache" "${HOME}/.cache/pip"
@@ -237,7 +253,9 @@ cmd_clean_preflight_summary_module() {
       add_path "Gradle caches" "${HOME}/.gradle/caches"
       add_path "Go module cache" "${HOME}/go/pkg/mod/cache"
       add_path "Cargo cache" "${HOME}/.cargo/registry/cache"
-      add_path "Xcode DerivedData" "${HOME}/Library/Developer/Xcode/DerivedData"
+      if is_macos; then
+        add_path "Xcode DerivedData" "${HOME}/Library/Developer/Xcode/DerivedData"
+      fi
       echo "  - Docker prune (size estimate: n/a)"
       ;;
   esac
@@ -318,7 +336,7 @@ cmd_check() {
       return 1
     fi
 
-    # Source libraries
+    # Source libraries (platform.sh already loaded at top level)
     source "${MDOCTOR_DIR}/lib/common.sh"
     source "${MDOCTOR_DIR}/lib/logging.sh"
     source "${MDOCTOR_DIR}/lib/disk.sh"
@@ -370,6 +388,7 @@ cmd_check() {
       git_config)  check_git_config ;;
       containers)  check_containers ;;
       storage)     check_storage ;;
+      apt)         check_apt ;;
     esac
 
     # Stop spinner after single-module check
@@ -460,7 +479,13 @@ cmd_clean() {
 
   echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
 
-  local -a cleanup_modules=(trash caches logs downloads browser dev crash_reports ios_backups xcode dev_caches)
+  local -a cleanup_modules=(trash caches logs downloads browser dev crash_reports dev_caches)
+  if is_macos; then
+    cleanup_modules+=(ios_backups xcode)
+  fi
+  if is_linux; then
+    cleanup_modules+=(apt)
+  fi
 
   is_valid_cleanup_module() {
     local needle="$1"
@@ -483,6 +508,7 @@ cmd_clean() {
       ios_backups)   echo "Old iOS backups" ;;
       xcode)         echo "Xcode DerivedData, archives, simulators" ;;
       dev_caches)    echo "Dependency/package manager caches" ;;
+      apt)           echo "APT package cache cleanup" ;;
       *)             echo "" ;;
     esac
   }
@@ -499,7 +525,7 @@ cmd_clean() {
       return 1
     fi
 
-    # Source libraries
+    # Source libraries (platform.sh already loaded at top level)
     source "${MDOCTOR_DIR}/lib/common.sh"
     source "${MDOCTOR_DIR}/lib/logging.sh"
     source "${MDOCTOR_DIR}/lib/disk.sh"
@@ -517,7 +543,7 @@ cmd_clean() {
     # Set globals (used by sourced cleanup modules via run_cmd)
     # shellcheck disable=SC2034
     DRY_RUN=true
-    LOGFILE="${HOME}/Library/Logs/macos_cleanup.log"
+    LOGFILE="$(platform_log_dir)/mdoctor_cleanup.log"
     # shellcheck disable=SC2034
     DAYS_OLD="${DAYS_OLD_OVERRIDE:-7}"
 
@@ -558,6 +584,7 @@ cmd_clean() {
       ios_backups)    clean_ios_backups || module_rc=$? ;;
       xcode)          clean_xcode || module_rc=$? ;;
       dev_caches)     clean_dev_caches || module_rc=$? ;;
+      apt)            clean_apt_cache || module_rc=$? ;;
     esac
 
     progress_stop
@@ -695,19 +722,24 @@ cmd_fix() {
       --help|-h)
         echo "Usage: mdoctor fix [--debug] <target>"
         echo
-        echo "Apply common fixes for macOS issues."
+        echo "Apply common fixes for system issues."
         echo
         echo "Targets:"
-        echo "  homebrew      [LOW]  Fix Homebrew issues (update, cleanup, doctor)"
         echo "  dns           [LOW]  Flush DNS cache"
         echo "  disk          [LOW]  Free disk space (cleanup + recommendations)"
-        echo "  permissions   [MED]  Reset disk permissions and rebuild"
-        echo "  spotlight     [MED]  Rebuild Spotlight index"
-        echo "  bluetooth     [LOW]  Reset Bluetooth module"
-        echo "  audio         [LOW]  Restart Core Audio daemon"
-        echo "  wifi          [LOW]  Renew DHCP, flush DNS, cycle Wi-Fi"
-        echo "  timemachine   [MED]  Verify Time Machine backup integrity"
-        echo "  all           Run all fixes"
+        if is_macos; then
+          echo "  homebrew      [LOW]  Fix Homebrew issues (update, cleanup, doctor)"
+          echo "  permissions   [MED]  Reset disk permissions and rebuild"
+          echo "  spotlight     [MED]  Rebuild Spotlight index"
+          echo "  bluetooth     [LOW]  Reset Bluetooth module"
+          echo "  audio         [LOW]  Restart Core Audio daemon"
+          echo "  wifi          [LOW]  Renew DHCP, flush DNS, cycle Wi-Fi"
+          echo "  timemachine   [MED]  Verify Time Machine backup integrity"
+        fi
+        if is_linux; then
+          echo "  apt           [LOW]  Fix APT package issues (update, upgrade, autoremove)"
+        fi
+        echo "  all           Run all applicable fixes"
         echo
         echo "Options:"
         echo "  --debug       Enable structured debug diagnostics"
@@ -736,9 +768,7 @@ cmd_fix() {
   if [ -z "$target" ]; then
     echo "Usage: mdoctor fix [--debug] <target>"
     echo
-    echo "Available targets: homebrew, dns, disk, permissions, spotlight,"
-    echo "  bluetooth, audio, wifi, timemachine, all"
-    echo "Run 'mdoctor fix --help' for details."
+    echo "Run 'mdoctor fix --help' for available targets."
     return 1
   fi
 
@@ -746,7 +776,7 @@ cmd_fix() {
   local fix_file="${MDOCTOR_DIR}/fixes/${target}.sh"
 
   case "$target" in
-    homebrew|dns|disk|permissions|spotlight|bluetooth|audio|wifi|timemachine)
+    homebrew|dns|disk|permissions|spotlight|bluetooth|audio|wifi|timemachine|apt)
       if [ -f "$fix_file" ]; then
         # shellcheck source=/dev/null
         source "$fix_file"
@@ -761,9 +791,17 @@ cmd_fix() {
       fi
       ;;
     all)
+      local -a fix_targets=(dns disk)
+      if is_macos; then
+        fix_targets+=(homebrew permissions spotlight bluetooth audio wifi)
+      fi
+      if is_linux; then
+        fix_targets+=(apt)
+      fi
+
       local t
       local all_rc=0
-      for t in homebrew dns disk permissions spotlight bluetooth audio wifi; do
+      for t in "${fix_targets[@]}"; do
         local f="${MDOCTOR_DIR}/fixes/${t}.sh"
         if [ -f "$f" ]; then
           # shellcheck source=/dev/null
@@ -782,8 +820,7 @@ cmd_fix() {
       ;;
     *)
       error "Unknown fix target: ${target}"
-      echo "Available targets: homebrew, dns, disk, permissions, spotlight,"
-      echo "  bluetooth, audio, wifi, timemachine, all"
+      echo "Run 'mdoctor fix --help' for available targets."
       return 1
       ;;
   esac
@@ -797,29 +834,28 @@ cmd_info() {
   echo "${BOLD}${BLUE}== System Information ==${RESET}"
   echo
 
-  local product_name product_version build arch uptime_str
-  product_name=$(sw_vers -productName 2>/dev/null || echo "Unknown")
-  product_version=$(sw_vers -productVersion 2>/dev/null || echo "Unknown")
-  build=$(sw_vers -buildVersion 2>/dev/null || echo "Unknown")
+  local arch uptime_str
   arch=$(uname -m 2>/dev/null || echo "Unknown")
   uptime_str=$(uptime | sed 's/.*up *//; s/, *[0-9]* user.*//')
 
-  printf "  %-20s %s\n" "OS:" "${product_name} ${product_version} (${build})"
+  printf "  %-20s %s\n" "OS:" "$(platform_name)"
   printf "  %-20s %s\n" "Architecture:" "${arch}"
   printf "  %-20s %s\n" "Hostname:" "$(hostname)"
   printf "  %-20s %s\n" "Uptime:" "${uptime_str}"
   printf "  %-20s %s\n" "User:" "$(whoami)"
   printf "  %-20s %s\n" "Shell:" "${SHELL}"
 
-  # Disk (use Data volume on macOS APFS for accurate usage)
+  # Disk
   local disk_root="/"
-  [ -d /System/Volumes/Data ] && disk_root="/System/Volumes/Data"
+  if is_macos; then
+    [ -d /System/Volumes/Data ] && disk_root="/System/Volumes/Data"
+  fi
   local disk_info
   disk_info=$(df -h "$disk_root" | awk 'NR==2 {print $3" used / "$2" total ("$5" used)"}')
   printf "  %-20s %s\n" "Disk:" "${disk_info}"
 
   # Memory
-  if command -v vm_stat >/dev/null 2>&1; then
+  if is_macos && command -v vm_stat >/dev/null 2>&1; then
     local page_size active_pages wired_pages
     page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096)
     active_pages=$(vm_stat | awk '/Pages active/ {gsub("\\.","",$3); print $3}')
@@ -835,22 +871,45 @@ cmd_info() {
     used_gb=$(awk -v kb="$used_kb" 'BEGIN {printf "%.1f", kb/1048576}')
 
     printf "  %-20s %s\n" "Memory:" "${used_gb} GB used / ${total_gb} GB total"
+  elif is_linux && [ -r /proc/meminfo ]; then
+    local mem_total mem_avail mem_used_kb total_gb used_gb
+    mem_total=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+    mem_avail=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
+    mem_used_kb=$((mem_total - mem_avail))
+    total_gb=$(awk -v m="$mem_total" 'BEGIN {printf "%.0f", m/1048576}')
+    used_gb=$(awk -v kb="$mem_used_kb" 'BEGIN {printf "%.1f", kb/1048576}')
+
+    printf "  %-20s %s\n" "Memory:" "${used_gb} GB used / ${total_gb} GB total"
   fi
 
   # CPU
   local cpu_brand
-  cpu_brand=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "Unknown")
+  if is_macos; then
+    cpu_brand=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "Unknown")
+  elif [ -r /proc/cpuinfo ]; then
+    cpu_brand=$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2 | sed 's/^ *//')
+    [ -z "$cpu_brand" ] && cpu_brand="Unknown"
+  else
+    cpu_brand="Unknown"
+  fi
   printf "  %-20s %s\n" "CPU:" "${cpu_brand}"
 
   # Load
   local load
-  load=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2", "$3", "$4}')
+  if is_macos; then
+    load=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2", "$3", "$4}')
+  else
+    load=$(awk '{print $1", "$2", "$3}' /proc/loadavg 2>/dev/null || echo "Unknown")
+  fi
   printf "  %-20s %s\n" "Load (1/5/15m):" "${load}"
 
   # Key tools
   echo
   echo "${BOLD}  Installed Tools:${RESET}"
-  local tools=("brew" "git" "node" "npm" "python3" "pip3" "docker" "code" "java")
+  local -a tools=("git" "node" "npm" "python3" "pip3" "docker" "code" "java")
+  if is_macos; then
+    tools=("brew" "${tools[@]}")
+  fi
   for tool in "${tools[@]}"; do
     if command -v "$tool" >/dev/null 2>&1; then
       local ver
@@ -879,30 +938,39 @@ cmd_info() {
 cmd_list() {
   source "${MDOCTOR_DIR}/lib/metadata.sh"
 
-  # Register all modules for listing
+  # Register all modules for listing (platform-filtered)
   # Check modules — Hardware
-  register_module check battery    Hardware SAFE check_battery     "Battery health, cycle count, capacity"
+  if is_macos; then
+    register_module check battery    Hardware SAFE check_battery     "Battery health, cycle count, capacity"
+  fi
   register_module check hardware   Hardware SAFE check_hardware    "CPU, RAM, model, thermals"
-  register_module check bluetooth  Hardware SAFE check_bluetooth   "Bluetooth power state & devices"
-  register_module check usb        Hardware SAFE check_usb         "Connected USB devices"
+  if is_macos; then
+    register_module check bluetooth  Hardware SAFE check_bluetooth   "Bluetooth power state & devices"
+    register_module check usb        Hardware SAFE check_usb         "Connected USB devices"
+  fi
   # Check modules — System
   register_module check system      System SAFE check_system        "OS version, memory, load average"
   register_module check disk        System SAFE check_disk          "Disk usage & health"
-  register_module check updates     System SAFE check_updates_basic "macOS updates & Spotlight"
-  register_module check security    System SAFE check_security      "Firewall, FileVault, SIP, Gatekeeper"
-  register_module check startup     System SAFE check_startup       "Launch agents, daemons, login items"
+  register_module check updates     System SAFE check_updates_basic "System updates"
+  register_module check security    System SAFE check_security      "Firewall, encryption, security settings"
+  register_module check startup     System SAFE check_startup       "Startup services & agents"
   register_module check network     System SAFE check_network       "Connectivity, DNS, Wi-Fi signal"
   register_module check performance System SAFE check_performance   "Memory pressure, CPU, processes"
   register_module check storage     System SAFE check_storage       "Large files & app storage analysis"
   # Check modules — Software
-  register_module check homebrew   Software SAFE check_homebrew    "Homebrew installation & packages"
+  if is_macos; then
+    register_module check homebrew   Software SAFE check_homebrew    "Homebrew installation & packages"
+  fi
   register_module check node       Software SAFE check_node_npm    "Node.js & npm"
   register_module check python     Software SAFE check_python      "Python & pip"
-  register_module check devtools   Software SAFE check_dev_tools   "Xcode CLT, Git, Docker"
+  register_module check devtools   Software SAFE check_dev_tools   "Developer tools, Git, Docker"
   register_module check shell      Software SAFE check_shell_configs "Shell config syntax"
   register_module check apps       Software SAFE check_apps        "Crash reports, application health"
   register_module check git_config Software SAFE check_git_config  "Git & SSH configuration"
   register_module check containers Software SAFE check_containers  "Docker & container health"
+  if is_linux; then
+    register_module check apt      Software SAFE check_apt         "APT package manager health"
+  fi
 
   # Cleanup modules
   register_module cleanup trash         System   LOW clean_trash               "Empty Trash"
@@ -910,35 +978,47 @@ cmd_list() {
   register_module cleanup logs          System   LOW clean_logs                "Old log files"
   register_module cleanup downloads     System   LOW clean_downloads_large_files "Large files in Downloads"
   register_module cleanup crash_reports System   LOW clean_crash_reports       "Old crash/diagnostic reports"
-  register_module cleanup ios_backups   System   LOW clean_ios_backups         "Old iOS device backups"
+  if is_macos; then
+    register_module cleanup ios_backups   System   LOW clean_ios_backups         "Old iOS device backups"
+  fi
   register_module cleanup browser       Software LOW clean_browser_caches      "Browser cache cleanup"
   register_module cleanup dev           Software LOW clean_dev_stuff           "Developer tool caches"
-  register_module cleanup xcode         Software LOW clean_xcode              "Xcode DerivedData, archives, simulators"
+  if is_macos; then
+    register_module cleanup xcode         Software LOW clean_xcode              "Xcode DerivedData, archives, simulators"
+  fi
   register_module cleanup dev_caches    Software LOW clean_dev_caches         "Developer dependency & package caches"
+  if is_linux; then
+    register_module cleanup apt          System   LOW clean_apt_cache          "APT package cache cleanup"
+  fi
 
   # Fix modules
-  register_module fix homebrew    Software LOW  fix_homebrew    "Update, upgrade, cleanup Homebrew"
   register_module fix dns         System   LOW  fix_dns         "Flush DNS cache"
   register_module fix disk        System   LOW  fix_disk        "Free disk space"
-  register_module fix permissions System   MED  fix_permissions "Reset file permissions"
-  register_module fix spotlight   System   MED  fix_spotlight   "Rebuild Spotlight index"
-  register_module fix bluetooth   Hardware LOW  fix_bluetooth   "Reset Bluetooth module"
-  register_module fix audio       System   LOW  fix_audio       "Restart Core Audio daemon"
-  register_module fix wifi        System   LOW  fix_wifi        "Renew DHCP, flush DNS, cycle Wi-Fi"
-  register_module fix timemachine System   MED  fix_timemachine "Verify Time Machine backups"
+  if is_macos; then
+    register_module fix homebrew    Software LOW  fix_homebrew    "Update, upgrade, cleanup Homebrew"
+    register_module fix permissions System   MED  fix_permissions "Reset file permissions"
+    register_module fix spotlight   System   MED  fix_spotlight   "Rebuild Spotlight index"
+    register_module fix bluetooth   Hardware LOW  fix_bluetooth   "Reset Bluetooth module"
+    register_module fix audio       System   LOW  fix_audio       "Restart Core Audio daemon"
+    register_module fix wifi        System   LOW  fix_wifi        "Renew DHCP, flush DNS, cycle Wi-Fi"
+    register_module fix timemachine System   MED  fix_timemachine "Verify Time Machine backups"
+  fi
+  if is_linux; then
+    register_module fix apt        System   LOW  fix_apt         "Fix APT packages (update, upgrade, autoremove)"
+  fi
 
-  echo "${BOLD}${BLUE}== All Modules ==${RESET}"
+  echo "${BOLD}${BLUE}== All Modules ($(platform_name)) ==${RESET}"
   echo
 
-  echo "${BOLD}Check Modules (21 — all read-only):${RESET}"
+  echo "${BOLD}Check Modules (${_MOD_COUNT:-0} — all read-only):${RESET}"
   list_modules_by_category check
   echo
 
-  echo "${BOLD}Cleanup Modules (10):${RESET}"
+  echo "${BOLD}Cleanup Modules:${RESET}"
   list_modules_by_category cleanup
   echo
 
-  echo "${BOLD}Fix Targets (9):${RESET}"
+  echo "${BOLD}Fix Targets:${RESET}"
   list_modules_by_category fix
   echo
 }
@@ -1123,17 +1203,32 @@ cmd_help() {
   printf "  ${GREEN}%-12s${RESET} %s\n" "help"      "Show this help message"
   echo
   echo "${BOLD}Check Modules${RESET} (all [SAFE] read-only):"
-  echo "  Hardware:  battery, hardware, bluetooth, usb"
-  echo "  System:    system, disk, updates, security, startup, network, performance, storage"
-  echo "  Software:  homebrew, node, python, devtools, shell, apps, git_config, containers"
+  if is_macos; then
+    echo "  Hardware:  battery, hardware, bluetooth, usb"
+    echo "  System:    system, disk, updates, security, startup, network, performance, storage"
+    echo "  Software:  homebrew, node, python, devtools, shell, apps, git_config, containers"
+  else
+    echo "  Hardware:  hardware"
+    echo "  System:    system, disk, updates, security, startup, network, performance, storage"
+    echo "  Software:  node, python, devtools, shell, apps, git_config, containers, apt"
+  fi
   echo
   echo "${BOLD}Cleanup Modules${RESET} (all [LOW] risk):"
-  echo "  System:    trash, caches, logs, downloads, crash_reports, ios_backups"
-  echo "  Software:  browser, dev, xcode, dev_caches"
+  if is_macos; then
+    echo "  System:    trash, caches, logs, downloads, crash_reports, ios_backups"
+    echo "  Software:  browser, dev, xcode, dev_caches"
+  else
+    echo "  System:    trash, caches, logs, downloads, crash_reports, apt"
+    echo "  Software:  browser, dev, dev_caches"
+  fi
   echo
   echo "${BOLD}Fix Targets${RESET}:"
-  echo "  [LOW]  homebrew, dns, disk, bluetooth, audio, wifi"
-  echo "  [MED]  permissions, spotlight, timemachine"
+  if is_macos; then
+    echo "  [LOW]  homebrew, dns, disk, bluetooth, audio, wifi"
+    echo "  [MED]  permissions, spotlight, timemachine"
+  else
+    echo "  [LOW]  dns, disk, apt"
+  fi
   echo
   echo "${BOLD}Examples:${RESET}"
   echo "  mdoctor check                    # Full health audit (21 checks)"
