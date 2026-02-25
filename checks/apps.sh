@@ -13,8 +13,13 @@ check_apps() {
 
   # Recent crash reports (last 7 days)
   local crash_dirs=()
-  [ -d "${HOME}/Library/Logs/DiagnosticReports" ] && crash_dirs+=("${HOME}/Library/Logs/DiagnosticReports")
-  [ -d "/Library/Logs/DiagnosticReports" ] && crash_dirs+=("/Library/Logs/DiagnosticReports")
+  if is_macos; then
+    [ -d "${HOME}/Library/Logs/DiagnosticReports" ] && crash_dirs+=("${HOME}/Library/Logs/DiagnosticReports")
+    [ -d "/Library/Logs/DiagnosticReports" ] && crash_dirs+=("/Library/Logs/DiagnosticReports")
+  else
+    [ -d "/var/crash" ] && crash_dirs+=("/var/crash")
+    [ -d "${HOME}/.local/share/apport" ] && crash_dirs+=("${HOME}/.local/share/apport")
+  fi
 
   local total_crashes=0
   local crash_apps=""
@@ -28,7 +33,6 @@ check_apps() {
       count=$(echo "$crashes" | wc -l | tr -d ' ')
       total_crashes=$((total_crashes + count))
 
-      # Parse app names from crash filenames (format: AppName_date.crash)
       local app_names
       app_names=$(echo "$crashes" | xargs -I{} basename {} 2>/dev/null | sed 's/[-_].*//' | sort | uniq -c | sort -rn | head -5)
       if [ -n "$app_names" ]; then
@@ -46,7 +50,6 @@ check_apps() {
     status_ok "No crash reports in the last 7 days."
   fi
 
-  # Top crashing apps
   if [ -n "$crash_apps" ]; then
     status_info "Top crashing apps:"
     local line
@@ -61,10 +64,18 @@ check_apps() {
     done <<< "$crash_apps"
   fi
 
-  # Application count (fast method using mdfind)
-  local app_count
-  app_count=$(mdfind "kMDItemContentType == 'com.apple.application-bundle'" 2>/dev/null | wc -l | tr -d ' ')
-  if [ -n "$app_count" ] && (( app_count > 0 )); then
-    status_info "Installed applications: approximately ${app_count}"
+  # Application count
+  if is_macos; then
+    local app_count
+    app_count=$(mdfind "kMDItemContentType == 'com.apple.application-bundle'" 2>/dev/null | wc -l | tr -d ' ')
+    if [ -n "$app_count" ] && (( app_count > 0 )); then
+      status_info "Installed applications: approximately ${app_count}"
+    fi
+  else
+    if command -v dpkg >/dev/null 2>&1; then
+      local pkg_count
+      pkg_count=$(dpkg -l 2>/dev/null | grep -c '^ii' || echo 0)
+      status_info "Installed packages (dpkg): ${pkg_count}"
+    fi
   fi
 }

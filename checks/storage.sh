@@ -71,46 +71,67 @@ check_storage() {
   # ── Category 1: Application Data ──
   status_info "Scanning application data..."
 
-  local categories=("Application Support" "Caches" "Containers" "Group Containers")
-  for cat in "${categories[@]}"; do
-    local cat_dir="${HOME}/Library/${cat}"
-    [ -d "$cat_dir" ] || continue
+  if is_macos; then
+    local categories=("Application Support" "Caches" "Containers" "Group Containers")
+    for cat in "${categories[@]}"; do
+      local cat_dir="${HOME}/Library/${cat}"
+      [ -d "$cat_dir" ] || continue
 
-    local cat_size_kb
-    cat_size_kb=$(_dir_size_kb "$cat_dir")
+      local cat_size_kb
+      cat_size_kb=$(_dir_size_kb "$cat_dir")
 
-    if (( cat_size_kb > 102400 )); then  # > 100 MB
-      local cat_hr
-      cat_hr=$(kb_to_human "$cat_size_kb")
-      grand_total_kb=$((grand_total_kb + cat_size_kb))
-      found_any=true
+      if (( cat_size_kb > 102400 )); then
+        local cat_hr
+        cat_hr=$(kb_to_human "$cat_size_kb")
+        grand_total_kb=$((grand_total_kb + cat_size_kb))
+        found_any=true
 
-      if (( cat_size_kb >= 1048576 )); then  # > 1 GB
-        # shellcheck disable=SC2088
-        status_warn "~/Library/${cat}: ${cat_hr}"
-      else
-        # shellcheck disable=SC2088
-        status_info "~/Library/${cat}: ${cat_hr}"
-      fi
-
-      # Show top 3 subdirs
-      while IFS=$'\t' read -r sz path; do
-        [ -z "$sz" ] && continue
-        local sub_hr
-        sub_hr=$(kb_to_human "$sz")
-        local sub_name
-        sub_name=$(basename "$path")
-        if (( sz >= 1048576 )); then
-          status_warn "  └─ ${sub_name}: ${sub_hr}"
-        elif (( sz >= 102400 )); then
-          status_info "  └─ ${sub_name}: ${sub_hr}"
+        if (( cat_size_kb >= 1048576 )); then
+          # shellcheck disable=SC2088
+          status_warn "~/Library/${cat}: ${cat_hr}"
+        else
+          # shellcheck disable=SC2088
+          status_info "~/Library/${cat}: ${cat_hr}"
         fi
-      done < <(_scan_dir_for_hogs "$cat_dir" 3)
-    fi
-  done
+
+        while IFS=$'\t' read -r sz path; do
+          [ -z "$sz" ] && continue
+          local sub_hr
+          sub_hr=$(kb_to_human "$sz")
+          local sub_name
+          sub_name=$(basename "$path")
+          if (( sz >= 1048576 )); then
+            status_warn "  └─ ${sub_name}: ${sub_hr}"
+          elif (( sz >= 102400 )); then
+            status_info "  └─ ${sub_name}: ${sub_hr}"
+          fi
+        done < <(_scan_dir_for_hogs "$cat_dir" 3)
+      fi
+    done
+  else
+    # Linux: XDG directories
+    local xdg_dirs=("${HOME}/.cache" "${HOME}/.local/share" "${HOME}/.config")
+    for xdg_dir in "${xdg_dirs[@]}"; do
+      [ -d "$xdg_dir" ] || continue
+      local xdg_size_kb
+      xdg_size_kb=$(_dir_size_kb "$xdg_dir")
+      if (( xdg_size_kb > 102400 )); then
+        local xdg_hr xdg_label
+        xdg_hr=$(kb_to_human "$xdg_size_kb")
+        xdg_label="${xdg_dir/#$HOME/~}"
+        grand_total_kb=$((grand_total_kb + xdg_size_kb))
+        found_any=true
+        if (( xdg_size_kb >= 1048576 )); then
+          status_warn "${xdg_label}: ${xdg_hr}"
+        else
+          status_info "${xdg_label}: ${xdg_hr}"
+        fi
+      fi
+    done
+  fi
 
   # ── Category 2: Applications ──
-  if [ -d "/Applications" ]; then
+  if is_macos && [ -d "/Applications" ]; then
     status_info "Scanning /Applications..."
     local app_total=0
     while IFS=$'\t' read -r sz path; do
@@ -123,7 +144,7 @@ check_storage() {
       if (( sz >= 1048576 )); then
         status_warn "  ${app_name}: ${app_hr}"
         found_any=true
-      elif (( sz >= 524288 )); then  # > 512 MB
+      elif (( sz >= 524288 )); then
         status_info "  ${app_name}: ${app_hr}"
         found_any=true
       fi
@@ -134,7 +155,12 @@ check_storage() {
   # ── Category 3: Dev Tools ──
   status_info "Scanning developer tools..."
 
-  local dev_dirs=("${HOME}/Library/Developer" "${HOME}/.docker")
+  local dev_dirs=()
+  if is_macos; then
+    dev_dirs=("${HOME}/Library/Developer" "${HOME}/.docker")
+  else
+    dev_dirs=("${HOME}/.docker")
+  fi
   for dev_dir in "${dev_dirs[@]}"; do
     if [ -d "$dev_dir" ]; then
       local dev_sz
@@ -155,18 +181,20 @@ check_storage() {
     fi
   done
 
-  # ── Category 4: Cloud Storage ──
-  local cloud_dir="${HOME}/Library/CloudStorage"
-  if [ -d "$cloud_dir" ]; then
-    local cloud_sz
-    cloud_sz=$(_dir_size_kb "$cloud_dir")
-    if (( cloud_sz > 102400 )); then
-      local cloud_hr
-      cloud_hr=$(kb_to_human "$cloud_sz")
-      grand_total_kb=$((grand_total_kb + cloud_sz))
-      found_any=true
-      # shellcheck disable=SC2088
-      status_info "~/Library/CloudStorage: ${cloud_hr}"
+  # ── Category 4: Cloud Storage (macOS only) ──
+  if is_macos; then
+    local cloud_dir="${HOME}/Library/CloudStorage"
+    if [ -d "$cloud_dir" ]; then
+      local cloud_sz
+      cloud_sz=$(_dir_size_kb "$cloud_dir")
+      if (( cloud_sz > 102400 )); then
+        local cloud_hr
+        cloud_hr=$(kb_to_human "$cloud_sz")
+        grand_total_kb=$((grand_total_kb + cloud_sz))
+        found_any=true
+        # shellcheck disable=SC2088
+        status_info "~/Library/CloudStorage: ${cloud_hr}"
+      fi
     fi
   fi
 

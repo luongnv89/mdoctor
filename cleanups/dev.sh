@@ -17,23 +17,36 @@ clean_dev_stuff() {
   fi
 
   # Common language/tool caches (pip, npm, yarn, pnpm)
-  if [ -d "${HOME}/Library/Caches/pip" ]; then
-    safe_remove_children "${HOME}/Library/Caches/pip" || true
-  fi
+  # Cross-platform paths
   if [ -d "${HOME}/.cache/pip" ]; then
     safe_remove_children "${HOME}/.cache/pip" || true
   fi
   if [ -d "${HOME}/.npm" ]; then
     safe_remove_children "${HOME}/.npm" || true
   fi
-  if [ -d "${HOME}/Library/Caches/npm" ]; then
-    safe_remove_children "${HOME}/Library/Caches/npm" || true
-  fi
-  if [ -d "${HOME}/Library/Caches/Yarn" ]; then
-    safe_remove_children "${HOME}/Library/Caches/Yarn" || true
-  fi
-  if [ -d "${HOME}/Library/pnpm/store" ]; then
-    safe_remove_children "${HOME}/Library/pnpm/store" || true
+
+  # macOS-specific paths
+  if is_macos; then
+    if [ -d "${HOME}/Library/Caches/pip" ]; then
+      safe_remove_children "${HOME}/Library/Caches/pip" || true
+    fi
+    if [ -d "${HOME}/Library/Caches/npm" ]; then
+      safe_remove_children "${HOME}/Library/Caches/npm" || true
+    fi
+    if [ -d "${HOME}/Library/Caches/Yarn" ]; then
+      safe_remove_children "${HOME}/Library/Caches/Yarn" || true
+    fi
+    if [ -d "${HOME}/Library/pnpm/store" ]; then
+      safe_remove_children "${HOME}/Library/pnpm/store" || true
+    fi
+  else
+    # Linux XDG paths
+    if [ -d "${HOME}/.cache/yarn" ]; then
+      safe_remove_children "${HOME}/.cache/yarn" || true
+    fi
+    if [ -d "${HOME}/.local/share/pnpm/store" ]; then
+      safe_remove_children "${HOME}/.local/share/pnpm/store" || true
+    fi
   fi
 
   # Docker (removes ALL unused containers/images/volumes)

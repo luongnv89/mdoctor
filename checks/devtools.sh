@@ -5,14 +5,29 @@
 #
 
 check_dev_tools() {
-  step "Xcode Command Line Tools, Git & Docker"
+  step "Developer Tools, Git & Docker"
 
-  # Xcode Command Line Tools
-  if xcode-select -p >/dev/null 2>&1; then
-    status_ok "Xcode Command Line Tools installed: $(xcode-select -p)"
+  # Build tools
+  if is_macos; then
+    if xcode-select -p >/dev/null 2>&1; then
+      status_ok "Xcode Command Line Tools installed: $(xcode-select -p)"
+    else
+      status_warn "Xcode Command Line Tools not found."
+      add_action "Install Xcode Command Line Tools: run 'xcode-select --install'."
+    fi
   else
-    status_warn "Xcode Command Line Tools not found."
-    add_action "Install Xcode Command Line Tools: run 'xcode-select --install'."
+    # Linux: build-essential, gcc, make
+    if command -v gcc >/dev/null 2>&1; then
+      status_ok "GCC: $(gcc --version 2>/dev/null | head -n1)"
+    elif command -v cc >/dev/null 2>&1; then
+      status_ok "C compiler: $(cc --version 2>/dev/null | head -n1)"
+    else
+      status_info "No C compiler found."
+      add_action "Install build tools: sudo apt install build-essential"
+    fi
+    if command -v make >/dev/null 2>&1; then
+      status_ok "Make: $(make --version 2>/dev/null | head -n1)"
+    fi
   fi
 
   # Git
@@ -20,7 +35,11 @@ check_dev_tools() {
     status_ok "Git: $(git --version)"
   else
     status_warn "Git not found."
-    add_action "Install Git via Xcode CLT ('xcode-select --install') or 'brew install git'."
+    if is_macos; then
+      add_action "Install Git via Xcode CLT ('xcode-select --install') or 'brew install git'."
+    else
+      add_action "Install Git: sudo apt install git"
+    fi
   fi
 
   # Docker

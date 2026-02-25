@@ -7,7 +7,8 @@
 # On macOS APFS, df / reports the read-only system snapshot which shows
 # very little usage. The real user data lives on /System/Volumes/Data.
 _disk_root() {
-  if [ -d /System/Volumes/Data ]; then
+  # macOS APFS: real user data lives on the Data volume
+  if is_macos 2>/dev/null && [ -d /System/Volumes/Data ]; then
     echo /System/Volumes/Data
   else
     echo /

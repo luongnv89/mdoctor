@@ -33,7 +33,9 @@ run_benchmark() {
   echo "${BOLD}1. Disk I/O${RESET}"
 
   local disk_file="${tmp_dir}/bench_disk"
-  local bs="1m"
+  local bs
+  # macOS dd uses lowercase 'm' for megabytes; Linux uses uppercase 'M'
+  if is_macos 2>/dev/null; then bs="1m"; else bs="1M"; fi
   local count=256  # 256 MB
 
   # Write test
@@ -47,7 +49,9 @@ run_benchmark() {
 
   # Read test (clear disk cache first if possible)
   local r_start r_end r_elapsed r_speed
-  purge 2>/dev/null || true
+  if is_macos 2>/dev/null; then
+    purge 2>/dev/null || true
+  fi
   r_start=$(_bench_time)
   dd if="$disk_file" of=/dev/null bs="$bs" 2>/dev/null
   r_end=$(_bench_time)
@@ -92,7 +96,7 @@ run_benchmark() {
 
   # Compress 10MB random data via gzip
   local cpu_file="${tmp_dir}/bench_cpu"
-  dd if=/dev/urandom of="$cpu_file" bs=1m count=10 2>/dev/null
+  dd if=/dev/urandom of="$cpu_file" bs="$bs" count=10 2>/dev/null
 
   local c_start c_end c_elapsed
   c_start=$(_bench_time)

@@ -17,6 +17,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source library modules
+source "${SCRIPT_DIR}/lib/platform.sh"
 source "${SCRIPT_DIR}/lib/common.sh"
 source "${SCRIPT_DIR}/lib/logging.sh"
 source "${SCRIPT_DIR}/lib/disk.sh"
@@ -25,12 +26,16 @@ source "${SCRIPT_DIR}/lib/metadata.sh"
 source "${SCRIPT_DIR}/lib/history.sh"
 
 # Source check modules — Hardware
-source "${SCRIPT_DIR}/checks/battery.sh"
+if is_macos; then
+  source "${SCRIPT_DIR}/checks/battery.sh"
+fi
 source "${SCRIPT_DIR}/checks/hardware.sh"
-source "${SCRIPT_DIR}/checks/bluetooth.sh"
-source "${SCRIPT_DIR}/checks/usb.sh"
+if is_macos; then
+  source "${SCRIPT_DIR}/checks/bluetooth.sh"
+  source "${SCRIPT_DIR}/checks/usb.sh"
+fi
 
-# Source check modules — System (existing + new)
+# Source check modules — System
 source "${SCRIPT_DIR}/checks/system.sh"
 source "${SCRIPT_DIR}/checks/disk.sh"
 source "${SCRIPT_DIR}/checks/updates.sh"
@@ -40,8 +45,10 @@ source "${SCRIPT_DIR}/checks/network.sh"
 source "${SCRIPT_DIR}/checks/performance.sh"
 source "${SCRIPT_DIR}/checks/storage.sh"
 
-# Source check modules — Software (existing + new)
-source "${SCRIPT_DIR}/checks/homebrew.sh"
+# Source check modules — Software
+if is_macos; then
+  source "${SCRIPT_DIR}/checks/homebrew.sh"
+fi
 source "${SCRIPT_DIR}/checks/node.sh"
 source "${SCRIPT_DIR}/checks/python.sh"
 source "${SCRIPT_DIR}/checks/devtools.sh"
@@ -49,36 +56,48 @@ source "${SCRIPT_DIR}/checks/shell.sh"
 source "${SCRIPT_DIR}/checks/apps.sh"
 source "${SCRIPT_DIR}/checks/git_config.sh"
 source "${SCRIPT_DIR}/checks/containers.sh"
+if is_linux; then
+  source "${SCRIPT_DIR}/checks/apt.sh"
+fi
 
 ########################################
 # MODULE REGISTRATION
 ########################################
 
 # Hardware checks
-register_module check battery   Hardware SAFE check_battery     "Battery health, cycle count, capacity"
+if is_macos; then
+  register_module check battery   Hardware SAFE check_battery     "Battery health, cycle count, capacity"
+fi
 register_module check hardware  Hardware SAFE check_hardware    "CPU, RAM, model, thermals"
-register_module check bluetooth Hardware SAFE check_bluetooth   "Bluetooth power state & devices"
-register_module check usb       Hardware SAFE check_usb         "Connected USB devices"
+if is_macos; then
+  register_module check bluetooth Hardware SAFE check_bluetooth   "Bluetooth power state & devices"
+  register_module check usb       Hardware SAFE check_usb         "Connected USB devices"
+fi
 
 # System checks
 register_module check system      System SAFE check_system        "OS version, memory, load average"
 register_module check disk        System SAFE check_disk          "Disk usage & health"
-register_module check updates     System SAFE check_updates_basic "macOS updates & Spotlight"
-register_module check security    System SAFE check_security      "Firewall, FileVault, SIP, Gatekeeper"
-register_module check startup     System SAFE check_startup       "Launch agents, daemons, login items"
+register_module check updates     System SAFE check_updates_basic "System updates"
+register_module check security    System SAFE check_security      "Firewall, encryption, security settings"
+register_module check startup     System SAFE check_startup       "Startup services & agents"
 register_module check network     System SAFE check_network       "Connectivity, DNS, Wi-Fi signal"
 register_module check performance System SAFE check_performance   "Memory pressure, CPU, processes"
 register_module check storage     System SAFE check_storage       "Large files & app storage analysis"
 
 # Software checks
-register_module check homebrew   Software SAFE check_homebrew    "Homebrew installation & packages"
+if is_macos; then
+  register_module check homebrew   Software SAFE check_homebrew    "Homebrew installation & packages"
+fi
 register_module check node       Software SAFE check_node_npm    "Node.js & npm"
 register_module check python     Software SAFE check_python      "Python & pip"
-register_module check devtools   Software SAFE check_dev_tools   "Xcode CLT, Git, Docker"
+register_module check devtools   Software SAFE check_dev_tools   "Developer tools, Git, Docker"
 register_module check shell      Software SAFE check_shell_configs "Shell config syntax"
 register_module check apps       Software SAFE check_apps        "Crash reports, application health"
 register_module check git_config Software SAFE check_git_config  "Git & SSH configuration"
 register_module check containers Software SAFE check_containers  "Docker & container health"
+if is_linux; then
+  register_module check apt      Software SAFE check_apt         "APT package manager health"
+fi
 
 ########################################
 # GLOBAL STATE
@@ -87,7 +106,7 @@ register_module check containers Software SAFE check_containers  "Docker & conta
 # shellcheck disable=SC2034
 STEP_CURRENT=0
 # shellcheck disable=SC2034
-STEP_TOTAL=21  # 4 hardware + 8 system + 9 software
+STEP_TOTAL="${_MOD_COUNT:-21}"  # dynamically set from registered module count
 
 ACTIONS=()
 # shellcheck disable=SC2034
@@ -114,17 +133,23 @@ main() {
   # Initialize markdown report
   md_init
 
-  section_title "macOS Doctor – Full System Health Audit"
+  section_title "mdoctor – Full System Health Audit"
   echo "${INFO} This script is read-only: it does NOT change anything, only reports status."
-  md_append "- ℹ️ This script is read-only: it does **not** modify your system."
+  md_append "- This script is read-only: it does **not** modify your system."
   echo
 
   # Hardware checks
-  debug_log "doctor.sh phase=hardware checks=4"
-  check_battery
+  if is_macos; then
+    debug_log "doctor.sh phase=hardware checks=4"
+    check_battery
+  else
+    debug_log "doctor.sh phase=hardware checks=1"
+  fi
   check_hardware
-  check_bluetooth
-  check_usb
+  if is_macos; then
+    check_bluetooth
+    check_usb
+  fi
 
   # System checks
   debug_log "doctor.sh phase=system checks=8"
@@ -138,8 +163,12 @@ main() {
   check_storage
 
   # Software checks
-  debug_log "doctor.sh phase=software checks=9"
-  check_homebrew
+  if is_macos; then
+    debug_log "doctor.sh phase=software checks=9"
+    check_homebrew
+  else
+    debug_log "doctor.sh phase=software"
+  fi
   check_node_npm
   check_python
   check_dev_tools
@@ -147,6 +176,9 @@ main() {
   check_apps
   check_git_config
   check_containers
+  if is_linux; then
+    check_apt
+  fi
 
   # Stop spinner from last check step
   progress_stop

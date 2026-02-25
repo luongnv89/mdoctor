@@ -10,10 +10,7 @@ clean_crash_reports() {
   header "Cleaning crash reports older than ${days} days"
 
   local dir
-  for dir in \
-    "${HOME}/Library/Logs/DiagnosticReports" \
-    "/Library/Logs/DiagnosticReports"; do
-
+  while IFS= read -r dir; do
     if [ ! -d "$dir" ]; then
       log "Directory not found: ${dir} — skipping."
       continue
@@ -21,5 +18,5 @@ clean_crash_reports() {
 
     log "Scanning ${dir} for .crash, .diag, .ips files older than ${days} days..."
     safe_find_delete "$dir" -type f "(" -name "*.crash" -o -name "*.diag" -o -name "*.ips" ")" -mtime "+${days}" || true
-  done
+  done < <(platform_crash_dirs)
 }
