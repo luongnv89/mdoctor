@@ -102,7 +102,7 @@ banner() {
   echo ' | |  | | |_| | (_) | (__| || (_) | |   '
   echo ' |_|  |_|____/ \___/ \___|\__\___/|_|   '
   echo "${RESET}"
-  echo "${DIM}  System Doctor v${MDOCTOR_VERSION_FULL} - Keep your system healthy${RESET}"
+  echo "${DIM}  Machine Doctor v${MDOCTOR_VERSION_FULL} - Keep your system healthy${RESET}"
   echo
 }
 
