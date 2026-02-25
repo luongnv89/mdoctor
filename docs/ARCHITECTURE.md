@@ -2,14 +2,15 @@
 
 ## Overview
 
-mdoctor is a modular Bash CLI for macOS diagnostics, cleanup, fixes, and maintenance updates.
+mdoctor is a modular Bash CLI for macOS and Debian-based Linux diagnostics, cleanup, fixes, and maintenance.
 
 Core properties:
 - CLI-first command router (`mdoctor`)
-- engine scripts for full workflows (`doctor.sh`, `cleanup.sh`)
-- module-based checks/cleanups/fixes
-- centralized safety + logging primitives
-- test/lint/CI quality gates
+- Platform-aware module loading via `lib/platform.sh` (macOS, Debian, Ubuntu, etc.)
+- Engine scripts for full workflows (`doctor.sh`, `cleanup.sh`)
+- Module-based checks/cleanups/fixes with platform-conditional sourcing
+- Centralized safety + logging primitives
+- Test/lint/CI quality gates (macOS, Linux, Bash 3.2)
 
 ## Component Diagram
 
@@ -40,6 +41,18 @@ graph TD
   CI --> RELEASE_SANITY[installer/uninstaller isolated-path sanity]
 ```
 
+## Platform Abstraction
+
+`lib/platform.sh` is sourced first by every entry point. It detects the OS at startup and exports:
+
+| Global | Example values |
+|--------|---------------|
+| `MDOCTOR_PLATFORM` | `macos`, `linux` |
+| `MDOCTOR_DISTRO` | `""` (macOS), `ubuntu`, `debian`, `pop` |
+| `MDOCTOR_OS_NAME` | `macOS 15.3`, `Ubuntu 24.04 LTS` |
+
+Predicates (`is_macos`, `is_linux`, `is_debian`) gate platform-specific module loading and logic branches. Platform-aware path helpers (`platform_trash_dir`, `platform_cache_dir`, `platform_log_dir`, `platform_crash_dirs`) abstract OS differences in file locations.
+
 ## Layer Responsibilities
 
 ### 1) CLI Layer (`mdoctor`)
@@ -55,8 +68,10 @@ graph TD
 ### 3) Module Layer (`checks/*`, `cleanups/*`, `fixes/*`)
 - Each file is focused on one concern
 - Modules are sourced (shared state, no extra process boundaries)
+- Platform-specific modules are conditionally sourced (e.g., `homebrew.sh` on macOS, `apt.sh` on Linux)
 
 ### 4) Library Layer (`lib/*`)
+- `platform.sh` OS/distro detection predicates (`is_macos`, `is_linux`, `is_debian`) and platform-aware paths
 - `common.sh` UI/status/progress helpers
 - `logging.sh` report + operation session logging
 - `safety.sh` guarded deletion APIs and destructive error taxonomy

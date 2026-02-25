@@ -3,13 +3,14 @@
 </p>
 
 <p align="center">
-  <strong>Keep your Mac healthy.</strong><br>
-  A comprehensive CLI to diagnose, clean, fix, and benchmark your macOS system. Pure Bash, zero dependencies.
+  <strong>Machine Doctor -- Keep your system healthy.</strong><br>
+  A comprehensive CLI to diagnose, clean, fix, and benchmark your macOS and Linux system. Pure Bash, zero dependencies.
 </p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-  <a href="https://www.apple.com/macos/"><img src="https://img.shields.io/badge/platform-macOS-lightgrey.svg" alt="macOS"></a>
+  <a href="https://www.apple.com/macos/"><img src="https://img.shields.io/badge/platform-macOS-brightgreen.svg" alt="macOS"></a>
+  <a href="https://ubuntu.com/"><img src="https://img.shields.io/badge/platform-Linux%20(Debian%2FUbuntu)-brightgreen.svg" alt="Linux"></a>
   <a href="https://www.gnu.org/software/bash/"><img src="https://img.shields.io/badge/shell-bash-green.svg" alt="Bash"></a>
 </p>
 
@@ -21,9 +22,12 @@
 - **Modular** -- run everything or target a single module
 - **Actionable** -- provides a health score and specific next steps to fix issues
 - **Trackable** -- JSON output, historical scores with trend detection
-- **Zero dependencies** -- pure Bash, uses only standard macOS tools
+- **Cross-platform** -- macOS and Debian-based Linux (Ubuntu, Pop!_OS, Mint, etc.)
+- **Zero dependencies** -- pure Bash, uses only standard system tools
 
 ## Quick Install
+
+Works on macOS and Debian-based Linux (Ubuntu, Pop!_OS, Mint, Raspbian, etc.):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/luongnv89/mdoctor/main/install.sh | bash
@@ -35,6 +39,8 @@ Or clone manually:
 git clone https://github.com/luongnv89/mdoctor.git ~/.mdoctor
 cd ~/.mdoctor && ./install.sh
 ```
+
+> **Linux prerequisite:** `git` must be installed (`sudo apt install git`).
 
 ## Usage
 
@@ -82,11 +88,11 @@ mdoctor check --json | python3 -m json.tool
 
 #### Check Modules (all `[SAFE]` — read-only)
 
-| Category | Modules |
-|----------|---------|
-| **Hardware** | `battery`, `hardware`, `bluetooth`, `usb` |
-| **System** | `system`, `disk`, `updates`, `security`, `startup`, `network`, `performance`, `storage` |
-| **Software** | `homebrew`, `node`, `python`, `devtools`, `shell`, `apps`, `git_config`, `containers` |
+| Category | macOS | Linux (Debian) |
+|----------|-------|----------------|
+| **Hardware** | `battery`, `hardware`, `bluetooth`, `usb` | `hardware` |
+| **System** | `system`, `disk`, `updates`, `security`, `startup`, `network`, `performance`, `storage` | `system`, `disk`, `updates`, `security`, `startup`, `network`, `performance`, `storage` |
+| **Software** | `homebrew`, `node`, `python`, `devtools`, `shell`, `apps`, `git_config`, `containers` | `node`, `python`, `devtools`, `shell`, `apps`, `git_config`, `containers`, `apt` |
 
 The health check:
 - Scores your system 0-100
@@ -128,14 +134,16 @@ mdoctor clean --interactive --force
 
 #### Cleanup Modules (all `[LOW]` risk)
 
-| Category | Modules |
-|----------|---------|
-| **System** | `trash`, `caches`, `logs`, `downloads`, `crash_reports`, `ios_backups` |
-| **Software** | `browser`, `dev`, `xcode`, `dev_caches` |
+| Category | macOS | Linux (Debian) |
+|----------|-------|----------------|
+| **System** | `trash`, `caches`, `logs`, `downloads`, `crash_reports`, `ios_backups` | `trash`, `caches`, `logs`, `downloads`, `crash_reports`, `apt` |
+| **Software** | `browser`, `dev`, `xcode`, `dev_caches` | `browser`, `dev`, `dev_caches` |
 
 ### Fix
 
-Apply common fixes for macOS issues:
+Apply common fixes for system issues:
+
+**macOS:**
 
 ```bash
 mdoctor fix homebrew       # [LOW]  Update & fix Homebrew
@@ -147,6 +155,15 @@ mdoctor fix wifi           # [LOW]  Renew DHCP, flush DNS, cycle Wi-Fi
 mdoctor fix permissions    # [MED]  Reset file permissions
 mdoctor fix spotlight      # [MED]  Rebuild Spotlight index
 mdoctor fix timemachine    # [MED]  Verify Time Machine backup
+mdoctor fix all            # Run all fixes
+```
+
+**Linux (Debian):**
+
+```bash
+mdoctor fix dns            # [LOW]  Flush DNS cache (systemd-resolved)
+mdoctor fix disk           # [LOW]  Free disk space
+mdoctor fix apt            # [LOW]  Fix APT packages (update, upgrade, autoremove)
 mdoctor fix all            # Run all fixes
 ```
 
@@ -251,6 +268,7 @@ mdoctor/
 ├── doctor.sh            # Health audit engine (21 checks)
 ├── cleanup.sh           # Cleanup engine (10 modules)
 ├── lib/                 # Shared libraries
+│   ├── platform.sh      # OS/distro detection (macOS, Debian, Ubuntu, etc.)
 │   ├── common.sh        # Colors, icons, UI helpers, progress spinner
 │   ├── logging.sh       # Logging + operation session records
 │   ├── disk.sh          # Disk utilities
@@ -267,20 +285,21 @@ mdoctor/
 │   ├── usb.sh           # USB device audit
 │   ├── system.sh        # OS, memory, load average
 │   ├── disk.sh          # Disk usage
-│   ├── updates.sh       # macOS updates
-│   ├── security.sh      # Firewall, FileVault, SIP, Gatekeeper
-│   ├── startup.sh       # Launch agents & login items
+│   ├── updates.sh       # System updates (macOS + APT)
+│   ├── security.sh      # Firewall, encryption, security settings
+│   ├── startup.sh       # Startup services & agents
 │   ├── network.sh       # Connectivity, DNS, Wi-Fi signal
 │   ├── performance.sh   # Memory pressure, CPU, processes
 │   ├── storage.sh       # Large files & storage analysis
 │   ├── homebrew.sh      # Homebrew checks
 │   ├── node.sh          # Node.js & npm
 │   ├── python.sh        # Python & pip
-│   ├── devtools.sh      # Xcode CLT, Git, Docker
+│   ├── devtools.sh      # Developer tools, Git, Docker
 │   ├── shell.sh         # Shell config syntax
 │   ├── apps.sh          # Crash reports, app health
 │   ├── git_config.sh    # Git & SSH config
-│   └── containers.sh    # Docker & containers
+│   ├── containers.sh    # Docker & containers
+│   └── apt.sh           # APT package manager health (Linux)
 ├── cleanups/            # Cleanup modules (10)
 │   ├── trash.sh         # Trash cleanup
 │   ├── caches.sh        # User caches
@@ -291,7 +310,8 @@ mdoctor/
 │   ├── crash_reports.sh # Old crash/diagnostic reports
 │   ├── ios_backups.sh   # Old iOS device backups
 │   ├── xcode.sh         # Xcode DerivedData, archives, simulators
-│   └── dev_caches.sh    # Developer dependency & package caches
+│   ├── dev_caches.sh    # Developer dependency & package caches
+│   └── apt.sh           # APT package cache cleanup (Linux)
 ├── fixes/               # Fix modules (9)
 │   ├── homebrew.sh      # Homebrew update & repair
 │   ├── dns.sh           # Flush DNS cache
@@ -301,7 +321,8 @@ mdoctor/
 │   ├── bluetooth.sh     # Reset Bluetooth
 │   ├── audio.sh         # Restart Core Audio
 │   ├── wifi.sh          # Fix Wi-Fi connection
-│   └── timemachine.sh   # Time Machine repair
+│   ├── timemachine.sh   # Time Machine repair (macOS)
+│   └── apt.sh           # Fix APT packages (Linux)
 ├── scripts/
 │   └── lint_shell.sh    # Shared ShellCheck policy entrypoint (local + CI)
 ├── tests/

@@ -2,7 +2,7 @@
 
 ## Distribution
 
-mdoctor is distributed via GitHub. Users install it with a single command:
+mdoctor is distributed via GitHub and supports macOS and Debian-based Linux (Debian, Ubuntu, Pop!_OS, Linux Mint, Raspbian, Elementary OS, Zorin, Kali). Users install it with a single command:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/luongnv89/mdoctor/main/install.sh | bash
@@ -10,10 +10,13 @@ curl -fsSL https://raw.githubusercontent.com/luongnv89/mdoctor/main/install.sh |
 
 ## What the Installer Does
 
-1. Clones the repo to `~/.mdoctor` (shallow clone, `--depth 1`)
-2. Makes the main scripts executable
-3. Creates a symlink: `/usr/local/bin/mdoctor` -> `~/.mdoctor/mdoctor`
-4. Verifies the installation
+1. Detects the platform (macOS or Debian-based Linux via `uname -s` and `/etc/os-release`)
+2. Clones the repo to `~/.mdoctor` (shallow clone, `--depth 1`)
+3. Makes the main scripts executable
+4. Creates a symlink: `/usr/local/bin/mdoctor` -> `~/.mdoctor/mdoctor`
+5. Verifies the installation
+
+> **Linux prerequisite:** `git` must be installed (`sudo apt install git`). Non-Debian distros are rejected with an informative error message.
 
 ## Updating
 

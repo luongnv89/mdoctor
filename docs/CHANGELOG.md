@@ -6,12 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Linux (Debian/Ubuntu) cross-platform support:
+  - Platform detection layer (`lib/platform.sh`) with OS/distro predicates and platform-aware paths
+  - Linux-specific modules: `checks/apt.sh`, `cleanups/apt.sh`, `fixes/apt.sh`
+  - Platform-conditional module loading throughout `doctor.sh`, `cleanup.sh`, and `mdoctor`
+  - Installer support for Debian-family distros (Ubuntu, Pop!_OS, Mint, Raspbian, etc.)
+- End-to-end safe mode test (`tests/test_e2e_safe_mode.sh`) — 25+ assertions across all CLI commands
+- CI: Linux/Ubuntu test job, Bash 3.2 compatibility job, timeout guards
+- Cross-platform test suite (trash path, module assertions adapt to platform)
+
 ### Fixed
 - CI lint script compatibility with Bash 3.2 (removed `mapfile` dependency in `scripts/lint_shell.sh`)
 - Test harness portability on macOS runners for temporary directories in cleanup tests
 - Bash 3.2 empty-array edge cases:
   - whitelist matching in `lib/safety.sh`
   - full cleanup dispatch in `mdoctor clean`
+- Pre-commit shellcheck severity aligned to match `lint_shell.sh` policy
+- Executable permissions on 7 files with shebangs
 
 ## [2.1.0] - 2026-02-24
 

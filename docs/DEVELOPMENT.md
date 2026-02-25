@@ -2,8 +2,8 @@
 
 ## Prerequisites
 
-- macOS (any recent version)
-- Bash 3.2+ (ships with macOS)
+- macOS (any recent version) **or** Debian-based Linux (Ubuntu, Pop!_OS, Mint, etc.)
+- Bash 3.2+ (ships with macOS; install via `sudo apt install bash` on Linux)
 - Git
 
 No build tools, package managers, or runtimes are required. mdoctor is pure Bash.
@@ -52,7 +52,9 @@ Run shell lint policy (high-severity gate):
 
 CI lanes map to local commands:
 - **Lint** → `./scripts/lint_shell.sh` + repository `bash -n` syntax pass
-- **Test** → `./tests/run.sh` + smoke commands (`mdoctor help/version/info/check/clean`)
+- **Test (macOS)** → `./tests/run.sh` + smoke commands (`mdoctor help/version/info/check/clean`)
+- **Test (Linux)** → same regression suite + smoke commands on Ubuntu
+- **Test (Bash 3.2)** → `docker run ... bash:3.2 bash ./tests/run.sh`
 - **Release Sanity** → isolated installer/uninstaller flow using env-overridden temp paths
 
 Optional Bash 3.2 parity check (useful before CI changes):
@@ -71,9 +73,15 @@ MDOCTOR_BIN_DIR="$(mktemp -d)" \
 ./install.sh
 ```
 
+Run tests in an Ubuntu container (useful for cross-platform validation):
+
+```bash
+docker run --rm -v "$PWD":/repo -w /repo ubuntu:latest bash ./tests/run.sh
+```
+
 ## Testing Individual Modules
 
-You can test a single check or cleanup module in isolation:
+You can test a single check or cleanup module in isolation. Available modules vary by platform — run `mdoctor list` to see what's available on your system:
 
 ```bash
 # Test a specific check

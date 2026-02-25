@@ -23,7 +23,7 @@ mdoctor cleanup uses multiple safety layers:
 
 5. **Operational traceability**
    - Persistent operation log: `~/.config/mdoctor/operations.log`
-   - Cleanup runtime log: `~/Library/Logs/macos_cleanup.log`
+   - Cleanup runtime log: `~/Library/Logs/macos_cleanup.log` (macOS) or `~/.local/share/mdoctor/mdoctor_cleanup.log` (Linux)
 
 ## Safe Operating Checklist
 
@@ -83,13 +83,13 @@ If you suspect an unwanted cleanup:
 
 2. **Inspect operation logs**
    - `~/.config/mdoctor/operations.log`
-   - `~/Library/Logs/macos_cleanup.log`
+   - `~/Library/Logs/macos_cleanup.log` (macOS) or `~/.local/share/mdoctor/mdoctor_cleanup.log` (Linux)
 
 3. **Check recoverable locations first**
-   - For user files, check `~/.Trash` and app-level recovery features.
+   - For user files, check the trash (`~/.Trash` on macOS, `~/.local/share/Trash/files` on Linux) and app-level recovery features.
 
 4. **Restore from backups**
-   - Use Time Machine or other backups for non-recoverable deletions.
+   - Use Time Machine (macOS), Timeshift (Linux), or other backups for non-recoverable deletions.
 
 5. **Harden before next run**
    - Add missing protected paths to `cleanup_whitelist`
@@ -102,10 +102,22 @@ If you suspect an unwanted cleanup:
 - Reclaim estimates are approximate (some command-driven cleanup cannot be sized in advance).
 - Some system paths are intentionally blocked by safety policy.
 - Certain macOS-protected areas (SIP/read-only zones) may report permission-like failures.
+- On Linux, SELinux or AppArmor restrictions may cause similar permission-like failures.
 - Scope config currently targets stale `node_modules` behavior under `dev_caches` (not every cleanup module).
+
+## Platform Differences
+
+| Aspect | macOS | Linux (Debian) |
+|--------|-------|----------------|
+| Trash location | `~/.Trash` | `~/.local/share/Trash/files` |
+| User cache dir | `~/Library/Caches` | `~/.cache` |
+| User log dir | `~/Library/Logs` | `~/.local/share/mdoctor` |
+| Crash reports | `~/Library/Logs/DiagnosticReports` | `/var/crash`, `~/.local/share/apport` |
+| Protected paths | SIP/read-only system volume | `/boot`, `/proc`, `/sys`, `/dev`, SELinux |
+| Config dir | `~/.config/mdoctor/` | `~/.config/mdoctor/` (same) |
 
 ## Recommended Defaults
 
 - Prefer module-targeted cleanup over full-force cleanup.
-- Keep a current backup strategy (Time Machine strongly recommended).
+- Keep a current backup strategy (Time Machine on macOS, Timeshift or rsync on Linux).
 - Use `mdoctor update` regularly for safety improvements.
