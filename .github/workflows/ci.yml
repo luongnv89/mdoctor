@@ -37,7 +37,7 @@ jobs:
           done
 
   test:
-    name: Test
+    name: Test (macOS)
     runs-on: macos-latest
     needs: lint
 
@@ -67,6 +67,17 @@ jobs:
 
       - name: mdoctor check single module
         run: ./mdoctor check -m network
+
+  test-bash32:
+    name: Test (Bash 3.2 compat)
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run test suite under Bash 3.2
+        run: docker run --rm -v "$PWD":/repo -w /repo bash:3.2 bash ./tests/run.sh
 
   release-sanity:
     name: Release Sanity

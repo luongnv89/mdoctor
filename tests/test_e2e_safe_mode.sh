@@ -12,7 +12,7 @@ source "$ROOT_DIR/tests/helpers/assert.sh"
 TMPDIR_TEST="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_TEST"' EXIT
 
-cd "$ROOT_DIR"
+cd "$ROOT_DIR" || exit 1
 
 # Track failures across subtests
 _e2e_failures=0
