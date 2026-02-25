@@ -80,7 +80,7 @@ jobs:
         run: chmod +x mdoctor doctor.sh cleanup.sh tests/run.sh tests/test_*.sh tests/helpers/assert.sh
 
       - name: Run shell regression harness
-        run: ./tests/run.sh
+        run: timeout 300 ./tests/run.sh
 
       - name: mdoctor help
         run: ./mdoctor help
@@ -91,14 +91,11 @@ jobs:
       - name: mdoctor info
         run: ./mdoctor info
 
-      - name: mdoctor check (full health audit)
-        run: ./mdoctor check
+      - name: mdoctor check single module (system)
+        run: timeout 60 ./mdoctor check -m system
 
       - name: mdoctor clean (dry-run)
-        run: ./mdoctor clean
-
-      - name: mdoctor check single module
-        run: ./mdoctor check -m network
+        run: timeout 120 ./mdoctor clean
 
       - name: mdoctor list
         run: ./mdoctor list
@@ -112,7 +109,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run test suite under Bash 3.2
-        run: docker run --rm -v "$PWD":/repo -w /repo bash:3.2 bash ./tests/run.sh
+        run: timeout 300 docker run --rm -v "$PWD":/repo -w /repo bash:3.2 bash ./tests/run.sh
 
   release-sanity:
     name: Release Sanity

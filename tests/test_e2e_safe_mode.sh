@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 #
 # test_e2e_safe_mode.sh
-# End-to-end test exercising every safe mdoctor command on macOS.
+# End-to-end test exercising every safe mdoctor command.
 # All operations are read-only or dry-run — nothing is modified on the system.
+# Runs on macOS and Linux; long-running commands are guarded with timeouts.
 #
 set -uo pipefail
 
@@ -14,6 +15,18 @@ trap 'rm -rf "$TMPDIR_TEST"' EXIT
 
 cd "$ROOT_DIR" || exit 1
 
+# Skip in minimal environments (e.g. bash:3.2 Docker) that lack basic tools
+if ! command -v uname >/dev/null 2>&1 || ! command -v find >/dev/null 2>&1; then
+  echo "SKIP: e2e test requires a full OS environment" >&2
+  exit 0
+fi
+
+_IS_MACOS=false
+[ "$(uname -s)" = "Darwin" ] && _IS_MACOS=true
+
+# Per-command timeout (seconds) to prevent hangs in CI
+_CMD_TIMEOUT=120
+
 # Track failures across subtests
 _e2e_failures=0
 
@@ -24,12 +37,23 @@ _check() {
   fi
 }
 
+_run_with_timeout() {
+  # Run a command with timeout; fall back to direct exec if timeout is unavailable
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$_CMD_TIMEOUT" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$_CMD_TIMEOUT" "$@"
+  else
+    "$@"
+  fi
+}
+
 run_ok() {
   local label="$1"
   shift
   local out="$TMPDIR_TEST/${label// /_}.txt"
   local rc=0
-  "$@" >"$out" 2>&1 || rc=$?
+  _run_with_timeout "$@" >"$out" 2>&1 || rc=$?
   if [ "$rc" -ne 0 ]; then
     echo "  FAIL [$label] expected exit 0, got $rc" >&2
     _e2e_failures=$((_e2e_failures + 1))
@@ -44,7 +68,7 @@ run_fail() {
   shift
   local out="$TMPDIR_TEST/${label// /_}.txt"
   local rc=0
-  "$@" >"$out" 2>&1 || rc=$?
+  _run_with_timeout "$@" >"$out" 2>&1 || rc=$?
   if [ "$rc" -eq 0 ]; then
     echo "  FAIL [$label] expected non-zero exit, got 0" >&2
     _e2e_failures=$((_e2e_failures + 1))
@@ -109,18 +133,20 @@ if [ -n "$out" ]; then
 fi
 
 ########################################
-# 5. Full Health Check
+# 5. Full Health Check (macOS only — modules like docker/nslookup can hang on Linux CI)
 ########################################
 
-out=$(run_ok "check-full" ./mdoctor check)
-if [ -n "$out" ]; then
-  _check assert_contains "$out" "Health score"
-fi
+if [ "$_IS_MACOS" = true ]; then
+  out=$(run_ok "check-full" ./mdoctor check)
+  if [ -n "$out" ]; then
+    _check assert_contains "$out" "Health score"
+  fi
 
-# Verify a markdown report was generated
-report_count=$(find /tmp -maxdepth 1 -name "mdoctor_report_*.md" -newer "$TMPDIR_TEST" 2>/dev/null | wc -l | tr -d ' ')
-if [ "$report_count" -lt 1 ]; then
-  echo "  WARN: no markdown report found in /tmp (may be expected if report path changed)" >&2
+  # Verify a markdown report was generated
+  report_count=$(find /tmp -maxdepth 1 -name "mdoctor_report_*.md" -newer "$TMPDIR_TEST" 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$report_count" -lt 1 ]; then
+    echo "  WARN: no markdown report found in /tmp (may be expected if report path changed)" >&2
+  fi
 fi
 
 ########################################
@@ -129,7 +155,10 @@ fi
 
 out=$(run_ok "check-system" ./mdoctor check -m system)
 
-out=$(run_ok "check-network" ./mdoctor check -m network)
+# Network check uses nslookup/ping which can hang in minimal CI containers
+if [ "$_IS_MACOS" = true ]; then
+  out=$(run_ok "check-network" ./mdoctor check -m network)
+fi
 
 ########################################
 # 7. JSON Output
