@@ -103,8 +103,9 @@ check_security() {
         status_info "Firewall (ufw): could not determine status"
       fi
     elif command -v iptables >/dev/null 2>&1; then
-      local ipt_rules
-      ipt_rules=$(sudo iptables -L -n 2>/dev/null | grep -cv '^$\|^Chain\|^target' || echo 0)
+      local ipt_rules ipt_rules_raw
+      ipt_rules_raw=$(sudo iptables -L -n 2>/dev/null | grep -cv '^$\|^Chain\|^target' || true)
+      ipt_rules=$(to_int "$ipt_rules_raw")
       if (( ipt_rules > 0 )); then
         status_ok "Firewall (iptables): ${ipt_rules} rules active"
       else
@@ -117,8 +118,9 @@ check_security() {
 
     # Disk encryption (LUKS)
     if command -v lsblk >/dev/null 2>&1; then
-      local crypt_count
-      crypt_count=$(lsblk -o TYPE 2>/dev/null | grep -c "crypt" || echo 0)
+      local crypt_count crypt_count_raw
+      crypt_count_raw=$(lsblk -o TYPE 2>/dev/null | grep -c "crypt" || true)
+      crypt_count=$(to_int "$crypt_count_raw")
       if (( crypt_count > 0 )); then
         status_ok "Disk encryption (LUKS): ${crypt_count} encrypted volume(s)"
       else

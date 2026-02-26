@@ -165,6 +165,17 @@ fi
 ########################################
 
 out=$(run_ok "check-json" ./mdoctor check -m system --json)
+if [ -n "$out" ]; then
+  if command -v python3 >/dev/null 2>&1; then
+    if ! python3 -m json.tool "$out" >/dev/null 2>&1; then
+      echo "  FAIL [check-json] expected valid JSON output" >&2
+      _e2e_failures=$((_e2e_failures + 1))
+    fi
+  else
+    _check assert_contains "$out" "{"
+    _check assert_contains "$out" "\"score\""
+  fi
+fi
 
 ########################################
 # 8. Dry-Run Cleanup (full)

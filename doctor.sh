@@ -130,6 +130,14 @@ main() {
   init_colors
   debug_log "doctor.sh start json=${JSON_ENABLED:-false}"
 
+  local json_mode=false
+  if [ "${JSON_ENABLED:-false}" = true ]; then
+    json_mode=true
+    # Keep stdout clean for JSON mode; restore before emitting JSON payload.
+    exec 3>&1
+    exec >/dev/null
+  fi
+
   # Initialize markdown report
   md_init
 
@@ -184,8 +192,10 @@ main() {
   progress_stop
 
   # Summary
-  echo
-  section_title "Summary"
+  if [ "$json_mode" = false ]; then
+    echo
+    section_title "Summary"
+  fi
 
   local MAX_SCORE=100
   local penalty
@@ -207,10 +217,12 @@ main() {
     rating="Critical – fix issues ASAP"
   fi
 
-  echo "Health score: ${BOLD}${score}/100${RESET} (${rating})"
-  echo "Warnings: ${WARN_COUNT}, Failures: ${FAIL_COUNT}"
+  if [ "$json_mode" = false ]; then
+    echo "Health score: ${BOLD}${score}/100${RESET} (${rating})"
+    echo "Warnings: ${WARN_COUNT}, Failures: ${FAIL_COUNT}"
+    echo
+  fi
   debug_log "doctor.sh summary score=${score} rating=${rating} warnings=${WARN_COUNT} failures=${FAIL_COUNT}"
-  echo
 
   md_append ""
   md_append "## Summary"
@@ -219,17 +231,21 @@ main() {
   md_append "- Warnings: **${WARN_COUNT}**, Failures: **${FAIL_COUNT}**"
   md_append ""
 
-  # JSON output: accumulate actions
-  if [ "${JSON_ENABLED:-false}" = true ]; then
+  # Save history
+  history_save "$score" "$rating" "$WARN_COUNT" "$FAIL_COUNT"
+
+  # JSON output: emit machine-readable payload only.
+  if [ "$json_mode" = true ]; then
+    exec >&3
+    exec 3>&-
+
     local action
     for action in "${ACTIONS[@]}"; do
       json_add_action "$action"
     done
     json_build_output "$score" "$rating" "$WARN_COUNT" "$FAIL_COUNT"
+    return 0
   fi
-
-  # Save history
-  history_save "$score" "$rating" "$WARN_COUNT" "$FAIL_COUNT"
 
   # Actionable next steps
   if ((${#ACTIONS[@]} > 0)); then

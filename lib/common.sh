@@ -9,7 +9,7 @@
 ########################################
 
 init_colors() {
-  if command -v tput >/dev/null 2>&1; then
+  if command -v tput >/dev/null 2>&1 && [ -n "${TERM:-}" ] && tput sgr0 >/dev/null 2>&1; then
     RED="$(tput setaf 1)"
     GREEN="$(tput setaf 2)"
     YELLOW="$(tput setaf 3)"
@@ -29,6 +29,25 @@ init_colors() {
   WARN="⚠️"
   CROSS="❌"
   INFO="ℹ️"
+}
+
+########################################
+# VALUE HELPERS
+########################################
+
+# to_int VALUE
+# Normalizes potentially messy numeric command output into a safe integer.
+# Handles cases like "0\n0" from `grep -c ... || echo 0` patterns.
+to_int() {
+  local raw="${1:-0}"
+  local first
+
+  first="$(printf '%s\n' "$raw" | head -n1 | tr -cd '0-9')"
+  if [ -z "$first" ]; then
+    echo 0
+  else
+    echo "$first"
+  fi
 }
 
 ########################################

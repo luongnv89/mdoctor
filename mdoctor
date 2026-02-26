@@ -323,7 +323,9 @@ cmd_check() {
     export MDOCTOR_DEBUG
   fi
 
-  echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
+  if [ "$json_flag" = false ]; then
+    echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
+  fi
 
   if [ -n "$module" ]; then
     # Run a single check module
@@ -366,6 +368,12 @@ cmd_check() {
     # shellcheck source=/dev/null
     source "$check_file"
 
+    # In JSON mode, silence human-readable stdout while running checks.
+    if [ "$json_flag" = true ]; then
+      exec 3>&1
+      exec >/dev/null
+    fi
+
     # Map module name to function
     case "$module" in
       system)      check_system ;;
@@ -394,6 +402,47 @@ cmd_check() {
     # Stop spinner after single-module check
     progress_stop
 
+    if [ "$json_flag" = true ]; then
+      # Restore stdout and emit machine-readable JSON only.
+      exec >&3
+      exec 3>&-
+
+      local score penalty rating module_status
+      penalty=$(( WARN_COUNT * 4 + FAIL_COUNT * 8 ))
+      score=$(( 100 - penalty ))
+      if (( score < 0 )); then
+        score=0
+      fi
+
+      if (( score >= 90 )); then
+        rating="Excellent"
+      elif (( score >= 75 )); then
+        rating="Good"
+      elif (( score >= 50 )); then
+        rating="Needs attention"
+      else
+        rating="Critical – fix issues ASAP"
+      fi
+
+      if (( FAIL_COUNT > 0 )); then
+        module_status="fail"
+      elif (( WARN_COUNT > 0 )); then
+        module_status="warn"
+      else
+        module_status="ok"
+      fi
+
+      json_add_check "$module" "module" "SAFE" "$module_status" "Module check completed"
+
+      local action
+      for action in "${ACTIONS[@]}"; do
+        json_add_action "$action"
+      done
+
+      json_build_output "$score" "$rating" "$WARN_COUNT" "$FAIL_COUNT"
+      return 0
+    fi
+
     # Show summary for single module
     if ((${#ACTIONS[@]} > 0)); then
       echo
@@ -407,7 +456,7 @@ cmd_check() {
   else
     # Run full doctor
     if [ "$json_flag" = true ]; then
-      JSON_ENABLED=true MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/doctor.sh"
+      JSON_ENABLED=true MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" MDOCTOR_VERSION="${MDOCTOR_VERSION}" bash "${MDOCTOR_DIR}/doctor.sh"
     else
       MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/doctor.sh"
     fi
