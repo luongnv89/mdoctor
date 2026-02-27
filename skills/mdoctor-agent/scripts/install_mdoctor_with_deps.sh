@@ -2,19 +2,14 @@
 set -euo pipefail
 
 # Installs mdoctor + required dependencies for macOS / Debian-based Linux.
-# Safe preview mode:
-#   ./install_mdoctor_with_deps.sh --dry-run
-#
-# Default behavior:
-# - checks platform support
-# - installs missing deps where possible (Linux apt)
-# - runs mdoctor install.sh from local repo if available
-# - verifies installation with basic smoke commands
+# Supports a dev-mode install that links the current repository checkout,
+# useful for testing branch changes on the same machine.
 
 DRY_RUN=false
 INSTALL_DEPS=true
-METHOD="auto"   # auto|local|remote
+METHOD="auto"   # auto|dev|local|remote
 USE_USER_BIN=false
+REPO_ROOT_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -22,6 +17,7 @@ while [[ $# -gt 0 ]]; do
     --no-install-deps) INSTALL_DEPS=false; shift ;;
     --method) METHOD="${2:-auto}"; shift 2 ;;
     --user-bin) USE_USER_BIN=true; shift ;;
+    --repo-root) REPO_ROOT_OVERRIDE="${2:-}"; shift 2 ;;
     -h|--help)
       cat <<'EOF'
 Usage: install_mdoctor_with_deps.sh [options]
@@ -29,9 +25,16 @@ Usage: install_mdoctor_with_deps.sh [options]
 Options:
   --dry-run           Print commands without executing
   --no-install-deps   Do not auto-install missing dependencies
-  --method <m>        auto|local|remote (default: auto)
+  --method <m>        auto|dev|local|remote (default: auto)
   --user-bin          Install symlink into ~/.local/bin (no sudo preferred)
+  --repo-root <path>  Override repository root (for --method dev/local)
   -h, --help          Show help
+
+Method details:
+  auto   Prefer dev (if current repo is available), then local install.sh, then remote
+  dev    Symlink current repo's ./mdoctor directly (best for branch testing)
+  local  Run local install.sh (installs under ~/.mdoctor)
+  remote Use GitHub one-line installer
 EOF
       exit 0
       ;;
@@ -41,6 +44,14 @@ EOF
       ;;
   esac
 done
+
+case "$METHOD" in
+  auto|dev|local|remote) ;;
+  *)
+    echo "Invalid --method: $METHOD (expected auto|dev|local|remote)" >&2
+    exit 2
+    ;;
+esac
 
 run() {
   if [ "$DRY_RUN" = true ]; then
@@ -76,11 +87,28 @@ if [[ "$OS" == "Linux" ]]; then
   esac
 fi
 
-missing=()
-for c in git; do
-  need_cmd "$c" || missing+=("$c")
-done
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT_DEFAULT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+REPO_ROOT="${REPO_ROOT_OVERRIDE:-$REPO_ROOT_DEFAULT}"
 
+if [[ "$METHOD" == "auto" ]]; then
+  if [ -f "$REPO_ROOT/mdoctor" ] && [ -d "$REPO_ROOT/.git" ]; then
+    METHOD="dev"
+  elif [ -f "$REPO_ROOT/install.sh" ]; then
+    METHOD="local"
+  else
+    METHOD="remote"
+  fi
+fi
+
+echo "Install method: $METHOD"
+
+missing=()
+# git is required for local/remote install paths
+if [[ "$METHOD" != "dev" ]]; then
+  need_cmd git || missing+=("git")
+fi
+# curl is required for remote installer path
 if [[ "$METHOD" == "remote" ]]; then
   need_cmd curl || missing+=("curl")
 fi
@@ -103,37 +131,61 @@ if (( ${#missing[@]} > 0 )); then
   fi
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-
 if [ "$USE_USER_BIN" = true ]; then
   run "mkdir -p \"$HOME/.local/bin\""
   export MDOCTOR_BIN_DIR="$HOME/.local/bin"
   export PATH="$HOME/.local/bin:$PATH"
 fi
 
-if [[ "$METHOD" == "auto" ]]; then
-  if [ -f "$REPO_ROOT/install.sh" ]; then
-    METHOD="local"
-  else
-    METHOD="remote"
-  fi
-fi
-
-if [[ "$METHOD" == "local" ]]; then
-  if [ ! -f "$REPO_ROOT/install.sh" ]; then
-    echo "Local install.sh not found at: $REPO_ROOT/install.sh" >&2
+install_dev() {
+  if [ ! -f "$REPO_ROOT/mdoctor" ]; then
+    echo "Dev install failed: mdoctor binary not found at $REPO_ROOT/mdoctor" >&2
     exit 1
   fi
-  run "bash \"$REPO_ROOT/install.sh\""
-else
-  run "curl -fsSL https://raw.githubusercontent.com/luongnv89/mdoctor/main/install.sh | bash"
-fi
+
+  local bin_dir
+  bin_dir="${MDOCTOR_BIN_DIR:-/usr/local/bin}"
+  local target
+  target="$REPO_ROOT/mdoctor"
+
+  run "chmod +x \"$target\""
+
+  if [ -w "$bin_dir" ]; then
+    run "ln -sf \"$target\" \"$bin_dir/mdoctor\""
+  else
+    run "sudo ln -sf \"$target\" \"$bin_dir/mdoctor\""
+  fi
+}
+
+case "$METHOD" in
+  dev)
+    install_dev
+    ;;
+  local)
+    if [ ! -f "$REPO_ROOT/install.sh" ]; then
+      echo "Local install.sh not found at: $REPO_ROOT/install.sh" >&2
+      exit 1
+    fi
+    run "bash \"$REPO_ROOT/install.sh\""
+    ;;
+  remote)
+    run "curl -fsSL https://raw.githubusercontent.com/luongnv89/mdoctor/main/install.sh | bash"
+    ;;
+esac
 
 # Verification
-run "mdoctor version"
-run "mdoctor help >/dev/null"
-run "mdoctor info >/dev/null"
-run "mdoctor check -m system >/dev/null"
+MDOCTOR_CMD="mdoctor"
+if ! need_cmd mdoctor; then
+  candidate="${MDOCTOR_BIN_DIR:-/usr/local/bin}/mdoctor"
+  if [ -x "$candidate" ]; then
+    MDOCTOR_CMD="$candidate"
+  fi
+fi
+
+TERM_FOR_CHECKS="${TERM:-xterm}"
+run "TERM=\"$TERM_FOR_CHECKS\" $MDOCTOR_CMD version"
+run "TERM=\"$TERM_FOR_CHECKS\" $MDOCTOR_CMD help >/dev/null"
+run "TERM=\"$TERM_FOR_CHECKS\" $MDOCTOR_CMD info >/dev/null"
+run "TERM=\"$TERM_FOR_CHECKS\" $MDOCTOR_CMD check -m system >/dev/null"
 
 echo "mdoctor install + verification completed."
