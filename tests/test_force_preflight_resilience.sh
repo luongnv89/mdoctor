@@ -9,6 +9,12 @@
 # This test poisons one of the preflight target paths so `du` exits non-zero,
 # then verifies the script still completes the preflight summary without
 # silently exiting.
+#
+# Scope: this test only exercises the preflight summary in `cleanup.sh`. The
+# same `du -sk ... | awk` pattern exists in several cleanup-phase modules
+# (cleanups/xcode.sh, cleanups/dev_caches.sh, cleanups/ios_backups.sh,
+# checks/storage.sh) and is similarly vulnerable. A follow-up issue tracks
+# hardening those sites; this test does not cover them.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
