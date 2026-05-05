@@ -44,13 +44,12 @@ echo "data" > "$TRASH_DIR/poisoned/file.txt"
 chmod 000 "$TRASH_DIR/poisoned"
 
 # Run preflight in dry-run; we only need the preflight section to render.
-# Capture stdout+stderr; allow non-zero exit (we assert on output content).
+# Capture stdout+stderr; allow non-zero exit (we assert on output content —
+# the script's real cleanup phase may legitimately fail later, e.g. docker
+# unreachable in CI).
 cd "$ROOT_DIR"
 out_file="$TMPHOME/preflight.out"
-set +e
-HOME="$TMPHOME" ./cleanup.sh --force >"$out_file" 2>&1
-exit_code=$?
-set -e
+HOME="$TMPHOME" ./cleanup.sh --force >"$out_file" 2>&1 || true
 
 # Restore perms so the trap can clean up.
 chmod -R u+rwx "$TMPHOME" 2>/dev/null || true
@@ -67,10 +66,5 @@ fi
 # Assert: the estimated-reclaim footer was printed, proving the preflight
 # function ran to completion instead of aborting mid-loop.
 assert_contains "$out_file" "Estimated reclaim size:"
-
-# The script's real cleanup phase may legitimately fail later (e.g. docker
-# unreachable in CI), so we do not assert on the final exit code — only that
-# the preflight section completed.
-unset exit_code
 
 pass "force-mode preflight is resilient to du permission errors (issue #9)"
