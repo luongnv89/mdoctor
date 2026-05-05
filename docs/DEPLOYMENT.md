@@ -47,23 +47,23 @@ This removes the symlink and `~/.mdoctor` directory.
 1. Update `MDOCTOR_VERSION` in the `mdoctor` script
 2. Update `docs/CHANGELOG.md`
 3. Commit and push to `main`
-4. Create/push release tag (e.g., `v2.1.0`)
+4. Create/push release tag (e.g., `v3.0.0`)
 5. Create draft release notes, then publish release
 
 Example (`gh` CLI):
 
 ```bash
-git tag -a v2.1.0 -m "mdoctor v2.1.0"
-git push origin v2.1.0
+git tag -a v3.0.0 -m "mdoctor v3.0.0"
+git push origin v3.0.0
 
-gh release create v2.1.0 \
+gh release create v3.0.0 \
   --repo luongnv89/mdoctor \
-  --title "mdoctor v2.1.0" \
+  --title "mdoctor v3.0.0" \
   --notes-file docs/CHANGELOG.md \
   --draft
 
 # publish draft when ready
-gh release edit v2.1.0 --repo luongnv89/mdoctor --draft=false
+gh release edit v3.0.0 --repo luongnv89/mdoctor --draft=false
 ```
 
 Users can then upgrade via `mdoctor update` (preferred) or by rerunning `install.sh`.

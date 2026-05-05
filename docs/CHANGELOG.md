@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-05-05
+
 ### Added
 - Linux (Debian/Ubuntu) cross-platform support:
   - Platform detection layer (`lib/platform.sh`) with OS/distro predicates and platform-aware paths
@@ -15,6 +17,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - End-to-end safe mode test (`tests/test_e2e_safe_mode.sh`) — 25+ assertions across all CLI commands
 - CI: Linux/Ubuntu test job, Bash 3.2 compatibility job, timeout guards
 - Cross-platform test suite (trash path, module assertions adapt to platform)
+
+### Changed
+- Rebranded from "System Doctor" to **"Machine Doctor"** to reflect cross-platform scope
+- `clean` preflight no longer exits silently when `du` fails (#9, #11)
 
 ### Fixed
 - CI lint script compatibility with Bash 3.2 (removed `mapfile` dependency in `scripts/lint_shell.sh`)

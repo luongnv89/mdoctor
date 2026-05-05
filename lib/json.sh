@@ -63,7 +63,7 @@ json_build_output() {
   esc_rating="$(json_escape "$rating")"
 
   printf '{\n'
-  printf '  "version": "%s",\n' "$(json_escape "${MDOCTOR_VERSION:-2.0.0}")"
+  printf '  "version": "%s",\n' "$(json_escape "${MDOCTOR_VERSION:-3.0.0}")"
   printf '  "timestamp": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf '  "hostname": "%s",\n' "$(json_escape "$(hostname)")"
   printf '  "score": %d,\n' "$score"
