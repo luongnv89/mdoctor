@@ -364,10 +364,12 @@ check_disk_hotspots() {
     fi
   fi
 
-  # Check for large temp/cache directories
+  # Check for large temp/cache directories (fast: only scan known small dirs)
+  # Skip deep home directory scans — they are too slow for a diagnostic check
   local large_dirs=""
-  local dir_entry dir_size dir_hr
-  for dir in /tmp "$HOME" /var/log /var/tmp; do
+  local dir_size dir_hr
+  local -a fast_dirs=("/tmp" /var/log /var/tmp)
+  for dir in "${fast_dirs[@]}"; do
     [ ! -d "$dir" ] && continue
     dir_size=$(du -sk "$dir" 2>/dev/null | awk '{print $1}')
     if [ -n "$dir_size" ] && (( dir_size > 1048576 )); then
@@ -377,7 +379,7 @@ check_disk_hotspots() {
   done
 
   if [ -n "$large_dirs" ]; then
-    status_info "Large directories (>1 GB):"
+    status_info "Large system directories (>1 GB):"
     printf "%b" "$large_dirs"
   fi
 }
@@ -433,15 +435,23 @@ check_fd_limits() {
   fd_soft=$(ulimit -n 2>/dev/null || echo 10240)
   fd_limit="$fd_soft"
 
-  # Estimate open file descriptors
+  # Estimate open file descriptors (platform-specific fast methods)
   local open_fds=0
   if is_macos; then
-    open_fds=$(lsof 2>/dev/null | wc -l | awk '{print $1+0}')
-    # Subtract the header line
-    open_fds=$((open_fds > 1 ? open_fds - 1 : 0))
-  else
-    open_fds=$(find /proc -maxdepth 2 -name 'fd' -type d 2>/dev/null | wc -l | awk '{print $1+0}')
-    open_fds=$((open_fds > 0 ? open_fds - 1 : 0))
+    # macOS: use sysctl for fast file descriptor count (no lsof scan)
+    local max_files open_files
+    max_files=$(sysctl -n kern.num_vnodes 2>/dev/null | tr -d '\n\r ' || echo 0)
+    open_files=$(sysctl -n kern.num_files 2>/dev/null | tr -d '\n\r ' || echo 0)
+    if [ -n "$max_files" ] && [ -n "$open_files" ] && (( max_files > 0 )) 2>/dev/null; then
+      max_files=$((max_files + 0))
+      open_files=$((open_files + 0))
+      open_fds=$((open_files))
+    fi
+  elif is_linux && [ -f /proc/sys/fs/file-nr ]; then
+    # Linux: read from /proc/sys/fs/file-nr (fast, no filesystem scan)
+    local file_nr
+    file_nr=$(cat /proc/sys/fs/file-nr 2>/dev/null | tr -d '\n\r ')
+    open_fds=$(echo "$file_nr" | awk '{print $1+0}')
   fi
 
   if (( fd_limit > 0 )); then
@@ -470,11 +480,15 @@ check_open_connections() {
   local conn_detail=""
 
   if is_macos; then
-    conn_count=$(netstat -an 2>/dev/null | grep -c ESTABLISHED || echo 0)
-    conn_detail=$(netstat -an 2>/dev/null | grep -c LISTEN || echo 0)
+    conn_count=$(netstat -an 2>/dev/null | grep -c ESTABLISHED 2>/dev/null || echo 0)
+    conn_count=$(echo "$conn_count" | tr -d '\n\r ')
+    conn_detail=$(netstat -an 2>/dev/null | grep -c LISTEN 2>/dev/null || echo 0)
+    conn_detail=$(echo "$conn_detail" | tr -d '\n\r ')
   else
-    conn_count=$(ss -tun 2>/dev/null | grep -c ESTAB || echo 0)
-    conn_detail=$(ss -tun 2>/dev/null | grep -c LISTEN || echo 0)
+    conn_count=$(ss -tun 2>/dev/null | grep -c ESTAB 2>/dev/null || echo 0)
+    conn_count=$(echo "$conn_count" | tr -d '\n\r ')
+    conn_detail=$(ss -tun 2>/dev/null | grep -c LISTEN 2>/dev/null || echo 0)
+    conn_detail=$(echo "$conn_detail" | tr -d '\n\r ')
   fi
 
   if (( conn_count > 5000 )); then
