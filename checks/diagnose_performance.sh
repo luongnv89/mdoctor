@@ -299,7 +299,11 @@ check_disk_iowait() {
     status_warn "Disk I/O wait: ${iowait_pct}% — elevated"
     add_action "Disk I/O wait is elevated. Identify slow disk operations and consider SSD upgrade if on HDD."
   else
-    status_ok "Disk I/O wait: ${iowait_pct}% — normal"
+    if is_macos; then
+      status_ok "Disk I/O contention proxy: ${iowait_pct}% — normal"
+    else
+      status_ok "Disk I/O wait: ${iowait_pct}% — normal"
+    fi
   fi
 }
 
@@ -403,7 +407,7 @@ check_fd_limits() {
     # macOS: use sysctl for system-wide file descriptor count (no lsof scan)
     local max_files open_files
     open_files=$(sysctl -n kern.num_files 2>/dev/null | tr -d '\n\r ' || echo 0)
-    fd_limit=$(sysctl -n kern.maxfiles 2>/dev/null | tr -d '\n\r ' || echo 0)
+    fd_limit=$(sysctl -n kern.maxfiles 2>/dev/null | awk '{print $1}')
     if [ -n "$open_files" ] && [ -n "$fd_limit" ] && (( fd_limit > 0 )) 2>/dev/null; then
       open_files=$((open_files + 0))
       fd_limit=$((fd_limit + 0))
@@ -492,8 +496,7 @@ check_swap_thrashing() {
   else
     local swap_total swap_used
     swap_total=$(awk '/^SwapTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
-    swap_used=$(awk '/^SwapUsed:/ {print $2}' /proc/meminfo 2>/dev/null || \
-                awk '/^SwapTotal:/ {t=$2} /^SwapFree:/ {print t-$2}' /proc/meminfo 2>/dev/null || echo 0)
+    swap_used=$(awk 'BEGIN{t=0} /^SwapTotal:/{t=$2} /^SwapFree:/{print t-$2}' /proc/meminfo 2>/dev/null || echo 0)
     if (( swap_total > 0 )); then
       swap_pct=$((swap_used * 100 / swap_total))
     fi
