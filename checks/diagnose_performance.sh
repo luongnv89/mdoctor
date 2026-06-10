@@ -105,8 +105,8 @@ check_memory_usage() {
     # macOS: use sysctl for physical memory stats
     local page_size active_pages wired_pages free_pages total_bytes
     page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096)
-    active_pages=$(vm_stat 2>/dev/null | awk '/Pages active/ {gsub("\\.","",$4); print $4+0}')
-    wired_pages=$(vm_stat 2>/dev/null | awk '/Pages wired down/ {gsub("\\.","",$5); print $5+0}')
+    active_pages=$(vm_stat 2>/dev/null | awk '/Pages active/ {gsub("\\.","",$3); print $3+0}')
+    wired_pages=$(vm_stat 2>/dev/null | awk '/Pages wired down/ {gsub("\\.","",$4); print $4+0}')
     free_pages=$(vm_stat 2>/dev/null | awk '/Pages free/ {gsub("\\.","",$3); print $3+0}')
 
     total_bytes=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
@@ -273,10 +273,10 @@ check_disk_iowait() {
     page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096)
 
     free_pages=$(vm_stat 2>/dev/null | awk '/Pages free/ {gsub("\\.","",$3); print $3+0}')
-    active_pages=$(vm_stat 2>/dev/null | awk '/Pages active/ {gsub("\\.","",$4); print $4+0}')
-    inactive_pages=$(vm_stat 2>/dev/null | awk '/Pages inactive/ {gsub("\\.","",$4); print $4+0}')
-    speculative_pages=$(vm_stat 2>/dev/null | awk '/Pages speculative/ {gsub("\\.","",$4); print $4+0}')
-    wired_pages=$(vm_stat 2>/dev/null | awk '/Pages wired down/ {gsub("\\.","",$5); print $5+0}')
+    active_pages=$(vm_stat 2>/dev/null | awk '/Pages active/ {gsub("\\.","",$3); print $3+0}')
+    inactive_pages=$(vm_stat 2>/dev/null | awk '/Pages inactive/ {gsub("\\.","",$3); print $3+0}')
+    speculative_pages=$(vm_stat 2>/dev/null | awk '/Pages speculative/ {gsub("\\.","",$3); print $3+0}')
+    wired_pages=$(vm_stat 2>/dev/null | awk '/Pages wired down/ {gsub("\\.","",$4); print $4+0}')
 
     # Page faults from vm_stat (not available directly; use paged stuff as proxy)
     local paged_total=$((free_pages + active_pages + inactive_pages + speculative_pages + wired_pages))
@@ -395,21 +395,18 @@ check_zombie_processes() {
 ########################################
 
 check_fd_limits() {
-  local fd_limit fd_open_pct fd_soft
-
-  fd_soft=$(ulimit -n 2>/dev/null || echo 10240)
-  fd_limit="$fd_soft"
+  local fd_limit fd_open_pct
 
   # Estimate open file descriptors (platform-specific fast methods)
   local open_fds=0
   if is_macos; then
-    # macOS: use sysctl for fast file descriptor count (no lsof scan)
+    # macOS: use sysctl for system-wide file descriptor count (no lsof scan)
     local max_files open_files
-    max_files=$(sysctl -n kern.num_vnodes 2>/dev/null | tr -d '\n\r ' || echo 0)
     open_files=$(sysctl -n kern.num_files 2>/dev/null | tr -d '\n\r ' || echo 0)
-    if [ -n "$max_files" ] && [ -n "$open_files" ] && (( max_files > 0 )) 2>/dev/null; then
-      max_files=$((max_files + 0))
+    fd_limit=$(sysctl -n kern.maxfiles 2>/dev/null | tr -d '\n\r ' || echo 0)
+    if [ -n "$open_files" ] && [ -n "$fd_limit" ] && (( fd_limit > 0 )) 2>/dev/null; then
       open_files=$((open_files + 0))
+      fd_limit=$((fd_limit + 0))
       open_fds=$((open_files))
     fi
   elif is_linux && [ -f /proc/sys/fs/file-nr ]; then
@@ -417,6 +414,7 @@ check_fd_limits() {
     local file_nr
     file_nr=$(cat /proc/sys/fs/file-nr 2>/dev/null | tr -d '\n\r ')
     open_fds=$(echo "$file_nr" | awk '{print $1+0}')
+    fd_limit=$(ulimit -n 2>/dev/null || echo 10240)
   fi
 
   if (( fd_limit > 0 )); then
@@ -482,7 +480,7 @@ check_swap_thrashing() {
       # Format: "total = X Mb  used = Y Mb  free = Z Mb  (encrypted)"
       swap_total_mb=$(echo "$swap_total_raw" | sed -n 's/.*total = \([0-9.]*\)Mb.*/\1/p' | tr -d ' ')
       swap_used_mb=$(echo "$swap_total_raw" | sed -n 's/.*used = \([0-9.]*\)Mb.*/\1/p' | tr -d ' ')
-      if [ -n "$swap_total_mb" ] && [ -n "$swap_used_mb" ] && (( $(echo "$swap_total_mb > 0" | bc 2>/dev/null || echo 0) )); then
+      if [ -n "$swap_total_mb" ] && [ -n "$swap_used_mb" ] && awk -v t="$swap_total_mb" 'BEGIN {exit !(t+0 > 0)}' 2>/dev/null; then
         swap_pct=$(awk -v u="$swap_used_mb" -v t="$swap_total_mb" 'BEGIN {printf "%d", u*100/t}')
       fi
     fi
@@ -535,8 +533,8 @@ check_cpu_io_contention() {
     # Use the same proxy iowait as in check_disk_iowait
     local page_size active_pages wired_pages free_pages
     page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096)
-    active_pages=$(vm_stat 2>/dev/null | awk '/Pages active/ {gsub("\\.","",$4); print $4+0}')
-    wired_pages=$(vm_stat 2>/dev/null | awk '/Pages wired down/ {gsub("\\.","",$5); print $5+0}')
+    active_pages=$(vm_stat 2>/dev/null | awk '/Pages active/ {gsub("\\.","",$3); print $3+0}')
+    wired_pages=$(vm_stat 2>/dev/null | awk '/Pages wired down/ {gsub("\\.","",$4); print $4+0}')
     free_pages=$(vm_stat 2>/dev/null | awk '/Pages free/ {gsub("\\.","",$3); print $3+0}')
     local paged_total=$((active_pages + wired_pages + free_pages))
     if (( paged_total > 0 )); then
