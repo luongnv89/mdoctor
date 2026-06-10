@@ -410,11 +410,16 @@ check_fd_limits() {
       open_fds=$((open_files))
     fi
   elif is_linux && [ -f /proc/sys/fs/file-nr ]; then
-    # Linux: read from /proc/sys/fs/file-nr (fast, no filesystem scan)
+    # Linux: read from /proc/sys/fs/file-nr (system-wide, fast)
     local file_nr
     file_nr=$(cat /proc/sys/fs/file-nr 2>/dev/null | tr -d '\n\r ')
     open_fds=$(echo "$file_nr" | awk '{print $1+0}')
-    fd_limit=$(ulimit -n 2>/dev/null || echo 10240)
+    # Use system-wide max if available, fall back to per-process limit
+    if [ -f /proc/sys/fs/nr_max ]; then
+      fd_limit=$(cat /proc/sys/fs/nr_max 2>/dev/null | tr -d '\n\r ')
+    else
+      fd_limit=$(ulimit -n 2>/dev/null || echo 10240)
+    fi
   fi
 
   if (( fd_limit > 0 )); then
@@ -578,26 +583,26 @@ check_cpu_io_contention() {
 ########################################
 
 check_cpu_user_sys() {
-  local user sys idle total user_pct sys_pct
+  local user nice system idle iowait irq softirq steal total user_pct sys_pct
 
   if ! is_linux || [ ! -f /proc/stat ]; then
     return 0
   fi
 
-  user=$(awk '/^cpu / {print $2}' /proc/stat 2>/dev/null)
-  sys=$(awk '/^cpu / {print $4}' /proc/stat 2>/dev/null)
-  idle=$(awk '/^cpu / {print $5}' /proc/stat 2>/dev/null)
+  # Read all CPU time fields from /proc/stat cpu line
+  # Format: cpu  user nice system idle iowait irq softirq steal guest guest_nice
+  read -r _ user nice system idle iowait irq softirq steal _ _ < <(head -1 /proc/stat 2>/dev/null)
 
   [ -z "$user" ] && return 0
-  [ -z "$sys" ] && return 0
+  [ -z "$system" ] && return 0
 
-  total=$((user + sys + idle))
+  total=$((user + nice + system + idle + iowait + irq + softirq + steal))
   if (( total == 0 )); then
     return 0
   fi
 
   user_pct=$((user * 100 / total))
-  sys_pct=$((sys * 100 / total))
+  sys_pct=$((system * 100 / total))
 
   if (( sys_pct > 40 )); then
     status_warn "CPU kernel-space usage: ${sys_pct}% (user=${user_pct}%)"
