@@ -95,41 +95,6 @@ check_top_cpu_consumers() {
 }
 
 ########################################
-# CHECK: CPU User vs System Ratio (Linux)
-########################################
-
-check_cpu_user_sys_ratio() {
-  local user sys idle total user_pct
-
-  if ! is_linux || [ ! -f /proc/stat ]; then
-    return 0
-  fi
-
-  # Read first line of /proc/stat (cpu totals)
-  user=$(awk '/^cpu / {print $2}' /proc/stat 2>/dev/null)
-  sys=$(awk '/^cpu / {print $4}' /proc/stat 2>/dev/null)
-  idle=$(awk '/^cpu / {print $5}' /proc/stat 2>/dev/null)
-
-  [ -z "$user" ] && return 0
-  [ -z "$sys" ] && return 0
-
-  total=$((user + sys + idle))
-  if (( total == 0 )); then
-    return 0
-  fi
-
-  user_pct=$((user * 100 / total))
-  local sys_pct=$((sys * 100 / total))
-
-  if (( sys_pct > 40 )); then
-    status_warn "CPU kernel-space usage: ${sys_pct}% (user=${user_pct}%, sys=${sys_pct}%)"
-    add_action "High kernel-space CPU usage. Check for kernel modules, drivers, or system calls causing overhead."
-  else
-    status_ok "CPU user/sys ratio healthy (user=${user_pct}%, sys=${sys_pct}%)"
-  fi
-}
-
-########################################
 # CHECK: Memory Usage
 ########################################
 
@@ -140,9 +105,9 @@ check_memory_usage() {
     # macOS: use sysctl for physical memory stats
     local page_size active_pages wired_pages free_pages total_bytes
     page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096)
-    active_pages=$(vm_stat 2>/dev/null | awk '/Pages active/ {gsub("\\.","",$3); print $3+0}')
-    wired_pages=$(vm_stat 2>/dev/null | awk '/Pages wired down/ {gsub("\\.","",$4); print $4+0}')
-    free_pages=$(vm_stat 2>/dev/null | awk '/Pages free/ {gsub("\\.","",$2); print $2+0}')
+    active_pages=$(vm_stat 2>/dev/null | awk '/Pages active/ {gsub("\\.","",$4); print $4+0}')
+    wired_pages=$(vm_stat 2>/dev/null | awk '/Pages wired down/ {gsub("\\.","",$5); print $5+0}')
+    free_pages=$(vm_stat 2>/dev/null | awk '/Pages free/ {gsub("\\.","",$3); print $3+0}')
 
     total_bytes=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
     local active_kb wired_kb free_kb
@@ -251,8 +216,8 @@ check_swap_usage() {
 
       # Try to get actual usage from vm_stat
       local swap_in swap_out
-      swap_in=$(vm_stat 2>/dev/null | awk '/Pages swapped in/ {gsub("\\.","",$3); print $3}')
-      swap_out=$(vm_stat 2>/dev/null | awk '/Pages swapped out/ {gsub("\\.","",$3); print $3}')
+      swap_in=$(vm_stat 2>/dev/null | awk '/Pages swapped in/ {gsub("\\.","",$4); print $4}')
+      swap_out=$(vm_stat 2>/dev/null | awk '/Pages swapped out/ {gsub("\\.","",$4); print $4}')
       status_info "Swap activity: $((${swap_in:-0} + ${swap_out:-0})) pages total"
     else
       status_info "Swap: unavailable"
@@ -307,11 +272,11 @@ check_disk_iowait() {
 
     page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096)
 
-    free_pages=$(vm_stat 2>/dev/null | awk '/Pages free/ {gsub("\\.","",$2); print $2+0}')
-    active_pages=$(vm_stat 2>/dev/null | awk '/Pages active/ {gsub("\\.","",$3); print $3+0}')
-    inactive_pages=$(vm_stat 2>/dev/null | awk '/Pages inactive/ {gsub("\\.","",$3); print $3+0}')
-    speculative_pages=$(vm_stat 2>/dev/null | awk '/Pages speculative/ {gsub("\\.","",$3); print $3+0}')
-    wired_pages=$(vm_stat 2>/dev/null | awk '/Pages wired down/ {gsub("\\.","",$4); print $4+0}')
+    free_pages=$(vm_stat 2>/dev/null | awk '/Pages free/ {gsub("\\.","",$3); print $3+0}')
+    active_pages=$(vm_stat 2>/dev/null | awk '/Pages active/ {gsub("\\.","",$4); print $4+0}')
+    inactive_pages=$(vm_stat 2>/dev/null | awk '/Pages inactive/ {gsub("\\.","",$4); print $4+0}')
+    speculative_pages=$(vm_stat 2>/dev/null | awk '/Pages speculative/ {gsub("\\.","",$4); print $4+0}')
+    wired_pages=$(vm_stat 2>/dev/null | awk '/Pages wired down/ {gsub("\\.","",$5); print $5+0}')
 
     # Page faults from vm_stat (not available directly; use paged stuff as proxy)
     local paged_total=$((free_pages + active_pages + inactive_pages + speculative_pages + wired_pages))
@@ -511,11 +476,15 @@ check_swap_thrashing() {
 
   # Get swap usage
   if is_macos; then
-    local swap_total_raw
+    local swap_total_raw swap_total_mb swap_used_mb
     swap_total_raw=$(sysctl -n vm.swapusage 2>/dev/null || echo "")
     if [ -n "$swap_total_raw" ]; then
-      # Parse "max = X Mb total used Y Mb virtual free Z Mb"
-      swap_pct=$(echo "$swap_total_raw" | awk -F'total|used' '{if(NF>=3) gsub(/[^0-9]/,"",$2); print $2+0}')
+      # Format: "total = X Mb  used = Y Mb  free = Z Mb  (encrypted)"
+      swap_total_mb=$(echo "$swap_total_raw" | sed -n 's/.*total = \([0-9.]*\)Mb.*/\1/p' | tr -d ' ')
+      swap_used_mb=$(echo "$swap_total_raw" | sed -n 's/.*used = \([0-9.]*\)Mb.*/\1/p' | tr -d ' ')
+      if [ -n "$swap_total_mb" ] && [ -n "$swap_used_mb" ] && (( $(echo "$swap_total_mb > 0" | bc 2>/dev/null || echo 0) )); then
+        swap_pct=$(awk -v u="$swap_used_mb" -v t="$swap_total_mb" 'BEGIN {printf "%d", u*100/t}')
+      fi
     fi
   else
     local swap_total swap_used
@@ -566,9 +535,9 @@ check_cpu_io_contention() {
     # Use the same proxy iowait as in check_disk_iowait
     local page_size active_pages wired_pages free_pages
     page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096)
-    active_pages=$(vm_stat 2>/dev/null | awk '/Pages active/ {gsub("\\.","",$3); print $3+0}')
-    wired_pages=$(vm_stat 2>/dev/null | awk '/Pages wired down/ {gsub("\\.","",$4); print $4+0}')
-    free_pages=$(vm_stat 2>/dev/null | awk '/Pages free/ {gsub("\\.","",$2); print $2+0}')
+    active_pages=$(vm_stat 2>/dev/null | awk '/Pages active/ {gsub("\\.","",$4); print $4+0}')
+    wired_pages=$(vm_stat 2>/dev/null | awk '/Pages wired down/ {gsub("\\.","",$5); print $5+0}')
+    free_pages=$(vm_stat 2>/dev/null | awk '/Pages free/ {gsub("\\.","",$3); print $3+0}')
     local paged_total=$((active_pages + wired_pages + free_pages))
     if (( paged_total > 0 )); then
       iowait_pct=$((wired_pages * 100 / paged_total))
