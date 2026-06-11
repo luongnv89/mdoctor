@@ -11,6 +11,7 @@
 #   check      Run system health audit (read-only)
 #   clean      Run system cleanup (dry-run by default)
 #   fix        Apply common fixes
+#   diagnose   Run active performance diagnosis with bottleneck detection
 #   info       Show system information summary
 #   list       List all modules with category & risk
 #   history    View health score trends over time
@@ -957,6 +958,8 @@ cmd_list() {
   register_module check network     System SAFE check_network       "Connectivity, DNS, Wi-Fi signal"
   register_module check performance System SAFE check_performance   "Memory pressure, CPU, processes"
   register_module check storage     System SAFE check_storage       "Large files & app storage analysis"
+  # Diagnose modules
+  register_module diagnose diagnose System HIGH check_diagnose_performance "Active performance diagnosis with bottleneck detection"
   # Check modules — Software
   if is_macos; then
     register_module check homebrew   Software SAFE check_homebrew    "Homebrew installation & packages"
@@ -1018,6 +1021,10 @@ cmd_list() {
   list_modules_by_category cleanup
   echo
 
+  echo "${BOLD}Diagnose Modules:${RESET}"
+  list_modules_by_category diagnose
+  echo
+
   echo "${BOLD}Fix Targets:${RESET}"
   list_modules_by_category fix
   echo
@@ -1043,6 +1050,82 @@ cmd_benchmark() {
   source "${MDOCTOR_DIR}/lib/benchmark.sh"
   run_benchmark
 }
+
+########################################
+# COMMAND: diagnose
+########################################
+
+cmd_diagnose() {
+  local debug_flag=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --debug)
+        debug_flag=true
+        shift
+        ;;
+      --help|-h)
+        echo "Usage: mdoctor diagnose [options]"
+        echo
+        echo "Run active performance diagnosis with bottleneck detection."
+        echo "Checks CPU, memory, disk I/O, swap, and system configuration."
+        echo
+        echo "Output includes a prioritized list of actionable recommendations."
+        echo
+        echo "Options:"
+        echo "  --debug       Enable structured debug diagnostics"
+        echo "  -h, --help    Show this help"
+        echo
+        echo "Checks performed:"
+        echo "  CPU           Load average, top consumers, user/sys ratio (Linux)"
+        echo "  Memory        Usage %, pressure level, OOM risk, swap usage"
+        echo "  Disk I/O      I/O wait percentage, disk usage hotspots"
+        echo "  Swap          Swap usage %, swap thrashing detection"
+        echo "  Zombie        Zombie process count and parent identification"
+        echo "  System Config FD limits, open connections"
+        echo "  Correlation   Swap+I/O thrashing, CPU+I/O contention"
+        return 0
+        ;;
+      *)
+        error "Unknown option: $1"
+        echo "Run 'mdoctor diagnose --help' for usage."
+        return 1
+        ;;
+    esac
+  done
+
+  if [ "$debug_flag" = true ]; then
+    MDOCTOR_DEBUG=true
+    export MDOCTOR_DEBUG
+  fi
+
+  echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
+
+  # Source libraries
+  source "${MDOCTOR_DIR}/lib/common.sh"
+  source "${MDOCTOR_DIR}/lib/logging.sh"
+  source "${MDOCTOR_DIR}/lib/disk.sh"
+  source "${MDOCTOR_DIR}/lib/metadata.sh"
+
+  init_colors
+  debug_log "cmd_diagnose debug=${MDOCTOR_DEBUG}"
+
+  # Initialize globals
+  # shellcheck disable=SC2034
+  STEP_CURRENT=0
+  # shellcheck disable=SC2034
+  STEP_TOTAL=1
+  ACTIONS=()
+  WARN_COUNT=0
+  FAIL_COUNT=0
+
+  # Source check module
+  # shellcheck source=/dev/null
+  source "${MDOCTOR_DIR}/checks/diagnose_performance.sh"
+
+  check_diagnose_performance
+}
+
 
 ########################################
 # COMMAND: version
@@ -1194,6 +1277,7 @@ cmd_help() {
   printf "  ${GREEN}%-12s${RESET} %s\n" "check"     "Run system health audit (read-only, 21 checks)"
   printf "  ${GREEN}%-12s${RESET} %s\n" "clean"     "Run system cleanup (dry-run by default, 10 modules)"
   printf "  ${GREEN}%-12s${RESET} %s\n" "fix"       "Apply common fixes (9 targets)"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "diagnose"  "Run active performance diagnosis with bottleneck detection"
   printf "  ${GREEN}%-12s${RESET} %s\n" "info"      "Show system information summary"
   printf "  ${GREEN}%-12s${RESET} %s\n" "list"      "List all modules with category & risk level"
   printf "  ${GREEN}%-12s${RESET} %s\n" "history"   "View health score trends over time"
@@ -1235,6 +1319,8 @@ cmd_help() {
   echo "  mdoctor check -m battery         # Check only battery health"
   echo "  mdoctor check --json             # JSON output for automation"
   echo "  mdoctor check --debug            # Check with structured debug diagnostics"
+  echo "  mdoctor diagnose                 # Active performance diagnosis"
+  echo "  mdoctor diagnose --debug         # Diagnose with structured debug diagnostics"
   echo "  mdoctor clean                    # Dry-run cleanup"
   echo "  mdoctor clean --force            # Actually clean up"
   echo "  mdoctor clean --debug            # Cleanup with structured debug diagnostics"
@@ -1272,6 +1358,7 @@ main() {
     check)     cmd_check "$@" ;;
     clean)     cmd_clean "$@" ;;
     fix)       cmd_fix "$@" ;;
+    diagnose)  cmd_diagnose "$@" ;;
     info)      cmd_info ;;
     list)      cmd_list ;;
     history)   cmd_history "$@" ;;
