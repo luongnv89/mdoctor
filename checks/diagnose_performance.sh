@@ -7,6 +7,54 @@
 # Sources: lib/platform.sh, lib/common.sh
 #
 
+
+# Diagnosis recommendations are printed by severity in the summary.
+# Keep the global ACTIONS list populated for compatibility with existing
+# check-module conventions while tracking explicit priority locally.
+add_diagnosis_action() {
+  local severity="${1-}"
+  local msg="${2-}"
+  [ -z "$msg" ] && return 0
+  ACTIONS+=("$msg")
+  case "$severity" in
+    critical) ACTIONS_CRITICAL+=("$msg") ;;
+    *) ACTIONS_WARNING+=("$msg") ;;
+  esac
+}
+
+get_linux_iowait_pct() {
+  if [ -n "${DIAG_LINUX_IOWAIT_PCT:-}" ]; then
+    echo "$DIAG_LINUX_IOWAIT_PCT"
+    return 0
+  fi
+
+  if ! is_linux || [ ! -r /proc/stat ]; then
+    echo 0
+    return 0
+  fi
+
+  local user1 nice1 system1 idle1 iowait1 irq1 soft_irq1 steal1
+  local user2 nice2 system2 idle2 iowait2 irq2 soft_irq2 steal2
+  local total1 total2 total_delta iowait_delta
+
+  read -r _ user1 nice1 system1 idle1 iowait1 irq1 soft_irq1 steal1 _ _ _ < <(head -1 /proc/stat)
+  sleep 0.2
+  read -r _ user2 nice2 system2 idle2 iowait2 irq2 soft_irq2 steal2 _ _ _ < <(head -1 /proc/stat)
+
+  total1=$((user1 + nice1 + system1 + idle1 + iowait1 + irq1 + soft_irq1 + steal1))
+  total2=$((user2 + nice2 + system2 + idle2 + iowait2 + irq2 + soft_irq2 + steal2))
+  total_delta=$((total2 - total1))
+  iowait_delta=$((iowait2 - iowait1))
+
+  if (( total_delta > 0 && iowait_delta >= 0 )); then
+    DIAG_LINUX_IOWAIT_PCT=$((iowait_delta * 100 / total_delta))
+  else
+    DIAG_LINUX_IOWAIT_PCT=0
+  fi
+
+  echo "$DIAG_LINUX_IOWAIT_PCT"
+}
+
 ########################################
 # CHECK: Load Average vs Core Count
 ########################################
@@ -39,10 +87,10 @@ check_load_average() {
 
   if (( load_int > threshold * 2 )); then
     status_fail "Load average (${load1}) is >2x core count (${cores}) [${ratio_pct}% ratio]"
-    add_action "System is severely overloaded. Run 'top' or 'htop' to identify runaway processes."
+    add_diagnosis_action "critical" "System is severely overloaded. Run 'top' or 'htop' to identify runaway processes."
   elif (( load_int > threshold )); then
     status_warn "Load average (${load1}) exceeds core count (${cores}) [${ratio_pct}% ratio]"
-    add_action "System load is high. Check running processes with 'top' or 'Activity Monitor'."
+    add_diagnosis_action "warning" "System load is high. Check running processes with 'top' or 'Activity Monitor'."
   else
     status_ok "Load average (${load1}) within normal range for ${cores} cores [${ratio_pct}%]"
   fi
@@ -80,11 +128,11 @@ check_top_cpu_consumers() {
       pct_int=$(awk -v p="$pct" 'BEGIN {printf "%d", p}')
       if (( pct_int > 80 )); then
         status_fail "PID ${pid}: ${pct}% — ${name} (critical consumer)"
-        add_action "Process '${name}' (PID ${pid}) is consuming ${pct}% CPU. Investigate or terminate with 'kill ${pid}'."
+        add_diagnosis_action "critical" "Process '${name}' (PID ${pid}) is consuming ${pct}% CPU. Investigate or terminate with 'kill ${pid}'."
         high_count=$((high_count + 1))
       elif (( pct_int > 50 )); then
         status_warn "PID ${pid}: ${pct}% — ${name} (high consumer)"
-        add_action "Process '${name}' (PID ${pid}) is consuming ${pct}% CPU. Consider monitoring or limiting its resource usage."
+        add_diagnosis_action "warning" "Process '${name}' (PID ${pid}) is consuming ${pct}% CPU. Consider monitoring or limiting its resource usage."
       fi
     fi
   done <<< "$top_cpu"
@@ -150,10 +198,10 @@ check_memory_usage() {
 
   if (( pct > 95 )); then
     status_fail "Memory: ${pct}% used (${used_hr}/${total_hr}) — OOM risk!"
-    add_action "Memory usage is critical. Close applications immediately to avoid out-of-memory crashes."
+    add_diagnosis_action "critical" "Memory usage is critical. Close applications immediately to avoid out-of-memory crashes."
   elif (( pct > 85 )); then
     status_warn "Memory: ${pct}% used (${used_hr}/${total_hr}) — high usage"
-    add_action "Memory usage is high. Review memory consumers with 'top' or 'Activity Monitor'."
+    add_diagnosis_action "warning" "Memory usage is high. Review memory consumers with 'top' or 'Activity Monitor'."
   else
     status_ok "Memory: ${pct}% used (${used_hr}/${total_hr})"
   fi
@@ -171,9 +219,9 @@ check_memory_pressure() {
     case "$pressure" in
       1) status_ok "Memory pressure: normal" ;;
       2) status_warn "Memory pressure: elevated"
-         add_action "Memory pressure is elevated. Close unused applications to free RAM." ;;
+         add_diagnosis_action "warning" "Memory pressure is elevated. Close unused applications to free RAM." ;;
       4) status_fail "Memory pressure: critical"
-         add_action "Memory pressure is critical. Close applications immediately to prevent slowdowns." ;;
+         add_diagnosis_action "critical" "Memory pressure is critical. Close applications immediately to prevent slowdowns." ;;
       *) status_info "Memory pressure level: ${pressure:-unknown}" ;;
     esac
   else
@@ -187,10 +235,10 @@ check_memory_pressure() {
         avail_pct=$(( mem_avail_kb * 100 / mem_total_kb ))
         if (( avail_pct < 5 )); then
           status_fail "Memory pressure: critical (${avail_pct}% available)"
-          add_action "Memory pressure is critical. Close applications immediately."
+          add_diagnosis_action "critical" "Memory pressure is critical. Close applications immediately."
         elif (( avail_pct < 15 )); then
           status_warn "Memory pressure: elevated (${avail_pct}% available)"
-          add_action "Memory pressure is elevated. Close unused applications to free RAM."
+          add_diagnosis_action "warning" "Memory pressure is elevated. Close unused applications to free RAM."
         else
           status_ok "Memory pressure: normal (${avail_pct}% available)"
         fi
@@ -237,10 +285,10 @@ check_swap_usage() {
 
     if (( pct > 80 )); then
       status_fail "Swap: ${pct}% used (${swap_hr}/${swap_total} KB) — critical"
-      add_action "Swap usage is critical. System is relying heavily on swap. Consider adding more RAM or reducing workload."
+      add_diagnosis_action "critical" "Swap usage is critical. System is relying heavily on swap. Consider adding more RAM or reducing workload."
     elif (( pct > 50 )); then
       status_warn "Swap: ${pct}% used (${swap_hr}/${swap_total} KB)"
-      add_action "Swap usage is high. Consider closing memory-intensive applications."
+      add_diagnosis_action "warning" "Swap usage is high. Consider closing memory-intensive applications."
     else
       status_ok "Swap: ${pct}% used (${swap_hr}/${swap_total} KB)"
     fi
@@ -255,15 +303,9 @@ check_disk_iowait() {
   local iowait_pct
 
   if is_linux && [ -f /proc/stat ]; then
-    # Read cpu line (index 0) — fields: user nice system idle iowait irq softirq steal
-    local cpu_line user nice system idle iowait irq softirq steal
-    read -r cpu_line user nice system idle iowait irq soft_irq steal _ _ _ < <(head -1 /proc/stat)
-    local total=$((user + nice + system + idle + iowait + irq + soft_irq + steal))
-    if (( total > 0 )); then
-      iowait_pct=$((iowait * 100 / total))
-    else
-      iowait_pct=0
-    fi
+    # Sample /proc/stat over a short interval; cumulative counters since boot
+    # can hide current disk I/O spikes on long-running systems.
+    iowait_pct=$(get_linux_iowait_pct)
   elif is_macos; then
     # macOS does not expose Linux-style CPU iowait. Avoid deriving disk
     # contention from vm_stat memory counters because wired/active pages are
@@ -277,10 +319,10 @@ check_disk_iowait() {
 
   if (( iowait_pct > 30 )); then
     status_fail "Disk I/O wait: ${iowait_pct}% — severe bottleneck"
-    add_action "Disk I/O is a critical bottleneck. Check for heavy disk operations with 'iotop' or 'sudo iotop -o'."
+    add_diagnosis_action "critical" "Disk I/O is a critical bottleneck. Check for heavy disk operations with 'iotop' or 'sudo iotop -o'."
   elif (( iowait_pct > 15 )); then
     status_warn "Disk I/O wait: ${iowait_pct}% — elevated"
-    add_action "Disk I/O wait is elevated. Identify slow disk operations and consider SSD upgrade if on HDD."
+    add_diagnosis_action "warning" "Disk I/O wait is elevated. Identify slow disk operations and consider SSD upgrade if on HDD."
   else
     status_ok "Disk I/O wait: ${iowait_pct}% — normal"
   fi
@@ -303,10 +345,10 @@ check_disk_hotspots() {
   if [ -n "$root_disk_pct" ]; then
     if (( root_disk_pct > 95 )); then
       status_fail "Root disk usage: ${root_disk_pct}% — critical!"
-      add_action "Root disk is nearly full. Remove unnecessary files immediately with 'mdoctor clean'."
+      add_diagnosis_action "critical" "Root disk is nearly full. Remove unnecessary files immediately with 'mdoctor clean'."
     elif (( root_disk_pct > 85 )); then
       status_warn "Root disk usage: ${root_disk_pct}% — high"
-      add_action "Root disk is nearly full. Consider cleanup with 'mdoctor clean' to reclaim space."
+      add_diagnosis_action "warning" "Root disk is nearly full. Consider cleanup with 'mdoctor clean' to reclaim space."
     else
       status_ok "Root disk usage: ${root_disk_pct}%"
     fi
@@ -363,10 +405,10 @@ check_zombie_processes() {
 
       unique_parents=$(echo "$parent_pids" | tr ' ' '\n' | sort -un | tr '\n' ' ' | sed 's/ *$//')
       if [ -n "$unique_parents" ]; then
-        add_action "Kill zombie parent processes: kill -HUP ${unique_parents}"
+        add_diagnosis_action "warning" "Kill zombie parent processes: kill -HUP ${unique_parents}"
       fi
     else
-      add_action "Found ${zombie_count} zombie process(es). These can be cleaned up by killing their parent process."
+      add_diagnosis_action "warning" "Found ${zombie_count} zombie process(es). These can be cleaned up by killing their parent process."
     fi
   else
     status_ok "No zombie processes."
@@ -414,10 +456,10 @@ check_fd_limits() {
 
   if (( fd_open_pct > 80 )); then
     status_fail "File descriptors: ${open_fds}/${fd_limit} used (${fd_open_pct}%)"
-    add_action "File descriptor limit is nearly reached. Increase with 'ulimit -n <new_limit>' or adjust /etc/security/limits.conf."
+    add_diagnosis_action "critical" "File descriptor limit is nearly reached. Increase with 'ulimit -n <new_limit>' or adjust /etc/security/limits.conf."
   elif (( fd_open_pct > 50 )); then
     status_warn "File descriptors: ${open_fds}/${fd_limit} used (${fd_open_pct}%)"
-    add_action "File descriptor usage is moderate. Monitor for potential limits on busy servers."
+    add_diagnosis_action "warning" "File descriptor usage is moderate. Monitor for potential limits on busy servers."
   else
     status_ok "File descriptors: ${open_fds}/${fd_limit} used (${fd_open_pct}%)"
   fi
@@ -445,10 +487,10 @@ check_open_connections() {
 
   if (( conn_count > 5000 )); then
     status_fail "Open connections: ${conn_count} ESTABLISHED (LISTEN: ${conn_detail}) — critical"
-    add_action "Unusually high number of open connections. Investigate with 'netstat -ant' or 'ss -tunap'."
+    add_diagnosis_action "critical" "Unusually high number of open connections. Investigate with 'netstat -ant' or 'ss -tunap'."
   elif (( conn_count > 1000 )); then
     status_warn "Open connections: ${conn_count} ESTABLISHED (LISTEN: ${conn_detail})"
-    add_action "High number of open connections. Monitor for potential connection leaks."
+    add_diagnosis_action "warning" "High number of open connections. Monitor for potential connection leaks."
   else
     status_ok "Open connections: ${conn_count} ESTABLISHED (LISTEN: ${conn_detail})"
   fi
@@ -482,14 +524,9 @@ check_swap_thrashing() {
     fi
   fi
 
-  # Get iowait (reuse logic)
+  # Get iowait (sampled on Linux to reflect current pressure)
   if is_linux && [ -f /proc/stat ]; then
-    local cpu_line user nice system idle iowait irq soft_irq steal total
-    read -r cpu_line user nice system idle iowait irq soft_irq steal _ _ _ < <(head -1 /proc/stat)
-    total=$((user + nice + system + idle + iowait + irq + soft_irq + steal))
-    if (( total > 0 )); then
-      iowait_pct=$((iowait * 100 / total))
-    fi
+    iowait_pct=$(get_linux_iowait_pct)
   elif is_macos; then
     # macOS proxy: high memory pressure + swap activity = likely thrashing
     local pressure
@@ -501,11 +538,11 @@ check_swap_thrashing() {
 
   if (( swap_pct > 50 && iowait_pct > 10 )); then
     status_fail "SWAP THRASHING DETECTED: swap=${swap_pct}% iowait=${iowait_pct}%"
-    add_action "System is thrashing between RAM and swap. This causes severe performance degradation. Free RAM immediately by closing applications or adding more memory."
+    add_diagnosis_action "critical" "System is thrashing between RAM and swap. This causes severe performance degradation. Free RAM immediately by closing applications or adding more memory."
     return 0
   elif (( swap_pct > 30 || iowait_pct > 20 )); then
     status_warn "Potential swap pressure: swap=${swap_pct}% iowait=${iowait_pct}%"
-    add_action "System approaching swap thrashing conditions. Monitor memory usage and consider freeing RAM."
+    add_diagnosis_action "warning" "System approaching swap thrashing conditions. Monitor memory usage and consider freeing RAM."
   fi
 }
 
@@ -523,12 +560,7 @@ check_cpu_io_contention() {
   else
     load1=$(awk '{print $1}' /proc/loadavg 2>/dev/null)
     if [ -f /proc/stat ]; then
-      local user nice system idle iowait irq soft_irq steal total
-      read -r _ user nice system idle iowait irq soft_irq steal _ _ _ < <(head -1 /proc/stat)
-      total=$((user + nice + system + idle + iowait + irq + soft_irq + steal))
-      if (( total > 0 )); then
-        iowait_pct=$((iowait * 100 / total))
-      fi
+      iowait_pct=$(get_linux_iowait_pct)
     fi
   fi
 
@@ -546,10 +578,10 @@ check_cpu_io_contention() {
   # High load + high iowait = CPU waiting on I/O
   if (( load_int > threshold && iowait_pct > 15 )); then
     status_fail "CPU+I/O contention: load=${load1} (${cores} cores), iowait=${iowait_pct}%"
-    add_action "System is CPU-bound AND I/O-bound. The bottleneck is likely disk performance. Consider SSD upgrade or reducing I/O workload."
+    add_diagnosis_action "critical" "System is CPU-bound AND I/O-bound. The bottleneck is likely disk performance. Consider SSD upgrade or reducing I/O workload."
   elif (( iowait_pct > 20 )); then
     status_warn "I/O contention detected: iowait=${iowait_pct}%"
-    add_action "Disk I/O is causing contention. Review disk operations with 'iotop'."
+    add_diagnosis_action "warning" "Disk I/O is causing contention. Review disk operations with 'iotop'."
   fi
 }
 
@@ -581,7 +613,7 @@ check_cpu_user_sys() {
 
   if (( sys_pct > 40 )); then
     status_warn "CPU kernel-space usage: ${sys_pct}% (user=${user_pct}%)"
-    add_action "High kernel-space CPU usage. Check for kernel modules, drivers, or system calls causing overhead."
+    add_diagnosis_action "warning" "High kernel-space CPU usage. Check for kernel modules, drivers, or system calls causing overhead."
   else
     status_ok "CPU user/sys ratio healthy (user=${user_pct}%, sys=${sys_pct}%)"
   fi
@@ -597,6 +629,9 @@ check_diagnose_performance() {
   echo
 
   ACTIONS=()
+  ACTIONS_CRITICAL=()
+  ACTIONS_WARNING=()
+  DIAG_LINUX_IOWAIT_PCT=""
 
   # ── CPU Diagnostics ──
   section_title "CPU Diagnostics"
@@ -645,12 +680,19 @@ check_diagnose_performance() {
     echo "${RED}⚠ ${BOLD}${action_count} recommendation(s)${RESET}"
     echo
 
-    # Sort by severity and display
+    # Print critical recommendations first, then warnings.
     local i=1
-    for action in "${ACTIONS[@]}"; do
-      echo "${RED}${i}. ${action}${RESET}"
+    local action
+    set +u
+    for action in "${ACTIONS_CRITICAL[@]}"; do
+      echo "${RED}${i}. [critical] ${action}${RESET}"
       i=$((i + 1))
     done
+    for action in "${ACTIONS_WARNING[@]}"; do
+      echo "${YELLOW}${i}. [warning] ${action}${RESET}"
+      i=$((i + 1))
+    done
+    set -u
   else
     echo "${GREEN}✅ ${BOLD}System healthy${RESET} — No bottlenecks detected."
   fi
