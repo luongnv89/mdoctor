@@ -508,9 +508,9 @@ check_swap_thrashing() {
     local swap_total_raw swap_total_mb swap_used_mb
     swap_total_raw=$(sysctl -n vm.swapusage 2>/dev/null || echo "")
     if [ -n "$swap_total_raw" ]; then
-      # Format: "total = X Mb  used = Y Mb  free = Z Mb  (encrypted)"
-      swap_total_mb=$(echo "$swap_total_raw" | sed -n 's/.*total = \([0-9.]*\)Mb.*/\1/p' | tr -d ' ')
-      swap_used_mb=$(echo "$swap_total_raw" | sed -n 's/.*used = \([0-9.]*\)Mb.*/\1/p' | tr -d ' ')
+      # Format varies by macOS version: "0.00M" or "0.00Mb".
+      swap_total_mb=$(echo "$swap_total_raw" | sed -n 's/.*total = \([0-9.]*\)[Mm][Bb]*.*/\1/p' | tr -d ' ')
+      swap_used_mb=$(echo "$swap_total_raw" | sed -n 's/.*used = \([0-9.]*\)[Mm][Bb]*.*/\1/p' | tr -d ' ')
       if [ -n "$swap_total_mb" ] && [ -n "$swap_used_mb" ] && awk -v t="$swap_total_mb" 'BEGIN {exit !(t+0 > 0)}' 2>/dev/null; then
         swap_pct=$(awk -v u="$swap_used_mb" -v t="$swap_total_mb" 'BEGIN {printf "%d", u*100/t}')
       fi
