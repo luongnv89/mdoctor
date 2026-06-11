@@ -265,28 +265,11 @@ check_disk_iowait() {
       iowait_pct=0
     fi
   elif is_macos; then
-    # macOS: derive iowait proxy from vm_stat page faults
-    local free_pages active_pages inactive_pages speculative_pages wired_pages
-    local used_pages non_paging_pages page_size
-    local reads writes
-
-    page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096)
-
-    free_pages=$(vm_stat 2>/dev/null | awk '/Pages free/ {gsub("\\.","",$3); print $3+0}')
-    active_pages=$(vm_stat 2>/dev/null | awk '/Pages active/ {gsub("\\.","",$3); print $3+0}')
-    inactive_pages=$(vm_stat 2>/dev/null | awk '/Pages inactive/ {gsub("\\.","",$3); print $3+0}')
-    speculative_pages=$(vm_stat 2>/dev/null | awk '/Pages speculative/ {gsub("\\.","",$3); print $3+0}')
-    wired_pages=$(vm_stat 2>/dev/null | awk '/Pages wired down/ {gsub("\\.","",$4); print $4+0}')
-
-    # Page faults from vm_stat (not available directly; use paged stuff as proxy)
-    local paged_total=$((free_pages + active_pages + inactive_pages + speculative_pages + wired_pages))
-    if (( paged_total > 0 )); then
-      # Approximate: high non-paging ratio suggests disk pressure
-      local non_paging=$((wired_pages))
-      iowait_pct=$((non_paging * 100 / paged_total))
-    else
-      iowait_pct=0
-    fi
+    # macOS does not expose Linux-style CPU iowait. Avoid deriving disk
+    # contention from vm_stat memory counters because wired/active pages are
+    # unrelated to disk wait and produce misleading remediation advice.
+    status_info "Disk I/O wait: unavailable on macOS (use Activity Monitor or 'iostat -w 1' for live disk activity)"
+    return 0
   else
     status_info "Disk I/O: unable to determine iowait"
     return 0
@@ -299,11 +282,7 @@ check_disk_iowait() {
     status_warn "Disk I/O wait: ${iowait_pct}% — elevated"
     add_action "Disk I/O wait is elevated. Identify slow disk operations and consider SSD upgrade if on HDD."
   else
-    if is_macos; then
-      status_ok "Disk I/O contention proxy: ${iowait_pct}% — normal"
-    else
-      status_ok "Disk I/O wait: ${iowait_pct}% — normal"
-    fi
+    status_ok "Disk I/O wait: ${iowait_pct}% — normal"
   fi
 }
 
@@ -414,18 +393,19 @@ check_fd_limits() {
       open_fds=$((open_files))
     fi
   elif is_linux && [ -f /proc/sys/fs/file-nr ]; then
-    # Linux: read from /proc/sys/fs/file-nr (system-wide, fast)
+    # Linux: read from /proc/sys/fs/file-nr (system-wide, fast).
+    # Format: allocated unused max. The max field is the system-wide limit;
+    # do not compare system-wide allocated FDs against per-process ulimit -n.
     local file_nr
-    file_nr=$(cat /proc/sys/fs/file-nr 2>/dev/null | tr -d '\n\r ')
+    file_nr=$(cat /proc/sys/fs/file-nr 2>/dev/null)
     open_fds=$(echo "$file_nr" | awk '{print $1+0}')
-    # Use system-wide max if available, fall back to per-process limit
-    if [ -f /proc/sys/fs/nr_max ]; then
-      fd_limit=$(cat /proc/sys/fs/nr_max 2>/dev/null | tr -d '\n\r ')
-    else
-      fd_limit=$(ulimit -n 2>/dev/null || echo 10240)
+    fd_limit=$(echo "$file_nr" | awk '{print $3+0}')
+    if (( ${fd_limit:-0} <= 0 )) && [ -f /proc/sys/fs/file-max ]; then
+      fd_limit=$(cat /proc/sys/fs/file-max 2>/dev/null | tr -d '\n\r ')
     fi
   fi
 
+  fd_limit=${fd_limit:-0}
   if (( fd_limit > 0 )); then
     fd_open_pct=$((open_fds * 100 / fd_limit))
   else
@@ -537,17 +517,9 @@ check_cpu_io_contention() {
   local load1 iowait_pct=0
 
   if is_macos; then
-    load1=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}')
-    # Use the same proxy iowait as in check_disk_iowait
-    local page_size active_pages wired_pages free_pages
-    page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096)
-    active_pages=$(vm_stat 2>/dev/null | awk '/Pages active/ {gsub("\\.","",$3); print $3+0}')
-    wired_pages=$(vm_stat 2>/dev/null | awk '/Pages wired down/ {gsub("\\.","",$4); print $4+0}')
-    free_pages=$(vm_stat 2>/dev/null | awk '/Pages free/ {gsub("\\.","",$3); print $3+0}')
-    local paged_total=$((active_pages + wired_pages + free_pages))
-    if (( paged_total > 0 )); then
-      iowait_pct=$((wired_pages * 100 / paged_total))
-    fi
+    # macOS does not expose Linux-style CPU iowait; skip this correlation
+    # rather than using unrelated memory counters as a disk I/O proxy.
+    return 0
   else
     load1=$(awk '{print $1}' /proc/loadavg 2>/dev/null)
     if [ -f /proc/stat ]; then
