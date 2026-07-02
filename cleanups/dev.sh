@@ -52,7 +52,7 @@ clean_dev_stuff() {
   # Docker (removes ALL unused containers/images/volumes)
   if command -v docker >/dev/null 2>&1; then
     log "Docker detected – pruning unused data."
-    run_cmd_args docker system prune -af --volumes
+    run_cmd_args docker system prune -af --volumes || true
   else
     log "Docker not found; skipping."
   fi
