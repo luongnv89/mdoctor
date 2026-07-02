@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- `mdoctor clean` no longer aborts on empty `EXCLUDE_GLOB` scope config under `set -u` (#14)
+- Docker prune failures when the daemon is unavailable are logged without stopping dev cache cleanup (#14)
+
 ## [3.0.0] - 2026-05-05
 
 ### Added
