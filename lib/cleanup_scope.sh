@@ -102,6 +102,10 @@ cleanup_scope_is_excluded() {
 
   load_cleanup_scope
 
+  if [ "${#_MDOCTOR_SCOPE_EXCLUDE_GLOBS[@]}" -eq 0 ]; then
+    return 1
+  fi
+
   local pat=""
   for pat in "${_MDOCTOR_SCOPE_EXCLUDE_GLOBS[@]}"; do
     case "$path" in
