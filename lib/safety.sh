@@ -207,6 +207,71 @@ is_whitelisted_cleanup_path() {
   return 1
 }
 
+# Positive allowlist of deletion roots (Task 0.4). Every filesystem
+# deletion must sit under one of these known cache/temp roots; the
+# denylist in is_protected_deletion_path remains as a backstop. The same
+# list is documented in docs/SAFETY.md ("Allowed deletion roots").
+# Prints one root per line, $HOME-resolved at call time so sandboxed
+# test runs (overridden HOME) get matching roots.
+_mdoctor_allowed_deletion_roots() {
+  local home="${HOME:-}"
+  [ -n "$home" ] || return 0
+  printf '%s\n' \
+    "${TMPDIR:-/tmp}" \
+    "/tmp" \
+    "/var/tmp" \
+    "/var/crash" \
+    "$home/.Trash" \
+    "$home/.cache" \
+    "$home/.npm" \
+    "$home/.yarn" \
+    "$home/.m2" \
+    "$home/.gradle" \
+    "$home/.cargo" \
+    "$home/.local/share/Trash" \
+    "$home/.local/share/mdoctor" \
+    "$home/.local/share/apport" \
+    "$home/.local/share/pnpm" \
+    "$home/Library/Caches" \
+    "$home/Library/Logs" \
+    "$home/Library/Developer" \
+    "$home/Library/Application Support/MobileSync" \
+    "$home/go" \
+    "$home/miniconda3" \
+    "$home/anaconda3"
+}
+
+# Returns 0 when the (already normalized) path sits under an allowed root.
+_is_under_allowed_root() {
+  local path="${1-}"
+  local root norm_root
+
+  while IFS= read -r root; do
+    [ -z "$root" ] && continue
+    norm_root="$(_normalize_path "$root")"
+    [ -z "$norm_root" ] && continue
+    if [ "$path" = "$norm_root" ] || [[ "$path" == "$norm_root/"* ]]; then
+      return 0
+    fi
+  done < <(_mdoctor_allowed_deletion_roots)
+
+  # Stale node_modules cleanup (cleanups/dev_caches.sh) targets
+  # "<project>/node_modules" at any depth under HOME. The basename rule
+  # keeps this exception tight: only a directory literally named
+  # node_modules, never its parents or siblings.
+  local home_norm
+  home_norm="$(_normalize_path "${HOME:-}")"
+  if [ -n "$home_norm" ]; then
+    case "$path" in
+      "$home_norm"/*/node_modules)
+        return 0
+        ;;
+    esac
+  fi
+
+  return 1
+}
+
 is_protected_deletion_path() {
   local path
   path="$(_normalize_path "${1-}")"
@@ -217,6 +282,18 @@ is_protected_deletion_path() {
   if [ -z "${HOME:-}" ]; then
     return 0
   fi
+
+  # Carve-outs for legitimate module targets (Task 0.4): these sit under
+  # broadly-protected parents but are allowlisted explicitly. The
+  # allowlist check in validate_deletion_path still applies to them.
+  # NOTE: /Library/Logs/DiagnosticReports is deliberately NOT carved out
+  # (Task 0.4 acceptance): system-wide diagnostic reports are outside the
+  # user-cleanup scope, so macOS crash cleanup covers the user domain only.
+  case "$path" in
+    /var/crash|/var/crash/*|/var/tmp|/var/tmp/*)
+      return 1
+      ;;
+  esac
 
   case "$path" in
     /|/bin|/sbin|/usr|/usr/bin|/usr/sbin|/usr/lib|/System|/private|/private/etc|/private/var|/etc|/var|/Library|/Applications)
@@ -278,6 +355,11 @@ validate_deletion_path() {
 
   if is_protected_deletion_path "$path"; then
     _safety_error "$MDOCTOR_SAFE_ERR_PROTECTED_TARGET" "$path" "blocked protected deletion target"
+    return "$MDOCTOR_SAFE_ERR_PROTECTED_TARGET"
+  fi
+
+  if ! _is_under_allowed_root "$path"; then
+    _safety_error "$MDOCTOR_SAFE_ERR_PROTECTED_TARGET" "$path" "deletion target is outside the allowed cache/temp roots (see docs/SAFETY.md)"
     return "$MDOCTOR_SAFE_ERR_PROTECTED_TARGET"
   fi
 
