@@ -280,6 +280,9 @@ main() {
 			log "Pre-flight only (MDOCTOR_PREFLIGHT_ONLY=true) — exiting before destructive execution."
 			exit 0
 		fi
+		# Confirmation gate (Task 0.5): y/N prompt, or refusal on a
+		# non-tty unless MDOCTOR_ASSUME_YES=true.
+		confirm_destructive_execution "full cleanup" || exit 1
 	fi
 
 	header "Starting cleanup (DRY_RUN=${DRY_RUN}, platform=$(platform_name))"

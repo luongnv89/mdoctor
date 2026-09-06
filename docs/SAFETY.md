@@ -10,8 +10,18 @@ mdoctor cleanup uses multiple safety layers:
    - `mdoctor clean` previews actions without deleting files.
    - Real deletion requires `--force`.
 
-2. **Force-mode preflight summaries**
-   - Before destructive runs, mdoctor prints touched targets and reclaim estimates.
+2. **Force-mode preflight summary + confirmation gate**
+   - Before destructive runs, mdoctor prints touched targets and reclaim
+     estimates. The summary is informational only — it is not a
+     review-then-approve step.
+   - After the summary, a `Proceed with deletion? [y/N]` prompt is the
+     approval gate: only an explicit `y` proceeds; anything else aborts
+     with no files deleted.
+   - `MDOCTOR_ASSUME_YES=true` skips the prompt (automation/CI). With it
+     set there is no confirmation — `--force` deletes immediately after
+     the summary.
+   - `--force` on a non-tty without `MDOCTOR_ASSUME_YES=true` refuses
+     outright and names the variable.
 
 3. **Deletion safety primitives**
    - Cleanup modules route through guarded helpers in `lib/safety.sh`.
@@ -63,6 +73,9 @@ Before using `--force`:
 - For guided selection, use: `mdoctor clean --interactive`
 - Confirm whitelist/scope config reflects your environment
 - Close apps that heavily mutate caches during cleanup (Xcode, Docker, browsers)
+- Know the gate: interactive `--force` asks once per run (`[y/N]`,
+  default no); non-interactive runs need `MDOCTOR_ASSUME_YES=true`, under
+  which there is no confirmation and `--force` deletes immediately
 
 ## Configuration Controls
 

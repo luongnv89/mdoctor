@@ -189,3 +189,40 @@ add_log_file() {
     LOG_DESCS+=("$desc")
   fi
 }
+
+########################################
+# DESTRUCTIVE-EXECUTION CONFIRMATION GATE (Task 0.5)
+########################################
+
+# confirm_destructive_execution [context]
+# Returns 0 when deletion may proceed, 1 otherwise. Behavior:
+# - MDOCTOR_ASSUME_YES=true  -> proceed with no prompt (automation/CI).
+# - otherwise a y/N prompt is read from stdin; only an explicit
+#   y/Y/yes proceeds. Anything else (n, empty, EOF) aborts.
+# - on a non-tty stdin without an affirmative answer the refusal names
+#   MDOCTOR_ASSUME_YES, so `--force < /dev/null` fails with a pointer
+#   instead of hanging or deleting.
+confirm_destructive_execution() {
+  local context="${1:-cleanup}"
+
+  if [ "${MDOCTOR_ASSUME_YES:-false}" = true ]; then
+    return 0
+  fi
+
+  local answer=""
+  printf 'Proceed with deletion (%s)? [y/N] ' "$context" >&2
+  IFS= read -r answer || answer=""
+
+  case "$answer" in
+    [yY]|[yY][eE][sS])
+      return 0
+      ;;
+  esac
+
+  if [ ! -t 0 ]; then
+    echo "Refusing --force on a non-tty without MDOCTOR_ASSUME_YES=true: no confirmation received, nothing was deleted." >&2
+  else
+    echo "Aborted: nothing was deleted." >&2
+  fi
+  return 1
+}

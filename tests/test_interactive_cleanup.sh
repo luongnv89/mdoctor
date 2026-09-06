@@ -24,8 +24,9 @@ cd "$ROOT_DIR"
 printf '1\n' | HOME="$TMPHOME" ./mdoctor clean --interactive >/dev/null 2>&1
 assert_file_exists "$TRASH_DIR/interactive.txt"
 
-# Force interactive selection should delete
-printf '1\n' | HOME="$TMPHOME" ./mdoctor clean --interactive --force >/dev/null 2>&1
+# Force interactive selection should delete (selection "1", then "y" at
+# the 0.5 confirmation prompt — both are read from the same stdin).
+printf '1\ny\n' | HOME="$TMPHOME" ./mdoctor clean --interactive --force >/dev/null 2>&1
 assert_file_not_exists "$TRASH_DIR/interactive.txt"
 
 # Invalid selection should fail
