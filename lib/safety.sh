@@ -208,7 +208,7 @@ is_protected_deletion_path() {
 
   if [ -n "${HOME:-}" ]; then
     case "$path" in
-      "$HOME"|"$HOME/Desktop"|"$HOME/Documents"|"$HOME/Library"|"$HOME/.ssh"|"$HOME/.gnupg")
+      "$HOME"|"$HOME/Desktop"|"$HOME/Documents"|"$HOME/Library"|"$HOME/.ssh"|"$HOME/.gnupg"|"$HOME/.local"|"$HOME/.local/share"|"$HOME/.config")
         return 0
         ;;
     esac
