@@ -27,10 +27,10 @@ gui/node_modules/
 .env.local
 
 .claude
-CLAUDE.md
+CLAUDE.local.md
 
 .codex
-AGENTS.md
+AGENTS.override.md
 
 .gemini
 .opencode
