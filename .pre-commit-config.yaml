@@ -27,9 +27,8 @@ repos:
         language: system
         types: [shell]
 
-      - id: test-suite
-        name: test suite
-        entry: ./tests/run.sh
-        language: script
-        pass_filenames: false
-        stages: [pre-push]
+      # NOTE (Task 0.1): no hook invokes the full `./tests/run.sh` suite on
+      # pre-push. The suite is hermetic (HOME sandbox + pre-flight-only force
+      # path + docker/apt-get/sudo PATH stubs in tests/helpers/bin), but it
+      # stays opt-in: CI runs it from a clean checkout, developers run it
+      # explicitly. See docs/DEVELOPMENT.md "Test Harness".

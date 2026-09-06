@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Hermetic test stubs: these shadow real host binaries so the regression
+# suite can never reach a live daemon or package manager (Task 0.1).
+# tests/run.sh prepends this directory to PATH for the whole suite.
+# Invocations are appended to $MDOCTOR_STUB_LOG (if set) as "<name> <argv>".
+#
+# This directory must stay Bash 3.2 compatible and dependency-free.

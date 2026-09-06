@@ -53,16 +53,17 @@ installer flow.
 
 ## Constraints
 
-- Never run the full `./tests/run.sh` on a real machine until Task 0.1
-  lands (destructive force test) — safe subset only.
+- The regression suite is hermetic (`HOME` sandbox + pre-flight-only
+  force path + `docker`/`apt-get`/`sudo` PATH stubs) — `./tests/run.sh`
+  is safe on a dev machine.
 - Never push to `main` except through a reviewed PR.
 - Never create or read a `.env` file — env vars only.
 - Never break the Bash 3.2 floor.
 
 ## Done when
 
-`bash -n` sweep reports 0 errors; safe test subset passes (full
-`./tests/run.sh` 9/9 once 0.1 lands); `./scripts/lint_shell.sh` exits
+`bash -n` sweep reports 0 errors; `./tests/run.sh` passes 9/9;
+`./scripts/lint_shell.sh` exits
 0; `git status` shows only intended files.
 
 ## Read when needed

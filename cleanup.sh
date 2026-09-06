@@ -273,6 +273,13 @@ main() {
 
 	if [ "$DRY_RUN" = false ]; then
 		cleanup_force_preflight_summary
+		# Pre-flight-only early exit (Task 0.1): lets the force test assert
+		# on the pre-flight summary without executing any destructive step.
+		# Set MDOCTOR_PREFLIGHT_ONLY=true to print the summary and stop.
+		if [ "${MDOCTOR_PREFLIGHT_ONLY:-false}" = true ]; then
+			log "Pre-flight only (MDOCTOR_PREFLIGHT_ONLY=true) — exiting before destructive execution."
+			exit 0
+		fi
 	fi
 
 	header "Starting cleanup (DRY_RUN=${DRY_RUN}, platform=$(platform_name))"

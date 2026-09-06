@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Stub for `sudo`: records argv, then executes the remaining command so
+# stubbed binaries behind sudo (e.g. `sudo apt-get`) still hit the stubs.
+# Refuses anything else: tests must never need real privilege escalation.
+if [ -n "${MDOCTOR_STUB_LOG:-}" ]; then
+  printf 'sudo %s\n' "$*" >>"$MDOCTOR_STUB_LOG"
+fi
+if [ "$#" -eq 0 ]; then
+  echo "stubbed sudo: no command" >&2
+  exit 0
+fi
+case "$1" in
+  apt-get|docker)
+    exec "$@"
+    ;;
+  *)
+    echo "stubbed sudo: refusing to run '$1' with privilege in tests" >&2
+    exit 0
+    ;;
+esac

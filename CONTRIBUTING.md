@@ -127,6 +127,18 @@ Test your changes locally before submitting:
 ./mdoctor info
 ```
 
+Run the regression suite explicitly (no git hook runs it automatically):
+
+```bash
+./tests/run.sh
+```
+
+The suite is hermetic: tests sandbox `HOME` to a temp dir, the force
+test stops after its pre-flight summary via `MDOCTOR_PREFLIGHT_ONLY=true`,
+and `tests/helpers/bin` stubs `docker`, `apt-get` and `sudo` on `PATH`
+so no test can reach a real daemon. See `docs/DEVELOPMENT.md`
+"Test Harness" for details.
+
 ## Questions?
 
 Open an issue or start a discussion on GitHub. We're happy to help!

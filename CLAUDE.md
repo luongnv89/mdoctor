@@ -23,14 +23,14 @@ find . \( -name '*.sh' -o -name 'mdoctor' -o -name 'cleanup.sh' -o -name 'doctor
 ## Test
 
 Command of record: `./tests/run.sh` (runs all `tests/test_*.sh`, must
-pass 9/9 once Task 0.1 lands).
+pass 9/9).
 
-**Destructive until Task 0.1:** the full runner executes
-`tests/test_force_preflight_resilience.sh`, which runs
-`./cleanup.sh --force`. The `HOME` sandbox in that test does NOT cover
-`docker system prune -af --volumes` or `sudo apt-get autoremove -y` —
-never run the full suite on a real machine until 0.1. Until then, run
-the safe subset only:
+The suite is hermetic since Task 0.1: the force test
+(`tests/test_force_preflight_resilience.sh`) stops after its pre-flight
+summary via `MDOCTOR_PREFLIGHT_ONLY=true`, and `tests/run.sh` stubs
+`docker`, `apt-get` and `sudo` on `PATH` — safe to run on a developer
+machine. For a quicker signal, run the safe subset (skip the
+force-resilience file):
 
 ```bash
 for f in tests/test_*.sh; do
