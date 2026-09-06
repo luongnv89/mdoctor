@@ -98,11 +98,25 @@ _normalize_path() {
     return 0
   fi
 
-  # Keep / intact, trim trailing slash otherwise
+  # Collapse repeated slashes: // -> / (repeat until stable; Bash 3.2-safe)
+  while [[ "$path" == *"//"* ]]; do
+    path="${path//\/\//\/}"
+  done
+
+  # Collapse /./ segments: /a/./b -> /a/b
+  while [[ "$path" == *"/./"* ]]; do
+    path="${path//\/.\//\/}"
+  done
+
+  # Keep / intact; trim trailing slash and trailing /. otherwise
   if [ "$path" != "/" ]; then
     while [ "${path%/}" != "$path" ]; do
       path="${path%/}"
     done
+    if [ "${path%/.}" != "$path" ]; then
+      path="${path%/.}"
+      [ -z "$path" ] && path="/"
+    fi
   fi
 
   echo "$path"
@@ -197,22 +211,29 @@ is_protected_deletion_path() {
   local path
   path="$(_normalize_path "${1-}")"
 
+  # Fail closed: an empty or unset HOME (legal in cron, launchd, systemd
+  # and containers; not caught by `set -u`) collapses every computed
+  # target onto a system directory, so everything is protected.
+  if [ -z "${HOME:-}" ]; then
+    return 0
+  fi
+
   case "$path" in
     /|/bin|/sbin|/usr|/usr/bin|/usr/sbin|/usr/lib|/System|/private|/private/etc|/private/var|/etc|/var|/Library|/Applications)
       return 0
       ;;
-    /bin/*|/sbin/*|/usr/bin/*|/usr/sbin/*|/usr/lib/*|/System/*|/private/etc/*|/private/var/*|/etc/*|/var/*)
+    /bin/*|/sbin/*|/usr/bin/*|/usr/sbin/*|/usr/lib/*|/System/*|/private/etc/*|/private/var/*|/etc/*|/var/*|/Library/*)
       return 0
       ;;
   esac
 
-  if [ -n "${HOME:-}" ]; then
-    case "$path" in
-      "$HOME"|"$HOME/Desktop"|"$HOME/Documents"|"$HOME/Library"|"$HOME/.ssh"|"$HOME/.gnupg"|"$HOME/.local"|"$HOME/.local/share"|"$HOME/.config")
-        return 0
-        ;;
-    esac
-  fi
+  local home_norm
+  home_norm="$(_normalize_path "$HOME")"
+  case "$path" in
+    "$home_norm"|"$home_norm/Desktop"|"$home_norm/Documents"|"$home_norm/Library"|"$home_norm/.ssh"|"$home_norm/.gnupg"|"$home_norm/.local"|"$home_norm/.local/share"|"$home_norm/.config")
+      return 0
+      ;;
+  esac
 
   # Linux system-critical paths
   case "$path" in

@@ -81,4 +81,24 @@ MDOCTOR_ASSUME_YES=true HOME="$TMPHOME" ./mdoctor clean --force -m logs >/dev/nu
 assert_file_exists "$TMPHOME/.local/share/other-app/old.log"
 assert_file_not_exists "$own_log_dir/old.log"
 
+# Task 0.3: empty HOME fails closed — every target is protected.
+set +e
+HOME= bash -c 'source lib/safety.sh; validate_deletion_path /Library/Caches >/dev/null 2>&1'
+[ "$?" -eq "$MDOCTOR_SAFE_ERR_PROTECTED_TARGET" ] || fail "Expected protected-target code with empty HOME"
+set -e
+
+# Task 0.3: denormalized whitelist forms still match (normalization
+# applies to both the candidate and every whitelist entry).
+cat > "$MDOCTOR_CLEANUP_WHITELIST_FILE" <<EOF
+~/.ollama/models
+EOF
+_MDOCTOR_WHITELIST_LOADED=false
+mkdir -p "$TMPHOME/.ollama/models"
+echo "weights" > "$TMPHOME/.ollama/models/keep.bin"
+DRY_RUN=false
+safe_remove "$TMPHOME/.ollama/models" >/dev/null 2>&1 || true
+safe_remove "$TMPHOME//.ollama/models" >/dev/null 2>&1 || true
+safe_remove "$TMPHOME/./.ollama/models" >/dev/null 2>&1 || true
+assert_file_exists "$TMPHOME/.ollama/models/keep.bin"
+
 pass "safety validation + whitelist protection"
