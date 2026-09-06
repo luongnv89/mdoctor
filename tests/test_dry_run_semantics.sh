@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/tests/helpers/assert.sh"
 source "$ROOT_DIR/lib/platform.sh"
+source "$ROOT_DIR/lib/common.sh"
 
 # Hermetic stubs (also set by tests/run.sh; repeated here so this file
 # passes standalone): docker/apt-get/sudo record argv, never execute.
@@ -81,5 +82,33 @@ done
 for m in caches downloads browser; do
   grep -q "$m.*\[LOW\]" "$TMPHOME/list.out" || fail "Expected $m at [LOW] in mdoctor list"
 done
+
+# Task 1.6: the central predicate normalizes truthy spellings to dry.
+set +e
+for _v in 1 yes YES TRUE 'true '; do
+  DRY_RUN="$_v" is_dry_run >/dev/null 2>&1
+  [ "$?" -eq 0 ] || fail "Expected dry-run enabled for DRY_RUN='$_v'"
+done
+for _v in 0 false FALSE no NO n N; do
+  DRY_RUN="$_v" is_dry_run >/dev/null 2>&1
+  [ "$?" -eq 1 ] || fail "Expected force mode (rc 1) for DRY_RUN='$_v'"
+done
+# Invalid values warn on stderr, resolve to dry (never force), and the
+# predicate reports non-zero.
+DRY_RUN=banana is_dry_run >"$TMPHOME/banana.out" 2>"$TMPHOME/banana.err"
+_banana_rc=$?
+set -e
+[ "$_banana_rc" -ne 0 ] || fail "Expected non-zero predicate status for DRY_RUN=banana"
+[ "$_banana_rc" -ne 1 ] || fail "Invalid DRY_RUN must never resolve to force"
+assert_contains "$TMPHOME/banana.err" "DRY_RUN"
+set +e
+_dry_rc=0
+DRY_RUN=banana is_dry_run >/dev/null 2>&1 || _dry_rc=$?
+set -e
+[ "$_dry_rc" -ne 1 ] || fail "Call-site form must stay dry for DRY_RUN=banana"
+# Explicit force still deletes through the real path (predicate rc 1).
+echo "keep-force" > "$TRASH_DIR/force.txt"
+DRY_RUN=0 MDOCTOR_ASSUME_YES=true HOME="$TMPHOME" ./mdoctor clean --force -m trash >/dev/null 2>&1
+assert_file_not_exists "$TRASH_DIR/force.txt"
 
 pass "dry-run vs force semantics"

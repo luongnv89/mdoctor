@@ -8,6 +8,13 @@
 # COLORS & ICONS
 ########################################
 
+# Guard against double-sourcing (lib/logging.sh and lib/safety.sh pull
+# this file in when is_dry_run is otherwise unavailable).
+if [ "${_MDOCTOR_COMMON_LOADED:-false}" = true ]; then
+  return 0 2>/dev/null || true
+fi
+_MDOCTOR_COMMON_LOADED=true
+
 init_colors() {
   if command -v tput >/dev/null 2>&1; then
     RED="$(tput setaf 1)"
@@ -188,6 +195,55 @@ add_log_file() {
     LOG_PATHS+=("$path")
     LOG_DESCS+=("$desc")
   fi
+}
+
+########################################
+# DRY-RUN PREDICATE (Task 1.6)
+########################################
+
+# is_dry_run — central fail-closed dry-run predicate. Never compare
+# $DRY_RUN to a literal again; call this instead.
+#
+# Return codes:
+#   0 — dry-run ENABLED (unset/empty default, or truthy: true/1/yes/y
+#       in any letter case, surrounding whitespace ignored)
+#   1 — dry-run EXPLICITLY DISABLED (force): false/0/no/n, the ONLY
+#       code that may proceed to deletion
+#   2 — value INVALID: warns on stderr and dry-run stays enabled
+#       (fail closed)
+#
+# Call sites MUST branch on rc==1 explicitly so invalid values fail
+# closed (plain `if is_dry_run` would take the force branch on rc 2):
+#
+#   local _dry_rc=0
+#   is_dry_run || _dry_rc=$?
+#   if [ "$_dry_rc" -eq 1 ]; then
+#     <force path — explicit opt-out only>
+#   else
+#     <dry path — default, truthy, and invalid values>
+#   fi
+#
+# (The `||` keeps the call safe under `set -e`.)
+is_dry_run() {
+  local raw="${DRY_RUN:-true}"
+  local norm="$raw"
+
+  # Trim leading/trailing whitespace (Bash 3.2-safe; no extglob).
+  norm="${norm#"${norm%%[![:space:]]*}"}"
+  norm="${norm%"${norm##*[![:space:]]}"}"
+
+  case "$norm" in
+    ""|[tT][rR][uU][eE]|1|[yY][eE][sS]|[yY])
+      return 0
+      ;;
+    [fF][aA][lL][sS][eE]|0|[nN][oO]|[nN])
+      return 1
+      ;;
+    *)
+      echo "warning: ignoring invalid DRY_RUN='${raw}' — failing closed to dry-run enabled" >&2
+      return 2
+      ;;
+  esac
 }
 
 ########################################

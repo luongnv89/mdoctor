@@ -271,7 +271,12 @@ main() {
 		ensure_cleanup_scope_file
 	fi
 
-	if [ "$DRY_RUN" = false ]; then
+	# Central fail-closed predicate (Task 1.6): only rc 1 (explicit
+	# false/0/no/n) deletes; unset/truthy/invalid values stay dry.
+	local _dry_rc=0
+	is_dry_run || _dry_rc=$?
+
+	if [ "$_dry_rc" -eq 1 ]; then
 		cleanup_force_preflight_summary
 		# Pre-flight-only early exit (Task 0.1): lets the force test assert
 		# on the pre-flight summary without executing any destructive step.
@@ -332,7 +337,7 @@ main() {
 	# Stop spinner from last step
 	progress_stop
 
-	if [ "$DRY_RUN" = true ]; then
+	if [ "$_dry_rc" -ne 1 ]; then
 		used_after_kb="$used_before_kb"
 	else
 		used_after_kb="$(disk_used_kb)"
@@ -348,7 +353,7 @@ main() {
 	log "Cleanup finished."
 	log "$(disk_usage)"
 
-	if [ "$DRY_RUN" = true ]; then
+	if [ "$_dry_rc" -ne 1 ]; then
 		log "Estimated space that COULD be freed: ${freed_hr} (dry run – no actual changes made)."
 	else
 		log "Estimated space freed: ${freed_hr}."

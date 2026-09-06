@@ -4,6 +4,15 @@
 # Centralized deletion safety primitives for cleanup operations
 #
 
+# safe_remove needs is_dry_run (Task 1.6). Engines load lib/common.sh
+# first, but standalone sourcing may not — pull it in.
+if ! declare -f is_dry_run >/dev/null 2>&1; then
+  _MDOCTOR_SAFETY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
+  # shellcheck source=/dev/null
+  source "${_MDOCTOR_SAFETY_DIR}/common.sh"
+  unset _MDOCTOR_SAFETY_DIR
+fi
+
 # -----------------------------------------------------------------------------
 # Error taxonomy (destructive operations)
 # -----------------------------------------------------------------------------
@@ -393,7 +402,10 @@ safe_remove() {
     return 0
   fi
 
-  if [ "${DRY_RUN:-true}" = true ]; then
+  # Central fail-closed predicate (Task 1.6): only rc 1 removes.
+  local _dry_rc=0
+  is_dry_run || _dry_rc=$?
+  if [ "$_dry_rc" -ne 1 ]; then
     _safety_log "[DRY RUN][SAFE_REMOVE] $path"
     if declare -f op_record >/dev/null 2>&1; then
       op_record "DRY_RUN_REMOVE" "$path"
