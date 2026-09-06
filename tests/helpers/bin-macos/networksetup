@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Stub for macOS-only `networksetup`: records argv, never executes.
+if [ -n "${MDOCTOR_STUB_LOG:-}" ]; then
+  printf "networksetup %s\n" "$*" >>"$MDOCTOR_STUB_LOG"
+fi
+echo "stubbed networksetup: $*" >&2
+exit 0

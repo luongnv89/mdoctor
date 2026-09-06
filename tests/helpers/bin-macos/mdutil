@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Stub for macOS-only `mdutil`: records argv, never executes.
+if [ -n "${MDOCTOR_STUB_LOG:-}" ]; then
+  printf "mdutil %s\n" "$*" >>"$MDOCTOR_STUB_LOG"
+fi
+echo "stubbed mdutil: $*" >&2
+exit 0

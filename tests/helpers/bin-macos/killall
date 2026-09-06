@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Stub for macOS-only `killall`: records argv, never executes.
+if [ -n "${MDOCTOR_STUB_LOG:-}" ]; then
+  printf "killall %s\n" "$*" >>"$MDOCTOR_STUB_LOG"
+fi
+echo "stubbed killall: $*" >&2
+exit 0

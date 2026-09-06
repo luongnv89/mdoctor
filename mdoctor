@@ -730,8 +730,8 @@ cmd_fix() {
         echo
         echo "Targets:"
         echo "  dns           [LOW]  Flush DNS cache"
-        echo "  disk          [LOW]  Free disk space (cleanup + recommendations)"
         if is_macos; then
+          echo "  disk          [LOW]  Free disk space (cleanup + recommendations)"
           echo "  homebrew      [LOW]  Fix Homebrew issues (update, cleanup, doctor)"
           echo "  permissions   [MED]  Reset disk permissions and rebuild"
           echo "  spotlight     [MED]  Rebuild Spotlight index"
@@ -785,7 +785,7 @@ cmd_fix() {
   # before any module code runs. Only the registry used by `fix all`
   # was gated; the dispatch case below was not.
   case "$target" in
-    homebrew|permissions|spotlight|bluetooth|audio|wifi|timemachine)
+    homebrew|permissions|spotlight|bluetooth|audio|wifi|timemachine|disk)
       if ! is_macos; then
         error "Fix target '${target}' is macOS-only (running on $(platform_name))."
         return 1
@@ -812,9 +812,9 @@ cmd_fix() {
       fi
       ;;
     all)
-      local -a fix_targets=(dns disk)
+      local -a fix_targets=(dns)
       if is_macos; then
-        fix_targets+=(homebrew permissions spotlight bluetooth audio wifi)
+        fix_targets+=(disk homebrew permissions spotlight bluetooth audio wifi)
       fi
       if is_linux; then
         fix_targets+=(apt)
@@ -1016,8 +1016,8 @@ cmd_list() {
 
   # Fix modules
   register_module fix dns         System   LOW  fix_dns         "Flush DNS cache"
-  register_module fix disk        System   LOW  fix_disk        "Free disk space"
   if is_macos; then
+    register_module fix disk        System   LOW  fix_disk        "Free disk space"
     register_module fix homebrew    Software LOW  fix_homebrew    "Update, upgrade, cleanup Homebrew"
     register_module fix permissions System   MED  fix_permissions "Reset file permissions"
     register_module fix spotlight   System   MED  fix_spotlight   "Rebuild Spotlight index"
@@ -1331,7 +1331,7 @@ cmd_help() {
     echo "  [LOW]  homebrew, dns, disk, bluetooth, audio, wifi"
     echo "  [MED]  permissions, spotlight, timemachine"
   else
-    echo "  [LOW]  dns, disk, apt"
+    echo "  [LOW]  dns, apt"
   fi
   echo
   echo "${BOLD}Examples:${RESET}"

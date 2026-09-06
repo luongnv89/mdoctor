@@ -9,6 +9,11 @@ fix_wifi() {
   echo "${BOLD}${BLUE}== Fixing Wi-Fi ==${RESET}"
   echo
 
+  if ! is_macos; then
+    echo "${YELLOW}Wi-Fi fix is macOS-only (networksetup/ipconfig) — skipping on $(platform_name).${RESET}" >&2
+    return 1
+  fi
+
   # Detect active Wi-Fi interface
   local wifi_if
   wifi_if=$(networksetup -listallhardwareports 2>/dev/null | awk '/Wi-Fi/{getline; print $2}')
