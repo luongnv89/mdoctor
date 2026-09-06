@@ -16,6 +16,36 @@ mdoctor cleanup uses multiple safety layers:
 3. **Deletion safety primitives**
    - Cleanup modules route through guarded helpers in `lib/safety.sh`.
    - Protected targets, traversal patterns, and unsafe symlink deletes are blocked.
+   - Every deletion target must sit under an allowed deletion root (see
+     below); anything else is rejected even if no denylist rule matches.
+   - The denylist stays as a backstop, including carve-outs for the two
+     legitimate subtrees under broadly-protected parents (`/var/crash`,
+     `/var/tmp`).
+
+### Allowed deletion roots
+
+Single source of truth: `_mdoctor_allowed_deletion_roots()` in
+`lib/safety.sh`. This list mirrors it (regenerate by reading that
+function if they disagree — the code wins):
+
+- Temp: `${TMPDIR:-/tmp}`, `/tmp`, `/var/tmp`
+- Crash intake: `/var/crash`
+- macOS Trash / caches / logs / developer data: `~/.Trash`,
+  `~/Library/Caches`, `~/Library/Logs`, `~/Library/Developer`,
+  `~/Library/Application Support/MobileSync`
+- Linux Trash / logs / apport / pnpm: `~/.local/share/Trash`,
+  `~/.local/share/mdoctor`, `~/.local/share/apport`,
+  `~/.local/share/pnpm`
+- Developer caches: `~/.cache`, `~/.npm`, `~/.yarn`, `~/.m2`,
+  `~/.gradle`, `~/.cargo`, `~/go`, `~/miniconda3`, `~/anaconda3`
+- Stale `node_modules`: any `<project>/node_modules` under `$HOME`
+  (basename rule — parents and siblings are never covered)
+
+Deliberately excluded: `/home`, `/root`, `/opt`, `/srv`, `/mnt`,
+`/media`, `/usr/local/bin`, system-wide
+`/Library/Logs/DiagnosticReports` (macOS crash cleanup covers the user
+domain `~/Library/Logs/DiagnosticReports` only), `~/Downloads` (no
+module deletes there today), `~/.config`, `~/.local`.
 
 4. **User protection controls**
    - Whitelist: `~/.config/mdoctor/cleanup_whitelist`

@@ -16,6 +16,14 @@ clean_crash_reports() {
       continue
     fi
 
+    # System-wide report dirs (e.g. /Library/Logs/DiagnosticReports) are
+    # outside the allowed deletion roots (Task 0.4) — skip with a reason
+    # instead of attempting deletion.
+    if ! validate_deletion_path "$dir" >/dev/null 2>&1; then
+      log "Skipping out-of-scope directory: ${dir} — outside the allowed deletion roots."
+      continue
+    fi
+
     log "Scanning ${dir} for .crash, .diag, .ips files older than ${days} days..."
     safe_find_delete "$dir" -type f "(" -name "*.crash" -o -name "*.diag" -o -name "*.ips" ")" -mtime "+${days}" || true
   done < <(platform_crash_dirs)

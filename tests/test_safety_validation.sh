@@ -28,12 +28,12 @@ set -e
 [ "$rc_root" -eq "$MDOCTOR_SAFE_ERR_PROTECTED_TARGET" ] || fail "Expected protected-target code for '/'"
 [ "$rc_rel" -eq "$MDOCTOR_SAFE_ERR_INVALID_TARGET" ] || fail "Expected invalid-target code for relative path"
 
-mkdir -p "$TMPHOME/safe"
-echo "data" > "$TMPHOME/safe/file.txt"
-ln -s "$TMPHOME/safe/file.txt" "$TMPHOME/safe/link.txt"
+mkdir -p "$TMPHOME/.cache/safe"
+echo "data" > "$TMPHOME/.cache/safe/file.txt"
+ln -s "$TMPHOME/.cache/safe/file.txt" "$TMPHOME/.cache/safe/link.txt"
 
 set +e
-safe_remove "$TMPHOME/safe/link.txt" >/dev/null 2>&1
+safe_remove "$TMPHOME/.cache/safe/link.txt" >/dev/null 2>&1
 rc_link=$?
 set -e
 [ "$rc_link" -eq "$MDOCTOR_SAFE_ERR_SYMLINK_BLOCKED" ] || fail "Expected symlink-blocked code"
@@ -88,17 +88,58 @@ HOME= bash -c 'source lib/safety.sh; validate_deletion_path /Library/Caches >/de
 set -e
 
 # Task 0.3: denormalized whitelist forms still match (normalization
-# applies to both the candidate and every whitelist entry).
+# applies to both the candidate and every whitelist entry). The scratch
+# dir sits under an allowed root ($HOME/.cache) so the allowlist (0.4)
+# lets the calls reach the whitelist check.
 cat > "$MDOCTOR_CLEANUP_WHITELIST_FILE" <<EOF
-~/.ollama/models
+~/.cache/protected-models
 EOF
 _MDOCTOR_WHITELIST_LOADED=false
-mkdir -p "$TMPHOME/.ollama/models"
-echo "weights" > "$TMPHOME/.ollama/models/keep.bin"
+mkdir -p "$TMPHOME/.cache/protected-models"
+echo "weights" > "$TMPHOME/.cache/protected-models/keep.bin"
 DRY_RUN=false
-safe_remove "$TMPHOME/.ollama/models" >/dev/null 2>&1 || true
-safe_remove "$TMPHOME//.ollama/models" >/dev/null 2>&1 || true
-safe_remove "$TMPHOME/./.ollama/models" >/dev/null 2>&1 || true
-assert_file_exists "$TMPHOME/.ollama/models/keep.bin"
+safe_remove "$TMPHOME/.cache/protected-models" >/dev/null 2>&1 || true
+safe_remove "$TMPHOME//.cache/protected-models" >/dev/null 2>&1 || true
+safe_remove "$TMPHOME/./.cache/protected-models" >/dev/null 2>&1 || true
+assert_file_exists "$TMPHOME/.cache/protected-models/keep.bin"
+
+# Task 0.4: paths outside every known cache/temp root are rejected, even
+# where the denylist alone would allow them.
+set +e
+for p in /home /root /opt /srv /mnt /media /usr/local/bin \
+  /Library/Logs/DiagnosticReports \
+  "$TMPHOME/Downloads" "$TMPHOME/.config" "$TMPHOME/.local"; do
+  validate_deletion_path "$p" >/dev/null 2>&1
+  [ "$?" -eq "$MDOCTOR_SAFE_ERR_PROTECTED_TARGET" ] || fail "Expected protected-target code for '$p'"
+done
+set -e
+
+# Task 0.4: every path the cleanup modules legitimately target is still
+# accepted (enumerated from the module list — this fails if a module
+# strays outside the allowlist or the allowlist drifts from the code).
+set +e
+for p in \
+  "$(platform_trash_dir)" \
+  "$(platform_cache_dir)" \
+  "$(platform_user_log_dir)" \
+  "$TMPHOME/.npm" \
+  "$TMPHOME/.cache/pip" \
+  "$TMPHOME/.local/share/pnpm/store" \
+  "$TMPHOME/.m2/repository" \
+  "$TMPHOME/.gradle/caches" \
+  "$TMPHOME/go/pkg/mod/cache" \
+  "$TMPHOME/.cargo/registry/cache" \
+  "$TMPHOME/.local/share/apport" \
+  "$TMPHOME/workspace/proj/node_modules" \
+  "${TMPDIR:-/tmp}/mdoctor-probe"; do
+  validate_deletion_path "$p" >/dev/null 2>&1
+  [ "$?" -eq 0 ] || fail "Expected allowlist accept for legitimate target '$p'"
+done
+while IFS= read -r dir; do
+  [ -n "$dir" ] || continue
+  validate_deletion_path "$dir" >/dev/null 2>&1
+  [ "$?" -eq 0 ] || fail "Expected allowlist accept for crash dir '$dir'"
+done < <(platform_crash_dirs)
+set -e
 
 pass "safety validation + whitelist protection"
