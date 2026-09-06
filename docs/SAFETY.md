@@ -57,6 +57,28 @@ Deliberately excluded: `/home`, `/root`, `/opt`, `/srv`, `/mnt`,
 domain `~/Library/Logs/DiagnosticReports` only), `~/Downloads` (no
 module deletes there today), `~/.config`, `~/.local`.
 
+### Operations outside the safety primitives
+
+Two operations reachable from a forced clean do **not** route through
+the guarded helpers, so `validate_deletion_path` and the whitelist do
+**not** apply to them:
+
+- `docker system prune -af --volumes` — `cleanups/dev.sh:58`,
+  `cleanups/dev_caches.sh:88`. Deletes unused containers, images **and
+  named volumes** (database data, not caches). Gated by the opt-in flag
+  `MDOCTOR_ALLOW_DOCKER_PRUNE=true` (Task 0.6): without it the prune is
+  skipped and logged.
+- `sudo apt-get clean` / `autoclean` / `autoremove -y` —
+  `cleanups/apt.sh:19,22,26`. Runs the system package manager with
+  privilege, including an unattended `autoremove` that uninstalls
+  packages. Not filtered by any path check.
+
+Both are additionally covered by the layer-2 confirmation gate
+(Task 0.5): an interactive `--force` asks `[y/N]` after the pre-flight
+summary, and a non-tty `--force` without `MDOCTOR_ASSUME_YES=true`
+refuses. The gate limits *when* they run; it does not filter *what*
+they touch — review the pre-flight summary before answering `y`.
+
 4. **User protection controls**
    - Whitelist: `~/.config/mdoctor/cleanup_whitelist`
    - Scope control (dev caches): `~/.config/mdoctor/cleanup_scope.conf`
@@ -144,6 +166,11 @@ If you suspect an unwanted cleanup:
 - `--force` deletions are not automatically undoable.
 - Reclaim estimates are approximate (some command-driven cleanup cannot be sized in advance).
 - Some system paths are intentionally blocked by safety policy.
+- `docker system prune -af --volumes` and `sudo apt-get
+  clean/autoclean/autoremove -y` run outside the safety primitives (see
+  "Operations outside the safety primitives" above) — the whitelist and
+  protected-path checks do not filter them; only the Docker opt-in flag
+  and the confirmation gate constrain them.
 - Certain macOS-protected areas (SIP/read-only zones) may report permission-like failures.
 - On Linux, SELinux or AppArmor restrictions may cause similar permission-like failures.
 - Scope config currently targets stale `node_modules` behavior under `dev_caches` (not every cleanup module).
