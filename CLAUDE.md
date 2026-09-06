@@ -61,7 +61,8 @@ Target Bash is **3.2** (macOS system Bash). Bash 4+ constructs are
 **banned**: `declare -A`, `mapfile`/`readarray`, `&>>`, `globstar`
 (`**`), `${var,,}`/`${var^^}`, newer `read` options. See
 `docs/AGENT_ENVIRONMENT.md` for the full banned list and the
-`bash:3.2` docker parity check.
+digest-pinned `bash:3.2` parity-check command (same digest as CI's
+`image: bash@sha256:`).
 
 ## Config surface
 

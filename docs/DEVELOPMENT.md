@@ -70,13 +70,13 @@ CI lanes map to local commands:
 - **Lint** → `./scripts/lint_shell.sh` + repository `bash -n` syntax pass
 - **Test (macOS)** → `./tests/run.sh` + smoke commands (`mdoctor help/version/info/check/clean`)
 - **Test (Linux)** → same regression suite + smoke commands on Ubuntu
-- **Test (Bash 3.2)** → `docker run ... bash:3.2 bash ./tests/run.sh`
+- **Test (Bash 3.2)** → `bash@sha256:3a13e5da…` container (`image: bash@sha256:` pinned in `ci.yml`) running `./tests/run.sh`
 - **Release Sanity** → isolated installer/uninstaller flow using env-overridden temp paths
 
 Optional Bash 3.2 parity check (useful before CI changes):
 
 ```bash
-docker run --rm -v "$PWD":/repo -w /repo bash:3.2 bash ./tests/run.sh
+docker run --rm -v "$PWD":/repo -w /repo bash@sha256:3a13e5da38baa575985778cd09ce8ac736d4b4dafc91a430e71271f6e5311b89 bash ./tests/run.sh
 ```
 
 For local installer sanity on non-macOS environments (CI/dev only), use:
