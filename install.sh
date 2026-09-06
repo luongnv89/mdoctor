@@ -45,6 +45,37 @@ success() { echo "${GREEN}[ok]${RESET} $*"; }
 warn()    { echo "${YELLOW}[warn]${RESET} $*"; }
 fail()    { echo "${RED}[error]${RESET} $*" >&2; exit 1; }
 
+# --- Install-dir validation (Task 1.1) --------------------------------------
+# INSTALL_DIR is environment-controlled and this script documents curl|bash
+# invocation, so never rm -rf it without proving it is an mdoctor checkout.
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd 2>/dev/null || pwd)"
+if [ -f "$_SCRIPT_DIR/lib/safety.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$_SCRIPT_DIR/lib/safety.sh"
+fi
+
+assert_mdoctor_install_dir() {
+  local dir="$1"
+  local norm_dir norm_home
+  if declare -f _normalize_path >/dev/null 2>&1; then
+    norm_dir="$(_normalize_path "$dir")"
+    norm_home="$(_normalize_path "${HOME:-}")"
+  else
+    norm_dir="$dir"
+    norm_home="${HOME:-}"
+  fi
+  if [ -z "$norm_dir" ] || [ "$norm_dir" = "/" ] || { [ -n "$norm_home" ] && [ "$norm_dir" = "$norm_home" ]; }; then
+    fail "Refusing to touch '${dir}': not a valid install location."
+  fi
+  if [ ! -f "${dir}/mdoctor" ] || [ ! -d "${dir}/.git" ]; then
+    fail "Refusing to remove '${dir}': no mdoctor checkout found (missing mdoctor entry point or .git)."
+  fi
+  # NOTE: validate_deletion_path is intentionally not used here — install
+  # dirs are not cache/temp roots (e.g. ~/.mdoctor), so the 0.4 allowlist
+  # would reject legitimate checkouts. The markers above are the proof of
+  # identity for this path.
+}
+
 ########################################
 # Pre-flight checks
 ########################################
@@ -105,7 +136,8 @@ if [ -d "$INSTALL_DIR" ]; then
   git pull --ff-only origin main 2>/dev/null || {
     warn "Could not fast-forward. Re-cloning..."
     cd ..
-    rm -rf "$INSTALL_DIR"
+    assert_mdoctor_install_dir "$INSTALL_DIR"
+    rm -rf -- "$INSTALL_DIR"
     git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
   }
 else
