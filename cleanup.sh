@@ -242,7 +242,7 @@ cleanup_force_preflight_summary() {
 		printf "  - %-45s (~%s)\n" "/var/cache/apt/archives" "$(human_readable_kb "$apt_kb")"
 	fi
 
-	echo "  - docker system prune -af --volumes (size estimate: n/a)"
+	echo "  - docker system prune -af --volumes (size estimate: n/a) — ONLY with MDOCTOR_ALLOW_DOCKER_PRUNE=true; --volumes deletes named volumes (database data, not just caches)"
 	echo
 	echo "Estimated reclaim size: ~$(human_readable_kb "$total_kb")"
 	echo "${YELLOW:-}Note:${RESET:-} estimate is approximate and excludes dynamic command-based reclaim sizes."

@@ -5,6 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/tests/helpers/assert.sh"
 source "$ROOT_DIR/lib/platform.sh"
 
+# Hermetic stubs (also set by tests/run.sh; repeated here so this file
+# passes standalone): docker/apt-get/sudo record argv, never execute.
+export PATH="$ROOT_DIR/tests/helpers/bin:$PATH"
+
 ORIG_HOME="${HOME}"
 TMPHOME="${ORIG_HOME}/.mdoctor-test-dryrun.$$.$RANDOM"
 mkdir -p "$TMPHOME"
@@ -54,5 +58,28 @@ assert_file_exists "$TRASH_DIR/engine.txt"
 HOME="$TMPHOME" ./cleanup.sh --force < /dev/null >"$TMPHOME/engine-null.out" 2>&1 || true
 assert_file_exists "$TRASH_DIR/engine.txt"
 assert_contains "$TMPHOME/engine-null.out" "MDOCTOR_ASSUME_YES"
+
+# Task 0.6: `docker system prune` never runs without the explicit opt-in,
+# on any module path that reaches it.
+: >"$TMPHOME/prune-off.log"
+MDOCTOR_STUB_LOG="$TMPHOME/prune-off.log" MDOCTOR_ASSUME_YES=true HOME="$TMPHOME" ./mdoctor clean --force -m dev_caches >/dev/null 2>&1
+assert_not_contains "$TMPHOME/prune-off.log" "docker system prune"
+MDOCTOR_STUB_LOG="$TMPHOME/prune-off.log" MDOCTOR_ASSUME_YES=true HOME="$TMPHOME" ./mdoctor clean --force -m dev >/dev/null 2>&1
+assert_not_contains "$TMPHOME/prune-off.log" "docker system prune"
+# ... and runs once the opt-in is set.
+: >"$TMPHOME/prune-on.log"
+MDOCTOR_STUB_LOG="$TMPHOME/prune-on.log" MDOCTOR_ALLOW_DOCKER_PRUNE=true MDOCTOR_ASSUME_YES=true HOME="$TMPHOME" ./mdoctor clean --force -m dev_caches >/dev/null 2>&1
+assert_contains "$TMPHOME/prune-on.log" "docker system prune -af --volumes"
+
+# Task 0.6: re-rated badges — trash/logs/dev/dev_caches above LOW, and
+# the remaining LOW modules delete no user files (caches, downloads,
+# browser only).
+./mdoctor list >"$TMPHOME/list.out" 2>&1
+for m in trash logs dev dev_caches; do
+  grep -q "$m.*\[MED\]" "$TMPHOME/list.out" || fail "Expected $m at [MED] in mdoctor list"
+done
+for m in caches downloads browser; do
+  grep -q "$m.*\[LOW\]" "$TMPHOME/list.out" || fail "Expected $m at [LOW] in mdoctor list"
+done
 
 pass "dry-run vs force semantics"
