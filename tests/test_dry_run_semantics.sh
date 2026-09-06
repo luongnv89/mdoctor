@@ -24,12 +24,35 @@ cd "$ROOT_DIR"
 HOME="$TMPHOME" ./mdoctor clean -m trash >/dev/null 2>&1
 assert_file_exists "$TRASH_DIR/sample.txt"
 
-# Force should delete (no whitelist)
+# Force should delete (no whitelist); assume-yes skips the 0.5 prompt.
 mkdir -p "$TMPHOME/.config/mdoctor"
 cat > "$TMPHOME/.config/mdoctor/cleanup_whitelist" <<EOF
 # empty
 EOF
-HOME="$TMPHOME" ./mdoctor clean --force -m trash >/dev/null 2>&1
+MDOCTOR_ASSUME_YES=true HOME="$TMPHOME" ./mdoctor clean --force -m trash >/dev/null 2>&1
 assert_file_not_exists "$TRASH_DIR/sample.txt"
+
+# Task 0.5: confirmation gate — "no" keeps the file, "yes" deletes it.
+echo "keep-no" > "$TRASH_DIR/no.txt"
+printf 'n\n' | HOME="$TMPHOME" ./mdoctor clean --force -m trash >"$TMPHOME/no.out" 2>&1 || true
+assert_file_exists "$TRASH_DIR/no.txt"
+printf 'y\n' | HOME="$TMPHOME" ./mdoctor clean --force -m trash >/dev/null 2>&1
+assert_file_not_exists "$TRASH_DIR/no.txt"
+
+# Task 0.5: non-tty force without the assume-yes variable refuses and
+# names the variable.
+echo "keep-null" > "$TRASH_DIR/null.txt"
+HOME="$TMPHOME" ./mdoctor clean --force -m trash < /dev/null >"$TMPHOME/null.out" 2>&1 || true
+assert_file_exists "$TRASH_DIR/null.txt"
+assert_contains "$TMPHOME/null.out" "MDOCTOR_ASSUME_YES"
+
+# Task 0.5: same gate on the full cleanup engine (prompt answers only —
+# nothing is executed on refusal).
+echo "keep-engine" > "$TRASH_DIR/engine.txt"
+printf 'n\n' | HOME="$TMPHOME" ./cleanup.sh --force >"$TMPHOME/engine-no.out" 2>&1 || true
+assert_file_exists "$TRASH_DIR/engine.txt"
+HOME="$TMPHOME" ./cleanup.sh --force < /dev/null >"$TMPHOME/engine-null.out" 2>&1 || true
+assert_file_exists "$TRASH_DIR/engine.txt"
+assert_contains "$TMPHOME/engine-null.out" "MDOCTOR_ASSUME_YES"
 
 pass "dry-run vs force semantics"

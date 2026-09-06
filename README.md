@@ -117,6 +117,13 @@ Force mode (actually deletes):
 mdoctor clean --force
 ```
 
+Force mode prints a pre-flight summary of touched targets, then asks
+`Proceed with deletion? [y/N]` — only an explicit `y` proceeds. For
+non-interactive runs, `MDOCTOR_ASSUME_YES=true` skips the prompt; with
+it set there is no confirmation and `--force` deletes immediately after
+the summary. Piping from a non-tty without that variable refuses
+outright. The summary itself is informational, not an approval step.
+
 Clean a specific target only:
 
 ```bash

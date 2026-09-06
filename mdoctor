@@ -552,6 +552,9 @@ cmd_clean() {
       # shellcheck disable=SC2034
       DRY_RUN=false
       cmd_clean_preflight_summary_module "$selected_module" "${DAYS_OLD}"
+      # Confirmation gate (Task 0.5): y/N prompt, or refusal on a
+      # non-tty unless MDOCTOR_ASSUME_YES=true.
+      confirm_destructive_execution "cleanup module ${selected_module}" || return 1
     fi
 
     mkdir -p "$(dirname "$LOGFILE")"
@@ -700,9 +703,9 @@ cmd_clean() {
 
   # Run full cleanup
   if [ "$force" = true ] && [ "$debug_flag" = true ]; then
-    MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" --force --debug
+    MDOCTOR_ASSUME_YES="${MDOCTOR_ASSUME_YES:-false}" MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" --force --debug
   elif [ "$force" = true ]; then
-    MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" --force
+    MDOCTOR_ASSUME_YES="${MDOCTOR_ASSUME_YES:-false}" MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" --force
   elif [ "$debug_flag" = true ]; then
     MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" --debug
   else
