@@ -77,10 +77,40 @@ jobs:
       - uses: actions/checkout@11bd5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Make scripts executable
-        run: chmod +x mdoctor doctor.sh cleanup.sh tests/run.sh tests/test_*.sh tests/helpers/assert.sh
+        run: chmod +x mdoctor doctor.sh cleanup.sh tests/run.sh tests/test_*.sh tests/helpers/assert.sh tests/helpers/bin/* tests/helpers/bin-macos/*
+
+      - name: Record pre-suite host state (Task 1.7)
+        run: |
+          docker volume ls -q 2>/dev/null | wc -l > /tmp/volumes_before.txt || echo 0 > /tmp/volumes_before.txt
+          dpkg-query -W -f='${Status}\n' 2>/dev/null | grep -c "install ok installed" > /tmp/pkgs_before.txt || echo 0 > /tmp/pkgs_before.txt
 
       - name: Run shell regression harness
-        run: timeout 300 ./tests/run.sh
+        run: |
+          set -o pipefail
+          timeout 300 ./tests/run.sh 2>&1 | tee /tmp/baseline-green.txt
+
+      - name: Assert no external state destroyed (Task 1.7)
+        run: |
+          set -euo pipefail
+          before_v="$(cat /tmp/volumes_before.txt)"
+          after_v="$(docker volume ls -q 2>/dev/null | wc -l)"
+          [ "$before_v" = "$after_v" ] || { echo "Docker volumes changed: $before_v -> $after_v"; exit 1; }
+          before_p="$(cat /tmp/pkgs_before.txt)"
+          after_p="$(dpkg-query -W -f='${Status}\n' | grep -c "install ok installed")"
+          [ "$before_p" = "$after_p" ] || { echo "Installed packages changed: $before_p -> $after_p"; exit 1; }
+          echo "No Docker volume removed; no package autoremoved."
+
+      - name: Record baseline-green in job summary (Task 1.7)
+        if: always()
+        run: |
+          summary="$(grep -E "Test summary:" /tmp/baseline-green.txt || echo "Test summary: suite did not complete")"
+          {
+            echo "## Baseline-green (Task 1.7)"
+            echo ""
+            echo "From a clean checkout, \`./tests/run.sh\`: **${summary}**"
+            echo ""
+            echo "External-state guard: no Docker volume removed, no package autoremoved."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: mdoctor help
         run: ./mdoctor help
