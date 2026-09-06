@@ -49,10 +49,16 @@ clean_dev_stuff() {
     fi
   fi
 
-  # Docker (removes ALL unused containers/images/volumes)
+  # Docker prune (Task 0.6): `docker system prune -af --volumes` deletes
+  # NAMED VOLUMES (database data, not caches), so it sits behind an
+  # explicit opt-in and never runs by default.
   if command -v docker >/dev/null 2>&1; then
-    log "Docker detected – pruning unused data."
-    run_cmd_args docker system prune -af --volumes || true
+    if [ "${MDOCTOR_ALLOW_DOCKER_PRUNE:-false}" = true ]; then
+      log "Docker detected – pruning unused data (MDOCTOR_ALLOW_DOCKER_PRUNE=true)."
+      run_cmd_args docker system prune -af --volumes || true
+    else
+      log "Docker detected – skipping prune (named volumes are user data, not caches). Set MDOCTOR_ALLOW_DOCKER_PRUNE=true to opt in."
+    fi
   else
     log "Docker not found; skipping."
   fi

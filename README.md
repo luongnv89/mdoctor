@@ -139,12 +139,12 @@ mdoctor clean --interactive
 mdoctor clean --interactive --force
 ```
 
-#### Cleanup Modules (all `[LOW]` risk)
+#### Cleanup Modules (risk-rated by blast radius)
 
 | Category | macOS | Linux (Debian) |
 |----------|-------|----------------|
-| **System** | `trash`, `caches`, `logs`, `downloads`, `crash_reports`, `ios_backups` | `trash`, `caches`, `logs`, `downloads`, `crash_reports`, `apt` |
-| **Software** | `browser`, `dev`, `xcode`, `dev_caches` | `browser`, `dev`, `dev_caches` |
+| **System** | `trash` [MED], `caches` [LOW], `logs` [MED], `downloads` [LOW], `crash_reports` [MED], `ios_backups` [HIGH] | `trash` [MED], `caches` [LOW], `logs` [MED], `downloads` [LOW], `crash_reports` [MED], `apt` [MED] |
+| **Software** | `browser` [LOW], `dev` [MED], `xcode` [MED], `dev_caches` [MED] | `browser` [LOW], `dev` [MED], `dev_caches` [MED] |
 
 ### Fix
 

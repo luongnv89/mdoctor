@@ -218,7 +218,7 @@ cmd_clean_preflight_summary_module() {
         add_path "pnpm store" "${HOME}/Library/pnpm/store"
         echo "  - Homebrew cleanup/autoremove (size estimate: n/a)"
       fi
-      echo "  - Docker prune (size estimate: n/a)"
+      echo "  - docker system prune -af --volumes (size estimate: n/a) — ONLY with MDOCTOR_ALLOW_DOCKER_PRUNE=true; --volumes deletes named volumes (database data, not just caches)"
       ;;
     crash_reports)
       local crash_dir crash_kb
@@ -257,7 +257,7 @@ cmd_clean_preflight_summary_module() {
       if is_macos; then
         add_path "Xcode DerivedData" "${HOME}/Library/Developer/Xcode/DerivedData"
       fi
-      echo "  - Docker prune (size estimate: n/a)"
+      echo "  - docker system prune -af --volumes (size estimate: n/a) — ONLY with MDOCTOR_ALLOW_DOCKER_PRUNE=true; --volumes deletes named volumes (database data, not just caches)"
       ;;
   esac
 
@@ -457,9 +457,9 @@ cmd_clean() {
         echo "  -h, --help            Show this help"
         echo
         echo "Cleanup modules:"
-        echo "  System:    trash [LOW], caches [LOW], logs [LOW], downloads [LOW],"
-        echo "             crash_reports [LOW], ios_backups [LOW]"
-        echo "  Software:  browser [LOW], dev [LOW], xcode [LOW], dev_caches [LOW]"
+        echo "  System:    trash [MED], caches [LOW], logs [MED], downloads [LOW],"
+        echo "             crash_reports [MED], ios_backups [HIGH]"
+        echo "  Software:  browser [LOW], dev [MED], xcode [MED], dev_caches [MED]"
         echo
         echo "Whitelist file: ~/.config/mdoctor/cleanup_whitelist"
         echo "Scope file: ~/.config/mdoctor/cleanup_scope.conf (dev_caches node_modules scan)"
@@ -979,22 +979,22 @@ cmd_list() {
   fi
 
   # Cleanup modules
-  register_module cleanup trash         System   LOW clean_trash               "Empty Trash"
+  register_module cleanup trash         System   MED clean_trash               "Empty Trash"
   register_module cleanup caches        System   LOW clean_user_caches         "User cache directories"
-  register_module cleanup logs          System   LOW clean_logs                "Old log files"
+  register_module cleanup logs          System   MED clean_logs                "Old log files"
   register_module cleanup downloads     System   LOW clean_downloads_large_files "Large files in Downloads"
-  register_module cleanup crash_reports System   LOW clean_crash_reports       "Old crash/diagnostic reports"
+  register_module cleanup crash_reports System   MED clean_crash_reports       "Old crash/diagnostic reports"
   if is_macos; then
-    register_module cleanup ios_backups   System   LOW clean_ios_backups         "Old iOS device backups"
+    register_module cleanup ios_backups   System   HIGH clean_ios_backups         "Old iOS device backups"
   fi
   register_module cleanup browser       Software LOW clean_browser_caches      "Browser cache cleanup"
-  register_module cleanup dev           Software LOW clean_dev_stuff           "Developer tool caches"
+  register_module cleanup dev           Software MED clean_dev_stuff           "Developer tool caches"
   if is_macos; then
-    register_module cleanup xcode         Software LOW clean_xcode              "Xcode DerivedData, archives, simulators"
+    register_module cleanup xcode         Software MED clean_xcode              "Xcode DerivedData, archives, simulators"
   fi
-  register_module cleanup dev_caches    Software LOW clean_dev_caches         "Developer dependency & package caches"
+  register_module cleanup dev_caches    Software MED clean_dev_caches         "Developer dependency & package caches"
   if is_linux; then
-    register_module cleanup apt          System   LOW clean_apt_cache          "APT package cache cleanup"
+    register_module cleanup apt          System   MED clean_apt_cache          "APT package cache cleanup"
   fi
 
   # Fix modules
@@ -1300,13 +1300,13 @@ cmd_help() {
     echo "  Software:  node, python, devtools, shell, apps, git_config, containers, apt"
   fi
   echo
-  echo "${BOLD}Cleanup Modules${RESET} (all [LOW] risk):"
+  echo "${BOLD}Cleanup Modules${RESET} (risk-rated by blast radius):"
   if is_macos; then
-    echo "  System:    trash, caches, logs, downloads, crash_reports, ios_backups"
-    echo "  Software:  browser, dev, xcode, dev_caches"
+    echo "  System:    trash [MED], caches [LOW], logs [MED], downloads [LOW], crash_reports [MED], ios_backups [HIGH]"
+    echo "  Software:  browser [LOW], dev [MED], xcode [MED], dev_caches [MED]"
   else
-    echo "  System:    trash, caches, logs, downloads, crash_reports, apt"
-    echo "  Software:  browser, dev, dev_caches"
+    echo "  System:    trash [MED], caches [LOW], logs [MED], downloads [LOW], crash_reports [MED], apt [MED]"
+    echo "  Software:  browser [LOW], dev [MED], dev_caches [MED]"
   fi
   echo
   echo "${BOLD}Fix Targets${RESET}:"
