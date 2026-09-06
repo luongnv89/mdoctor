@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Stub for macOS-only `dscacheutil`: records argv, never executes.
+if [ -n "${MDOCTOR_STUB_LOG:-}" ]; then
+  printf "dscacheutil %s\n" "$*" >>"$MDOCTOR_STUB_LOG"
+fi
+echo "stubbed dscacheutil: $*" >&2
+exit 0

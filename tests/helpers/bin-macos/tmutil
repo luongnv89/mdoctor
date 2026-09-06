@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Stub for macOS-only `tmutil`: records argv, never executes.
+if [ -n "${MDOCTOR_STUB_LOG:-}" ]; then
+  printf "tmutil %s\n" "$*" >>"$MDOCTOR_STUB_LOG"
+fi
+echo "stubbed tmutil: $*" >&2
+exit 0

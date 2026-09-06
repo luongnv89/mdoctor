@@ -9,6 +9,11 @@ fix_audio() {
   echo "${BOLD}${BLUE}== Fixing Audio ==${RESET}"
   echo
 
+  if ! is_macos; then
+    echo "${YELLOW}Audio fix is macOS-only (Core Audio) — skipping on $(platform_name).${RESET}" >&2
+    return 1
+  fi
+
   echo "Restarting Core Audio daemon..."
   sudo killall coreaudiod 2>/dev/null || true
 

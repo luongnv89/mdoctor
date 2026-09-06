@@ -9,6 +9,11 @@ fix_spotlight() {
   echo "${BOLD}${BLUE}== Rebuilding Spotlight Index ==${RESET}"
   echo
 
+  if ! is_macos; then
+    echo "${YELLOW}Spotlight fix is macOS-only (mdutil) — skipping on $(platform_name).${RESET}" >&2
+    return 1
+  fi
+
   echo "Turning Spotlight off..."
   sudo mdutil -a -i off 2>/dev/null || true
 

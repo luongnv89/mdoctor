@@ -169,7 +169,6 @@ mdoctor fix all            # Run all fixes
 
 ```bash
 mdoctor fix dns            # [LOW]  Flush DNS cache (systemd-resolved)
-mdoctor fix disk           # [LOW]  Free disk space
 mdoctor fix apt            # [LOW]  Fix APT packages (update, upgrade, autoremove)
 mdoctor fix all            # Run all fixes
 ```

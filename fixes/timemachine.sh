@@ -8,6 +8,12 @@
 fix_timemachine() {
   echo "${BOLD}${BLUE}== Time Machine Repair ==${RESET}"
   echo
+
+  if ! is_macos; then
+    echo "${YELLOW}Time Machine fix is macOS-only (tmutil) — skipping on $(platform_name).${RESET}" >&2
+    return 1
+  fi
+
   echo "${YELLOW}[MED RISK] This operation verifies Time Machine backup integrity.${RESET}"
   echo "${YELLOW}It may take a significant amount of time depending on backup size.${RESET}"
   echo

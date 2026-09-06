@@ -9,12 +9,21 @@ fix_disk() {
   echo "${BOLD}${BLUE}== Freeing Disk Space ==${RESET}"
   echo
 
+  # Task 1.3: every step below is macOS-shaped (purge, macOS log layout).
+  # Refuse on Linux instead of printing progress for work that never
+  # happens; the dispatch gate (Task 1.2) rejects earlier with the same
+  # message when reached via `mdoctor fix disk`.
+  if ! is_macos; then
+    echo "${YELLOW}Disk fix is macOS-only — skipping on $(platform_name).${RESET}" >&2
+    return 1
+  fi
+
   source "${MDOCTOR_DIR}/lib/logging.sh"
   source "${MDOCTOR_DIR}/lib/disk.sh"
 
   # shellcheck disable=SC2034
   DRY_RUN=false
-  LOGFILE="${HOME}/Library/Logs/macos_cleanup.log"
+  LOGFILE="$(platform_log_dir)/mdoctor_cleanup.log"
   # shellcheck disable=SC2034
   DAYS_OLD="${DAYS_OLD_OVERRIDE:-7}"
 

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Stub for macOS-only `purge`: records argv, never executes.
+if [ -n "${MDOCTOR_STUB_LOG:-}" ]; then
+  printf "purge %s\n" "$*" >>"$MDOCTOR_STUB_LOG"
+fi
+echo "stubbed purge: $*" >&2
+exit 0
