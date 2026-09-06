@@ -43,13 +43,16 @@ mkdir -p "$TRASH_DIR/poisoned"
 echo "data" > "$TRASH_DIR/poisoned/file.txt"
 chmod 000 "$TRASH_DIR/poisoned"
 
-# Run preflight in dry-run; we only need the preflight section to render.
-# Capture stdout+stderr; allow non-zero exit (we assert on output content —
-# the script's real cleanup phase may legitimately fail later, e.g. docker
-# unreachable in CI).
+# Run preflight in force mode but stop before destructive execution (Task
+# 0.1): MDOCTOR_PREFLIGHT_ONLY exits right after the summary, so this test
+# asserts on preflight output alone and never reaches a real daemon.
+# Capture stdout+stderr; allow non-zero exit (we assert on output content).
 cd "$ROOT_DIR"
 out_file="$TMPHOME/preflight.out"
-HOME="$TMPHOME" ./cleanup.sh --force >"$out_file" 2>&1 || true
+stub_log="$TMPHOME/stub.log"
+: >"$stub_log"
+MDOCTOR_STUB_LOG="$stub_log" MDOCTOR_PREFLIGHT_ONLY=true \
+  HOME="$TMPHOME" ./cleanup.sh --force >"$out_file" 2>&1 || true
 
 # Restore perms so the trap can clean up.
 chmod -R u+rwx "$TMPHOME" 2>/dev/null || true
@@ -66,5 +69,20 @@ fi
 # Assert: the estimated-reclaim footer was printed, proving the preflight
 # function ran to completion instead of aborting mid-loop.
 assert_contains "$out_file" "Estimated reclaim size:"
+
+# Assert: pre-flight-only mode stopped before destructive execution.
+assert_contains "$out_file" "Pre-flight only"
+
+# Assert: no real destructive path was reached — the stub log must not
+# contain a `docker system prune` invocation (the stubs on PATH would have
+# recorded it instead of reaching a daemon).
+assert_not_contains "$stub_log" "docker system prune"
+
+# Assert: the stubs actually intercept (a direct prune call is recorded,
+# not executed, and exits 0).
+MDOCTOR_STUB_LOG="$stub_log" docker system prune -af --volumes >/dev/null 2>&1
+assert_contains "$stub_log" "docker system prune -af --volumes"
+MDOCTOR_STUB_LOG="$stub_log" sudo apt-get autoremove -y >/dev/null 2>&1
+assert_contains "$stub_log" "apt-get autoremove -y"
 
 pass "force-mode preflight is resilient to du permission errors (issue #9)"

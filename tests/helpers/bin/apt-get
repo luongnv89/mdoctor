@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Stub for `apt-get`: records argv instead of touching the package system.
+if [ -n "${MDOCTOR_STUB_LOG:-}" ]; then
+  printf 'apt-get %s\n' "$*" >>"$MDOCTOR_STUB_LOG"
+fi
+echo "stubbed apt-get: $*" >&2
+exit 0

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Stub for `docker`: records argv instead of reaching a real daemon.
+# Exit 0 so guarded call sites (`command -v docker && docker ...`) proceed
+# without side effects.
+if [ -n "${MDOCTOR_STUB_LOG:-}" ]; then
+  printf 'docker %s\n' "$*" >>"$MDOCTOR_STUB_LOG"
+fi
+echo "stubbed docker: $*" >&2
+exit 0

@@ -30,18 +30,12 @@ The test command of record is:
 ./tests/run.sh
 ```
 
-**WARNING — destructive until Task 0.1 lands.** `./tests/run.sh` globs
-`tests/test_*.sh` and runs each, including
-`tests/test_force_preflight_resilience.sh`, which executes
-`./cleanup.sh --force`. The `HOME` override in that test sandboxes
-filesystem deletions but **does not** sandbox `docker system prune
--af --volumes` or `sudo apt-get autoremove -y`: running the full suite
-on a developer machine **destroys real Docker volumes** until Task 0.1
-makes the force test hermetic and unwires the destructive pre-push hook.
-
-Until Task 0.1, run only the safe subset (every test file except the
-force-resilience one):
-
+The suite is hermetic since Task 0.1 (force test stops after its
+pre-flight summary via `MDOCTOR_PREFLIGHT_ONLY=true`; `docker`,
+`apt-get` and `sudo` are stubbed on `PATH` by `tests/run.sh`), so
+`./tests/run.sh` is safe to run on a developer machine. The historical
+safe subset (every test file except the force-resilience one) is still
+available when you want a quicker signal:
 ```bash
 for f in tests/test_*.sh; do
   case "$f" in

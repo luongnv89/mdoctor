@@ -37,6 +37,22 @@ Run the shell regression suite:
 ./tests/run.sh
 ```
 
+The suite is hermetic (Task 0.1) and safe to run on a developer machine:
+
+- each test redirects `HOME` to a temp dir, so filesystem deletions land
+  in a sandbox;
+- the force path stops after its pre-flight summary when
+  `MDOCTOR_PREFLIGHT_ONLY=true` (used by
+  `tests/test_force_preflight_resilience.sh`), so `--force` tests assert
+  on pre-flight output alone;
+- `tests/run.sh` prepends `tests/helpers/bin` to `PATH`, where `docker`,
+  `apt-get` and `sudo` stubs record argv to `$MDOCTOR_STUB_LOG` instead
+  of reaching a real daemon or the package system.
+
+No git hook runs the suite automatically: the old `pre-push`
+`test-suite` hook was removed (Task 0.1). CI runs the full suite from a
+clean checkout; developers run it explicitly with the command above.
+
 Current coverage includes:
 - command parsing/help behavior
 - metadata/list routing checks
