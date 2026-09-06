@@ -101,8 +101,10 @@ platform_user_log_dir() {
   if is_macos; then
     echo "${HOME}/Library/Logs"
   else
-    # Linux user logs are scattered; use /var/log for system, ~/.local/share for user
-    echo "${HOME}/.local/share"
+    # Scoped to mdoctor's own data dir (Task 0.2): the wider
+    # ${HOME}/.local/share tree holds other apps' data (keyrings, pki,
+    # editor state) and must never be a deletion root.
+    echo "${XDG_DATA_HOME:-$HOME/.local/share}/mdoctor"
   fi
 }
 
