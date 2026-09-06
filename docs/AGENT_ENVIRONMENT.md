@@ -97,7 +97,7 @@ Target Bash is **3.2** (ships with macOS). Bash 4+ constructs are banned:
 Parity check (useful before CI changes):
 
 ```bash
-docker run --rm -v "$PWD":/repo -w /repo bash:3.2 bash ./tests/run.sh
+docker run --rm -v "$PWD":/repo -w /repo bash@sha256:3a13e5da38baa575985778cd09ce8ac736d4b4dafc91a430e71271f6e5311b89 bash ./tests/run.sh
 ```
 
 ## 6. No `.env` surface
