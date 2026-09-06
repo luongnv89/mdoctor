@@ -4,6 +4,15 @@
 # Logging, markdown report generation, and persistent operation logging
 #
 
+# run_cmd_args needs is_dry_run (Task 1.6). Engines load lib/common.sh
+# first, but cmd_fix and standalone sourcing may not — pull it in.
+if ! declare -f is_dry_run >/dev/null 2>&1; then
+  _MDOCTOR_LOGGING_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
+  # shellcheck source=/dev/null
+  source "${_MDOCTOR_LOGGING_DIR}/common.sh"
+  unset _MDOCTOR_LOGGING_DIR
+fi
+
 ########################################
 # MARKDOWN REPORT
 ########################################
@@ -179,7 +188,11 @@ run_cmd_args() {
   local cmd_display
   cmd_display=$(_format_cmd_for_log "$@")
 
-  if [ "${DRY_RUN:-true}" = true ]; then
+  # Central fail-closed predicate (Task 1.6): only rc 1 (explicit
+  # false/0/no/n) executes; unset/truthy/invalid values stay dry.
+  local _dry_rc=0
+  is_dry_run || _dry_rc=$?
+  if [ "$_dry_rc" -ne 1 ]; then
     log "[DRY RUN] $cmd_display"
     debug_log "run_cmd_args dry-run command=${cmd_display}"
     op_record "DRY_RUN_CMD" "$cmd_display"
@@ -209,7 +222,10 @@ run_cmd_legacy() {
     return 1
   fi
 
-  if [ "${DRY_RUN:-true}" = true ]; then
+  # Central fail-closed predicate (Task 1.6): only rc 1 executes.
+  local _dry_rc=0
+  is_dry_run || _dry_rc=$?
+  if [ "$_dry_rc" -ne 1 ]; then
     log "[DRY RUN][LEGACY] $cmd"
     debug_log "run_cmd_legacy dry-run command=${cmd}"
     op_record "DRY_RUN_CMD_LEGACY" "$cmd"
