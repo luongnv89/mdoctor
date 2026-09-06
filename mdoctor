@@ -754,6 +754,11 @@ cmd_fix() {
         debug_flag=true
         shift
         ;;
+      -*)
+        error "Unknown option: $1"
+        echo "Run 'mdoctor fix --help' for available targets."
+        return 1
+        ;;
       *)
         target="$1"
         shift
@@ -775,6 +780,18 @@ cmd_fix() {
     echo "Run 'mdoctor fix --help' for available targets."
     return 1
   fi
+
+  # Platform gate (Task 1.2): macOS-only fix targets refuse on Linux
+  # before any module code runs. Only the registry used by `fix all`
+  # was gated; the dispatch case below was not.
+  case "$target" in
+    homebrew|permissions|spotlight|bluetooth|audio|wifi|timemachine)
+      if ! is_macos; then
+        error "Fix target '${target}' is macOS-only (running on $(platform_name))."
+        return 1
+      fi
+      ;;
+  esac
 
   # Source fix modules
   local fix_file="${MDOCTOR_DIR}/fixes/${target}.sh"

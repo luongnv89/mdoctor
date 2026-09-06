@@ -27,4 +27,27 @@ set -e
 [ "$rc" -ne 0 ] || fail "Expected non-zero exit for invalid clean option"
 assert_contains "$TMPDIR_TEST/clean_bad_option.txt" "Unknown option"
 
+# Task 1.2: a mistyped fix flag errors as an unknown option (not a target).
+set +e
+./mdoctor fix --nosuchflag >"$TMPDIR_TEST/fix_bad_option.txt" 2>&1
+rc=$?
+set -e
+[ "$rc" -ne 0 ] || fail "Expected non-zero exit for invalid fix option"
+assert_contains "$TMPDIR_TEST/fix_bad_option.txt" "Unknown option"
+
+# Task 1.2: on Linux, macOS-only fix targets refuse before any module
+# code runs — chown is never invoked (stub PATH records argv).
+if [ "$(uname -s)" = "Linux" ]; then
+  export PATH="$ROOT_DIR/tests/helpers/bin:$PATH"
+  : >"$TMPDIR_TEST/fix-gate-stubs.log"
+  export MDOCTOR_STUB_LOG="$TMPDIR_TEST/fix-gate-stubs.log"
+  set +e
+  ./mdoctor fix permissions >"$TMPDIR_TEST/fix_permissions_linux.txt" 2>&1
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "Expected non-zero exit for fix permissions on Linux"
+  assert_contains "$TMPDIR_TEST/fix_permissions_linux.txt" "macOS-only"
+  assert_not_contains "$TMPDIR_TEST/fix-gate-stubs.log" "chown"
+fi
+
 pass "command parsing + help coverage"
