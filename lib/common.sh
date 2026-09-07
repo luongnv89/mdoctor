@@ -249,6 +249,31 @@ is_dry_run() {
 }
 
 ########################################
+# SECURE TEMP FILES (Task 4.3)
+########################################
+
+# mdoctor_tmpdir — per-user scratch dir (${TMPDIR:-/tmp}/mdoctor-$UID),
+# created mode 0700. All temp files live under it via mktemp below.
+mdoctor_tmpdir() {
+  local dir="${TMPDIR:-/tmp}/mdoctor-${UID}"
+  if [ ! -d "$dir" ]; then
+    mkdir -p "$dir" 2>/dev/null || true
+    chmod 700 "$dir" 2>/dev/null || true
+  fi
+  printf '%s' "$dir"
+}
+
+# mdoctor_mktemp_file PREFIX — secure temp file path (created empty).
+mdoctor_mktemp_file() {
+  mktemp "$(mdoctor_tmpdir)/${1:-tmp}.XXXXXX"
+}
+
+# mdoctor_mktemp_dir PREFIX — secure temp directory path (created).
+mdoctor_mktemp_dir() {
+  mktemp -d "$(mdoctor_tmpdir)/${1:-tmp}.XXXXXX"
+}
+
+########################################
 # DESTRUCTIVE-EXECUTION CONFIRMATION GATE (Task 0.5)
 ########################################
 

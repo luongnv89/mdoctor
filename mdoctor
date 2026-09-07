@@ -1120,6 +1120,7 @@ cmd_history() {
 ########################################
 
 cmd_benchmark() {
+  source "${MDOCTOR_DIR}/lib/common.sh"
   source "${MDOCTOR_DIR}/lib/benchmark.sh"
   run_benchmark
 }

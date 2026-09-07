@@ -21,7 +21,8 @@ check_node_npm() {
     status_ok "npm: $(npm -v)"
 
     # npm doctor
-    local npm_doctor_log="/tmp/npm_doctor.log"
+    local npm_doctor_log
+    npm_doctor_log="$(mdoctor_mktemp_file npm-doctor)"
     if npm doctor >"$npm_doctor_log" 2>&1; then
       status_ok "npm doctor passed."
     else
@@ -31,7 +32,8 @@ check_node_npm() {
     add_log_file "$npm_doctor_log" "npm doctor output"
 
     # outdated global packages – save full list
-    local npm_out_file="/tmp/npm_outdated_global.log"
+    local npm_out_file
+    npm_out_file="$(mdoctor_mktemp_file npm-outdated-global)"
     npm outdated -g --depth=0 >"$npm_out_file" 2>/dev/null || true
 
     # Count excluding header line (if present)
