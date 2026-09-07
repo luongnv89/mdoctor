@@ -140,6 +140,8 @@ ensure_cleanup_whitelist_file() {
   dir="$(dirname "$file")"
 
   mkdir -p "$dir"
+  # Task 3.4: state is private (0700 dirs, 0600 files).
+  chmod 700 "$dir"
   if [ ! -f "$file" ]; then
     cat >"$file" <<'EOF'
 # mdoctor cleanup whitelist
@@ -155,6 +157,7 @@ ensure_cleanup_whitelist_file() {
 # ~/.cache/huggingface
 # ~/.m2/repository/*
 EOF
+    chmod 600 "$file"
   fi
 }
 
