@@ -115,7 +115,10 @@ clean_dev_caches() {
     local nm_total_kb=0
 
     for search_dir in "${search_dirs[@]}"; do
-      while IFS= read -r nm_dir; do
+      # Task 3.6: NUL-delimited (filenames may contain newlines; a
+      # newline-delimited loop would split one name into two and could
+      # hand a fragment to safe_remove).
+      while IFS= read -r -d '' nm_dir; do
         [ -z "$nm_dir" ] && continue
 
         if declare -f cleanup_scope_is_excluded >/dev/null 2>&1 && cleanup_scope_is_excluded "$nm_dir"; then
@@ -126,7 +129,9 @@ clean_dev_caches() {
         fi
 
         local nm_sz
-        nm_sz=$(du -sk "$nm_dir" 2>/dev/null | awk '{print $1}')
+        # NR==1 + numeric coercion: du prints the path after the size,
+        # and the path itself may contain newlines (Task 3.6).
+        nm_sz=$(du -sk "$nm_dir" 2>/dev/null | awk 'NR==1{print $1+0}')
         nm_sz="${nm_sz:-0}"
         if (( nm_sz > 0 )); then
           local nm_hr
@@ -139,7 +144,7 @@ clean_dev_caches() {
           nm_total_kb=$((nm_total_kb + nm_sz))
           nm_count=$((nm_count + 1))
         fi
-      done < <(timeout 60 find "${search_dir}" -maxdepth 5 -type d -name "node_modules" -not -path "*/node_modules/*/node_modules" -mtime "+${NODE_MODULES_DAYS}" 2>/dev/null)
+      done < <(timeout 60 find "${search_dir}" -maxdepth 5 -type d -name "node_modules" -not -path "*/node_modules/*/node_modules" -mtime "+${NODE_MODULES_DAYS}" -print0 2>/dev/null)
     done
 
     if (( nm_count > 0 )); then
