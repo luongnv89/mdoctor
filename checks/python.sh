@@ -21,7 +21,8 @@ check_python() {
     status_ok "pip3: $(pip3 --version 2>/dev/null)"
 
     # pip3 check (dependency issues)
-    local pip_check_log="/tmp/pip3_check.log"
+    local pip_check_log
+    pip_check_log="$(mdoctor_mktemp_file pip3-check)"
     if pip3 check >"$pip_check_log" 2>&1; then
       status_ok "pip3 check passed (no dependency issues detected in current environment)."
     else
@@ -31,7 +32,8 @@ check_python() {
     add_log_file "$pip_check_log" "pip3 dependency check output"
 
     # pip3 outdated – full list to file
-    local pip_out_file="/tmp/pip3_outdated.log"
+    local pip_out_file
+    pip_out_file="$(mdoctor_mktemp_file pip3-outdated)"
     pip3 list --outdated >"$pip_out_file" 2>/dev/null || true
     local pip_count
     if grep -qE 'Package|Version|Latest' "$pip_out_file" 2>/dev/null; then

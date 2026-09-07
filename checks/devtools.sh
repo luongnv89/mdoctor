@@ -44,7 +44,8 @@ check_dev_tools() {
 
   # Docker
   if command -v docker >/dev/null 2>&1; then
-    local docker_info_log="/tmp/docker_info.log"
+    local docker_info_log
+    docker_info_log="$(mdoctor_mktemp_file docker-info)"
     if docker info >"$docker_info_log" 2>&1; then
       status_ok "Docker is installed and daemon is reachable."
     else

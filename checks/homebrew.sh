@@ -18,7 +18,8 @@ check_homebrew() {
   status_ok "Found Homebrew: ${brew_ver}"
 
   # brew doctor
-  local brew_doctor_log="/tmp/brew_doctor.log"
+  local brew_doctor_log
+  brew_doctor_log="$(mdoctor_mktemp_file brew-doctor)"
   if brew doctor >"$brew_doctor_log" 2>&1; then
     status_ok "brew doctor reports no major issues."
   else
@@ -28,7 +29,8 @@ check_homebrew() {
   add_log_file "$brew_doctor_log" "Homebrew doctor output"
 
   # outdated formulae – log full list and show short summary
-  local outdated_file="/tmp/brew_outdated.log"
+  local outdated_file
+  outdated_file="$(mdoctor_mktemp_file brew-outdated)"
   brew outdated >"$outdated_file" 2>/dev/null || true
   local outdated_count
   outdated_count=$(wc -l <"$outdated_file" 2>/dev/null | tr -d ' ' || echo 0)

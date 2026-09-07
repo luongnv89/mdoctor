@@ -21,8 +21,8 @@ run_benchmark() {
   echo "Running disk, network, and CPU benchmarks..."
   echo
 
-  local tmp_dir="/tmp/mdoctor_bench_$$"
-  mkdir -p "$tmp_dir"
+  local tmp_dir
+  tmp_dir="$(mdoctor_mktemp_dir mdoctor-bench)"
 
   # Ensure cleanup
   trap 'rm -rf "$tmp_dir"' EXIT

@@ -4,9 +4,10 @@
 # Logging, markdown report generation, and persistent operation logging
 #
 
-# run_cmd_args needs is_dry_run (Task 1.6). Engines load lib/common.sh
-# first, but cmd_fix and standalone sourcing may not — pull it in.
-if ! declare -f is_dry_run >/dev/null 2>&1; then
+# run_cmd_args needs is_dry_run (Task 1.6), md_init needs
+# mdoctor_mktemp_file (Task 4.3). Engines load lib/common.sh first, but
+# cmd_fix and standalone sourcing may not — pull it in.
+if ! declare -f is_dry_run >/dev/null 2>&1 || ! declare -f mdoctor_mktemp_file >/dev/null 2>&1; then
   _MDOCTOR_LOGGING_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
   # shellcheck source=/dev/null
   source "${_MDOCTOR_LOGGING_DIR}/common.sh"
@@ -24,7 +25,7 @@ md_append() {
 }
 
 md_init() {
-  REPORT_MD="/tmp/mdoctor_report_$(date +%Y%m%d_%H%M%S).md"
+  REPORT_MD="$(mdoctor_mktemp_file mdoctor-report)"
   : > "$REPORT_MD"  # truncate/create
   md_append "# mdoctor System Health Report"
   md_append ""
