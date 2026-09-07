@@ -170,6 +170,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # Task 4.1: the stable-channel installer resolves the newest
+          # vX.Y.Z tag at the remote — tags must be present or the
+          # sanity install fails with "No release tags found".
+          fetch-tags: true
 
       - name: Installer/uninstaller isolated-path sanity
         run: |
