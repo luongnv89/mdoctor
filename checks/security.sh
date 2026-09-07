@@ -91,21 +91,33 @@ check_security() {
     # Linux: firewall, disk encryption, SSH, unattended upgrades
 
     # Firewall (ufw or iptables)
+    # Read-only check: never prompt for a password. Privileged probes run
+    # only when sudo is available without a password (`sudo -n true`
+    # fails instead of prompting); otherwise report "requires sudo to verify".
     if command -v ufw >/dev/null 2>&1; then
       local ufw_status
-      ufw_status=$(sudo ufw status 2>/dev/null || ufw status 2>/dev/null || echo "")
+      ufw_status=$(ufw status 2>/dev/null || echo "")
+      if [ -z "$ufw_status" ] && sudo -n true 2>/dev/null; then
+        ufw_status=$(sudo -n ufw status 2>/dev/null || echo "")
+      fi
       if echo "$ufw_status" | grep -qi "active"; then
         status_ok "Firewall (ufw): active"
       elif echo "$ufw_status" | grep -qi "inactive"; then
         status_warn "Firewall (ufw): inactive"
         add_action "Enable the firewall: sudo ufw enable"
+      elif [ -z "$ufw_status" ]; then
+        status_info "Firewall (ufw): requires sudo to verify"
       else
         status_info "Firewall (ufw): could not determine status"
       fi
     elif command -v iptables >/dev/null 2>&1; then
-      local ipt_rules
-      ipt_rules=$(sudo iptables -L -n 2>/dev/null | grep -cv '^$\|^Chain\|^target' || true)
-      if (( ipt_rules > 0 )); then
+      local ipt_rules=""
+      if sudo -n true 2>/dev/null; then
+        ipt_rules=$(sudo -n iptables -L -n 2>/dev/null | grep -cv '^$\|^Chain\|^target' || true)
+      fi
+      if [ -z "$ipt_rules" ]; then
+        status_info "Firewall (iptables): requires sudo to verify"
+      elif (( ipt_rules > 0 )); then
         status_ok "Firewall (iptables): ${ipt_rules} rules active"
       else
         status_warn "Firewall (iptables): no rules configured"
