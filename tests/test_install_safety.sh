@@ -66,4 +66,55 @@ if command -v script >/dev/null 2>&1; then
   assert_file_exists "$TMPHOME/fake-install2/mdoctor"
 fi
 
+# --- Task 4.2: installer override validation + no-clobber symlink ---
+# A seed install dir (valid markers) keeps the installer hermetic.
+git clone -q "$ROOT_DIR" "$TMPHOME/seed" 2>/dev/null
+export MDOCTOR_SKIP_PLATFORM_CHECK=true
+export MDOCTOR_REPO_URL="$ROOT_DIR"
+
+# Binary name with / is rejected.
+set +e
+MDOCTOR_INSTALL_DIR="$TMPHOME/seed" MDOCTOR_BIN_DIR="$TMPHOME/bin" \
+  MDOCTOR_BINARY_NAME="a/b" HOME="$TMPHOME" ./install.sh >"$TMPHOME/badname.out" 2>&1
+rc=$?
+set -e
+[ "$rc" -ne 0 ] || fail "Expected install to refuse a binary name with /"
+
+# Bin dir outside the policy is rejected with a message.
+set +e
+MDOCTOR_INSTALL_DIR="$TMPHOME/seed" MDOCTOR_BIN_DIR="$TMPHOME/nope" \
+  HOME="$TMPHOME" ./install.sh >"$TMPHOME/bindir.out" 2>&1
+rc=$?
+set -e
+[ "$rc" -ne 0 ] || fail "Expected install to refuse a bin dir outside policy"
+assert_contains "$TMPHOME/bindir.out" "/bin"
+
+# Overrides print the exact ln command and require confirmation.
+mkdir -p "$TMPHOME/bin"
+printf 'y\n' | MDOCTOR_INSTALL_DIR="$TMPHOME/seed" MDOCTOR_BIN_DIR="$TMPHOME/bin" \
+  MDOCTOR_BINARY_NAME="mdoctor-test" HOME="$TMPHOME" ./install.sh >"$TMPHOME/override.out" 2>&1
+assert_contains "$TMPHOME/override.out" 'ln -s'
+assert_file_exists "$TMPHOME/bin/mdoctor-test"
+printf 'n\n' | MDOCTOR_INSTALL_DIR="$TMPHOME/seed" MDOCTOR_BIN_DIR="$TMPHOME/bin" \
+  MDOCTOR_BINARY_NAME="mdoctor-no" HOME="$TMPHOME" ./install.sh >"$TMPHOME/override-no.out" 2>&1 || true
+assert_file_not_exists "$TMPHOME/bin/mdoctor-no"
+
+# A regular file at the bin path is never clobbered.
+echo "precious" > "$TMPHOME/bin/mdoctor-clobber"
+set +e
+MDOCTOR_INSTALL_DIR="$TMPHOME/seed" MDOCTOR_BIN_DIR="$TMPHOME/bin" \
+  MDOCTOR_BINARY_NAME="mdoctor-clobber" MDOCTOR_ASSUME_YES=true \
+  HOME="$TMPHOME" ./install.sh >"$TMPHOME/clobber.out" 2>&1
+rc=$?
+set -e
+[ "$rc" -ne 0 ] || fail "Expected install to refuse a regular file at the bin path"
+assert_contains "$TMPHOME/clobber.out" "not a symlink"
+assert_file_exists "$TMPHOME/bin/mdoctor-clobber"
+
+# Reinstall over mdoctor's own symlink succeeds.
+MDOCTOR_INSTALL_DIR="$TMPHOME/seed" MDOCTOR_BIN_DIR="$TMPHOME/bin" \
+  MDOCTOR_BINARY_NAME="mdoctor-test" MDOCTOR_ASSUME_YES=true \
+  HOME="$TMPHOME" ./install.sh >/dev/null 2>&1
+assert_file_exists "$TMPHOME/bin/mdoctor-test"
+
 pass "install dir validation + uninstall confirmation"
