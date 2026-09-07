@@ -165,4 +165,32 @@ MDOCTOR_ASSUME_YES=true HOME="$TMPHOME" ./mdoctor clean --force -m dev >/dev/nul
 assert_file_exists "$TMPHOME/Documents/keep.txt"
 rm -f "$TMPHOME/.cache/pip"
 
+# Task 3.2: validation sees through symlinks — a link inside an allowed
+# root pointing at a protected target is rejected (canonicalized first).
+ln -s "$TMPHOME/Documents" "$TMPHOME/.cache/escape-link"
+set +e
+validate_deletion_path "$TMPHOME/.cache/escape-link" >/dev/null 2>&1
+[ "$?" -eq "$MDOCTOR_SAFE_ERR_PROTECTED_TARGET" ] || fail "Expected protected-target code for symlink escaping to Documents"
+set -e
+rm -f "$TMPHOME/.cache/escape-link"
+
+# Task 3.2: safe_find_delete blocks symlinks by default through the
+# primitive (not just via safe_remove/safe_remove_children).
+mkdir -p "$TMPHOME/.cache/findtest"
+echo "stale" > "$TMPHOME/.cache/findtest/old.txt"
+touch -t 200001010000 "$TMPHOME/.cache/findtest/old.txt"
+ln -s "$TMPHOME/.cache/findtest/old.txt" "$TMPHOME/.cache/findtest/link.txt"
+touch -t 200001010000 -h "$TMPHOME/.cache/findtest/link.txt" 2>/dev/null || true
+# shellcheck disable=SC2034 # read dynamically by safe_remove via ${DRY_RUN:-true}; not visible statically
+DRY_RUN=false
+set +e
+safe_find_delete "$TMPHOME/.cache/findtest" -type l >/dev/null 2>&1
+[ "$?" -eq "$MDOCTOR_SAFE_ERR_SYMLINK_BLOCKED" ] || fail "Expected symlink-blocked code from safe_find_delete default"
+set -e
+assert_file_exists "$TMPHOME/.cache/findtest/old.txt"
+# ... and deletes with the explicit opt-in.
+safe_find_delete "$TMPHOME/.cache/findtest" --allow-symlink -type l >/dev/null 2>&1
+assert_file_not_exists "$TMPHOME/.cache/findtest/link.txt"
+assert_file_exists "$TMPHOME/.cache/findtest/old.txt"
+
 pass "safety validation + whitelist protection"

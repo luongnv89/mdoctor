@@ -368,6 +368,13 @@ validate_deletion_path() {
     return "$MDOCTOR_SAFE_ERR_INVALID_TARGET"
   fi
 
+  # Task 3.2: canonicalize first (resolving symlinks, /./ and //), then
+  # run every policy check against the canonical path — validation and
+  # deletion can never disagree on what the target is. Traversal is
+  # rejected above, before resolution could hide it.
+  path="$(_canonical_path "$path")"
+  path="$(_normalize_path "$path")"
+
   if is_protected_deletion_path "$path"; then
     _safety_error "$MDOCTOR_SAFE_ERR_PROTECTED_TARGET" "$path" "blocked protected deletion target"
     return "$MDOCTOR_SAFE_ERR_PROTECTED_TARGET"
@@ -402,6 +409,13 @@ safe_remove() {
   if [ -L "$path" ] && [ "$allow_symlink" != true ]; then
     _safety_error "$MDOCTOR_SAFE_ERR_SYMLINK_BLOCKED" "$path" "blocked symlink deletion without explicit allow"
     return "$MDOCTOR_SAFE_ERR_SYMLINK_BLOCKED"
+  fi
+
+  # Task 3.2: operate on the canonical path so validation and deletion
+  # agree — except for the symlink itself: rm on a link removes the LINK,
+  # so resolving first would redirect deletion onto the TARGET.
+  if [ ! -L "$path" ]; then
+    path="$(_canonical_path "$path")"
   fi
 
   if [ ! -e "$path" ] && [ ! -L "$path" ]; then
@@ -510,6 +524,15 @@ safe_find_delete() {
   local base_dir="${1-}"
   shift || true
 
+  # Task 3.2: symlink allowance is an explicit opt-in flag in $1 position
+  # (before the find args), defaulting to blocked. Previously every match
+  # was removed with --allow-symlink unconditionally.
+  local allow_symlink=false
+  if [ "${1-}" = "--allow-symlink" ]; then
+    allow_symlink=true
+    shift || true
+  fi
+
   validate_deletion_path "$base_dir" || return $?
 
   if [ ! -d "$base_dir" ]; then
@@ -546,7 +569,11 @@ safe_find_delete() {
 
   while IFS= read -r -d '' match; do
     count=$((count + 1))
-    safe_remove "$match" --allow-symlink || rc=$?
+    if [ "$allow_symlink" = true ]; then
+      safe_remove "$match" --allow-symlink || rc=$?
+    else
+      safe_remove "$match" || rc=$?
+    fi
   done <"$matches_file"
 
   rm -f "$matches_file" "$err_file"
