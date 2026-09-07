@@ -155,14 +155,88 @@ if [ -d "${INSTALL_DIR}/fixes" ]; then
   chmod +x "${INSTALL_DIR}"/fixes/*.sh 2>/dev/null || true
 fi
 
-# Create symlink
+# Create symlink (Task 4.2: validated overrides, confirmed, no clobber)
+validate_bin_override() {
+  # Binary name: strict charset, never a path.
+  case "$BINARY_NAME" in
+    ""|*/*)
+      fail "Invalid binary name '${BINARY_NAME}': must be a plain filename (no /)."
+      ;;
+  esac
+  case "$BINARY_NAME" in
+    *[!A-Za-z0-9_.-]*)
+      fail "Invalid binary name '${BINARY_NAME}': allowed characters are A-Z a-z 0-9 _ . -."
+      ;;
+  esac
+  # Bin dir: allowlisted, or an existing directory ending in /bin.
+  case "$BIN_DIR" in
+    /usr/local/bin|"${HOME}/.local/bin"|"${HOME}/bin") ;;
+    *)
+      case "$BIN_DIR" in
+        */bin) ;;
+        *)
+          fail "Invalid bin directory '${BIN_DIR}': must be an existing directory ending in /bin."
+          ;;
+      esac
+      [ -d "$BIN_DIR" ] || fail "Invalid bin directory '${BIN_DIR}': directory does not exist."
+      ;;
+  esac
+}
+
 info "Creating symlink: ${BIN_DIR}/${BINARY_NAME} -> ${INSTALL_DIR}/mdoctor"
+validate_bin_override
+
+BIN_LINK="${BIN_DIR}/${BINARY_NAME}"
+if [ -n "${MDOCTOR_BIN_DIR:-}" ] || [ -n "${MDOCTOR_BINARY_NAME:-}" ]; then
+  # Overrides are in play: print the exact command and confirm (Task 4.2).
+  echo "  ln -s \"${INSTALL_DIR}/mdoctor\" \"${BIN_LINK}\""
+  # Confirmation mirrors the cleanup gate (Task 0.5 semantics): an
+  # explicit y proceeds (tty or pipe); anything else aborts, and a
+  # non-tty without an answer names the skip flag.
+  if [ "${MDOCTOR_ASSUME_YES:-false}" != true ]; then
+    if [ -t 0 ]; then
+      printf 'Create this symlink? [y/N] ' >&2
+    fi
+    answer=""
+    IFS= read -r answer || answer=""
+    case "$answer" in
+      [yY]|[yY][eE][sS]) ;;
+      *)
+        if [ -t 0 ]; then
+          fail "Aborted: symlink not created."
+        else
+          fail "Refusing to create symlink on a non-tty without MDOCTOR_ASSUME_YES=true."
+        fi
+        ;;
+    esac
+  fi
+fi
+
+# Refuse to clobber anything that is not mdoctor's own symlink (Task 4.2):
+# a previous mdoctor link is replaced, anything else aborts the install.
+if [ ! -d "$BIN_DIR" ]; then
+  fail "Bin directory '${BIN_DIR}' does not exist."
+fi
+if [ -L "$BIN_LINK" ]; then
+  if [ "$(readlink "$BIN_LINK" 2>/dev/null || true)" != "${INSTALL_DIR}/mdoctor" ]; then
+    fail "Refusing to overwrite '${BIN_LINK}': not mdoctor's symlink (points elsewhere)."
+  fi
+  info "Replacing existing mdoctor symlink ${BIN_LINK}"
+  if [ -w "$(dirname "$BIN_LINK")" ]; then
+    rm -f "$BIN_LINK"
+  else
+    info "Need sudo to write to ${BIN_DIR}"
+    sudo rm -f "$BIN_LINK"
+  fi
+elif [ -e "$BIN_LINK" ]; then
+  fail "Refusing to overwrite '${BIN_LINK}': not a symlink."
+fi
 
 if [ -w "$BIN_DIR" ]; then
-  ln -sf "${INSTALL_DIR}/mdoctor" "${BIN_DIR}/${BINARY_NAME}"
+  ln -s "${INSTALL_DIR}/mdoctor" "${BIN_LINK}"
 else
   info "Need sudo to write to ${BIN_DIR}"
-  sudo ln -sf "${INSTALL_DIR}/mdoctor" "${BIN_DIR}/${BINARY_NAME}"
+  sudo ln -s "${INSTALL_DIR}/mdoctor" "${BIN_LINK}"
 fi
 
 # Verify
