@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@11bd5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # Same ShellCheck as the pre-commit hook (Task 2.3: one version
       # string, 0.11.0.1, in both files).
@@ -46,7 +46,7 @@ jobs:
     needs: lint
 
     steps:
-      - uses: actions/checkout@11bd5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Make scripts executable
         run: chmod +x mdoctor doctor.sh cleanup.sh tests/run.sh tests/test_*.sh tests/helpers/assert.sh
@@ -80,7 +80,7 @@ jobs:
     needs: lint
 
     steps:
-      - uses: actions/checkout@11bd5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Make scripts executable
         run: chmod +x mdoctor doctor.sh cleanup.sh tests/run.sh tests/test_*.sh tests/helpers/assert.sh tests/helpers/bin/* tests/helpers/bin-macos/*
@@ -148,7 +148,7 @@ jobs:
       - name: Install git and nodejs for checkout
         run: apk add --no-cache git nodejs
 
-      - uses: actions/checkout@11bd5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Run test suite under Bash 3.2
         run: timeout 300 bash ./tests/run.sh
@@ -160,7 +160,7 @@ jobs:
     needs: [lint, test, test-linux]
 
     steps:
-      - uses: actions/checkout@11bd5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Make install scripts executable
         run: chmod +x install.sh uninstall.sh
