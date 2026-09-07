@@ -33,7 +33,7 @@ check_updates_basic() {
     # APT package updates
     if command -v apt-get >/dev/null 2>&1; then
       local upgradable
-      upgradable=$(apt list --upgradable 2>/dev/null | grep -c 'upgradable' || echo 0)
+      upgradable=$(apt list --upgradable 2>/dev/null | grep -c 'upgradable' || true)
       if (( upgradable > 0 )); then
         status_warn "${upgradable} package update(s) available"
         add_action "Run 'sudo apt update && sudo apt upgrade' to apply pending updates."
@@ -44,7 +44,7 @@ check_updates_basic() {
       # Security updates specifically
       if command -v apt-get >/dev/null 2>&1; then
         local security_updates
-        security_updates=$(apt-get -s upgrade 2>/dev/null | grep -c 'Inst.*security' || echo 0)
+        security_updates=$(apt-get -s upgrade 2>/dev/null | grep -c 'Inst.*security' || true)
         if (( security_updates > 0 )); then
           status_warn "${security_updates} security update(s) pending"
           add_action "Security updates are pending. Run 'sudo apt upgrade' promptly."

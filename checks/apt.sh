@@ -17,7 +17,7 @@ check_apt() {
   # Package count
   if command -v dpkg >/dev/null 2>&1; then
     local installed_count
-    installed_count=$(dpkg -l 2>/dev/null | grep -c '^ii' || echo 0)
+    installed_count=$(dpkg -l 2>/dev/null | grep -c '^ii' || true)
     status_info "Installed packages: ${installed_count}"
   fi
 
@@ -40,7 +40,7 @@ check_apt() {
 
   # Residual configs (packages removed but config files remain)
   local residual_count
-  residual_count=$(dpkg -l 2>/dev/null | grep -c '^rc' || echo 0)
+  residual_count=$(dpkg -l 2>/dev/null | grep -c '^rc' || true)
   if (( residual_count > 5 )); then
     status_info "Packages with residual configs: ${residual_count}"
     add_action "Clean residual configs: sudo apt purge \$(dpkg -l | grep '^rc' | awk '{print \$2}')"
@@ -48,7 +48,8 @@ check_apt() {
 
   # APT cache size
   local cache_size
-  cache_size=$(du -sk /var/cache/apt/archives 2>/dev/null | awk '{print $1}' || echo 0)
+  cache_size=$(du -sk /var/cache/apt/archives 2>/dev/null | awk '{print $1}' || true)
+  cache_size="${cache_size:-0}"
   if (( cache_size > 524288 )); then  # > 512 MB
     local cache_hr
     cache_hr=$(kb_to_human "$cache_size")
@@ -58,7 +59,7 @@ check_apt() {
 
   # Auto-removable packages
   local autoremove_output
-  autoremove_output=$(apt-get -s autoremove 2>/dev/null | grep -c '^Remv' || echo 0)
+  autoremove_output=$(apt-get -s autoremove 2>/dev/null | grep -c '^Remv' || true)
   if (( autoremove_output > 0 )); then
     status_info "Auto-removable packages: ${autoremove_output}"
     add_action "Remove unused packages: sudo apt autoremove"

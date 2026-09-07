@@ -183,9 +183,9 @@ check_network() {
     else
       # Linux: /sys/class/net statistics
       local rx_errors tx_errors
-      rx_errors=$(cat "/sys/class/net/${active_service}/statistics/rx_errors" 2>/dev/null || echo 0)
-      tx_errors=$(cat "/sys/class/net/${active_service}/statistics/tx_errors" 2>/dev/null || echo 0)
-      local total_errors=$((rx_errors + tx_errors))
+      rx_errors=$(cat "/sys/class/net/${active_service}/statistics/rx_errors" 2>/dev/null || true)
+      tx_errors=$(cat "/sys/class/net/${active_service}/statistics/tx_errors" 2>/dev/null || true)
+      local total_errors=$((${rx_errors:-0} + ${tx_errors:-0}))
       if (( total_errors > 0 )); then
         status_info "Network errors on ${active_service}: ${total_errors} (rx:${rx_errors} tx:${tx_errors})"
       fi

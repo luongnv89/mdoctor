@@ -29,7 +29,8 @@ check_hardware() {
 
     # Total RAM
     local total_mem total_gb
-    total_mem=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
+    total_mem=$(sysctl -n hw.memsize 2>/dev/null || true)
+    total_mem="${total_mem:-0}"
     if (( total_mem > 0 )); then
       total_gb=$(awk -v m="$total_mem" 'BEGIN {printf "%.0f", m/1073741824}')
       status_info "Memory: ${total_gb} GB"
@@ -70,7 +71,8 @@ check_hardware() {
     status_info "Cores: ${physical_cores} physical, ${logical_cores} logical"
 
     local total_mem_kb total_gb
-    total_mem_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+    total_mem_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || true)
+    total_mem_kb="${total_mem_kb:-0}"
     if (( total_mem_kb > 0 )); then
       total_gb=$(awk -v kb="$total_mem_kb" 'BEGIN {printf "%.0f", kb/1048576}')
       status_info "Memory: ${total_gb} GB"
@@ -83,7 +85,8 @@ check_hardware() {
       for tz in "$tz_dir"/thermal_zone*/temp; do
         [ -r "$tz" ] || continue
         local temp_milli tz_name temp_c
-        temp_milli=$(cat "$tz" 2>/dev/null || echo 0)
+        temp_milli=$(cat "$tz" 2>/dev/null || true)
+        temp_milli="${temp_milli:-0}"
         tz_name=$(cat "$(dirname "$tz")/type" 2>/dev/null || echo "unknown")
         temp_c=$((temp_milli / 1000))
         if (( temp_c > 85 )); then

@@ -104,7 +104,7 @@ check_security() {
       fi
     elif command -v iptables >/dev/null 2>&1; then
       local ipt_rules
-      ipt_rules=$(sudo iptables -L -n 2>/dev/null | grep -cv '^$\|^Chain\|^target' || echo 0)
+      ipt_rules=$(sudo iptables -L -n 2>/dev/null | grep -cv '^$\|^Chain\|^target' || true)
       if (( ipt_rules > 0 )); then
         status_ok "Firewall (iptables): ${ipt_rules} rules active"
       else
@@ -118,7 +118,7 @@ check_security() {
     # Disk encryption (LUKS)
     if command -v lsblk >/dev/null 2>&1; then
       local crypt_count
-      crypt_count=$(lsblk -o TYPE 2>/dev/null | grep -c "crypt" || echo 0)
+      crypt_count=$(lsblk -o TYPE 2>/dev/null | grep -c "crypt" || true)
       if (( crypt_count > 0 )); then
         status_ok "Disk encryption (LUKS): ${crypt_count} encrypted volume(s)"
       else
