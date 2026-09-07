@@ -53,7 +53,7 @@ check_updates_basic() {
     fi
 
     # Kernel update check
-    local running_kernel installed_kernel
+    local running_kernel
     running_kernel=$(uname -r 2>/dev/null || echo "")
     if [ -n "$running_kernel" ]; then
       status_info "Running kernel: ${running_kernel}"

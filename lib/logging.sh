@@ -53,7 +53,8 @@ debug_enabled() {
 debug_log() {
   debug_enabled || return 0
   local msg="$*"
-  local line="[$(timestamp)] [DEBUG] ${msg}"
+  local line
+  line="[$(timestamp)] [DEBUG] ${msg}"
   echo "$line" >&2
   printf '%s\n' "$line" >> "${LOGFILE:-/tmp/cleanup.log}"
   if declare -f op_record >/dev/null 2>&1; then

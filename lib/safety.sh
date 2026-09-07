@@ -24,8 +24,11 @@ MDOCTOR_SAFE_ERR_SIP_READONLY=25
 MDOCTOR_SAFE_ERR_RUNTIME_FAILURE=26
 
 # Backward-compat aliases (for existing callers)
+# shellcheck disable=SC2034 # public API: referenced by name from external callers, not within this repo
 MDOCTOR_SAFE_ERR_INVALID_PATH="$MDOCTOR_SAFE_ERR_INVALID_TARGET"
+# shellcheck disable=SC2034 # public API: referenced by name from external callers, not within this repo
 MDOCTOR_SAFE_ERR_PROTECTED_PATH="$MDOCTOR_SAFE_ERR_PROTECTED_TARGET"
+# shellcheck disable=SC2034 # public API: referenced by name from external callers, not within this repo
 MDOCTOR_SAFE_ERR_REMOVE_FAILED="$MDOCTOR_SAFE_ERR_RUNTIME_FAILURE"
 
 # Cleanup whitelist config

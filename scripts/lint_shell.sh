@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# ShellCheck policy linter (Task 2.1: gate at -S warning).
+# Single shellcheck invocation over all discovered files: reports the
+# full violation inventory instead of aborting on the first failing file.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,11 +26,8 @@ if [ "${#files[@]}" -eq 0 ]; then
   exit 1
 fi
 
-echo "ShellCheck high-severity lint on ${#files[@]} files"
-
-for f in "${files[@]}"; do
-  echo "- $f"
-  shellcheck -S error "$f"
-done
+echo "ShellCheck warning-severity lint on ${#files[@]} files"
+printf -- '- %s\n' "${files[@]}"
+shellcheck -S warning "${files[@]}"
 
 echo "ShellCheck lint passed."
