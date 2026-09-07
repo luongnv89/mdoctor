@@ -19,6 +19,10 @@ history_save() {
   local failures="$4"
 
   mkdir -p "$HISTORY_DIR"
+  # Task 3.4: state dirs/files are private at creation.
+  if [ ! -d "$HISTORY_DIR" ]; then
+    chmod 700 "$HISTORY_DIR"
+  fi
 
   local ts
   ts="$(date +%Y%m%d_%H%M%S)"
@@ -30,6 +34,17 @@ history_save() {
   cat > "$file" <<HISTEOF
 {"timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","score":${score},"rating":"${esc_rating}","warnings":${warnings},"failures":${failures}}
 HISTEOF
+  chmod 600 "$file"
+}
+
+# _history_is_uint VALUE — validates a parsed history field before any
+# arithmetic or format use (Task 3.4). History files are user-writable
+# state, not trusted input.
+_history_is_uint() {
+  case "${1-}" in
+    ""|*[!0-9]*) return 1 ;;
+  esac
+  return 0
 }
 
 ########################################
@@ -102,6 +117,24 @@ history_show() {
     failures="${failures%%,*}"
     failures="${failures%%\}*}"
 
+    # Task 3.4: history files are user-writable state — validate every
+    # numeric field before any arithmetic or format use. A non-conforming
+    # entry is rejected with a message, never evaluated.
+    if ! _history_is_uint "$score"; then
+      echo "warning: skipping history entry with invalid score in ${file}" >&2
+      i=$((i + 1))
+      continue
+    fi
+    if ! _history_is_uint "$warnings"; then
+      echo "warning: skipping history entry with invalid warnings in ${file}" >&2
+      i=$((i + 1))
+      continue
+    fi
+    if ! _history_is_uint "$failures"; then
+      echo "warning: skipping history entry with invalid failures in ${file}" >&2
+      i=$((i + 1))
+      continue
+    fi
     # Trend arrow
     local trend=" "
     if (( prev_score >= 0 )); then
@@ -144,6 +177,12 @@ history_show() {
     last_s="${last_line#*\"score\":}"
     last_s="${last_s%%,*}"
     last_s="${last_s%%\}*}"
+
+    # Task 3.4: same validation for the regression comparison.
+    if ! _history_is_uint "$prev_s" || ! _history_is_uint "$last_s"; then
+      echo "warning: skipping regression check with invalid scores" >&2
+      return
+    fi
 
     if (( last_s < prev_s )); then
       local diff=$((prev_s - last_s))

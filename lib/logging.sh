@@ -86,8 +86,16 @@ oplog_ensure_file() {
   oplog_enabled || return 0
   local dir
   dir="$(dirname "$OPLOGFILE")"
-  mkdir -p "$dir"
-  [ -f "$OPLOGFILE" ] || : > "$OPLOGFILE"
+  # Task 3.4: state is private at creation (0700 dirs, 0600 files).
+  # Create-only (not unconditional chmod): this runs on every log write.
+  if [ ! -d "$dir" ]; then
+    mkdir -p "$dir"
+    chmod 700 "$dir"
+  fi
+  if [ ! -f "$OPLOGFILE" ]; then
+    : > "$OPLOGFILE"
+    chmod 600 "$OPLOGFILE"
+  fi
 }
 
 oplog_write() {
