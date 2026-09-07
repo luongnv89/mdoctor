@@ -195,10 +195,13 @@ jobs:
           TMP_BIN="$TMP_ROOT/bin"
           mkdir -p "$TMP_BIN"
 
+          # Task 4.2: the installer refuses symlink creation on a non-tty
+          # without an explicit opt-in — same ASSUME_YES as uninstall below.
           MDOCTOR_REPO_URL="$PWD" \
           MDOCTOR_INSTALL_DIR="$TMP_INSTALL" \
           MDOCTOR_BIN_DIR="$TMP_BIN" \
           MDOCTOR_BINARY_NAME="mdoctor" \
+          MDOCTOR_ASSUME_YES=true \
           ./install.sh
 
           "$TMP_BIN/mdoctor" version
