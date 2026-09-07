@@ -8,6 +8,14 @@
 
 No build tools, package managers, or runtimes are required. mdoctor is pure Bash.
 
+Install the pre-commit hooks once per checkout (CI enforces them with
+`pre-commit run --all-files`):
+
+```bash
+pip install pre-commit  # or: brew install pre-commit
+pre-commit install
+```
+
 ## Local Setup
 
 ```bash
