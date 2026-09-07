@@ -100,11 +100,13 @@ check_security() {
       if [ -z "$ufw_status" ] && sudo -n true 2>/dev/null; then
         ufw_status=$(sudo -n ufw status 2>/dev/null || echo "")
       fi
-      if echo "$ufw_status" | grep -qi "active"; then
-        status_ok "Firewall (ufw): active"
-      elif echo "$ufw_status" | grep -qi "inactive"; then
+      # NOTE: "inactive" must be tested before "active" — the latter
+      # is a substring of the former ("Status: inactive").
+      if echo "$ufw_status" | grep -qi "inactive"; then
         status_warn "Firewall (ufw): inactive"
         add_action "Enable the firewall: sudo ufw enable"
+      elif echo "$ufw_status" | grep -qi "active"; then
+        status_ok "Firewall (ufw): active"
       elif [ -z "$ufw_status" ]; then
         status_info "Firewall (ufw): requires sudo to verify"
       else
