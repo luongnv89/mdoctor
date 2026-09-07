@@ -101,7 +101,8 @@ assert_contains "$TMPHOME/bindir.out" "/bin"
 # Overrides print the exact ln command and require confirmation.
 mkdir -p "$TMPHOME/bin"
 printf 'y\n' | MDOCTOR_INSTALL_DIR="$TMPHOME/seed" MDOCTOR_BIN_DIR="$TMPHOME/bin" \
-  MDOCTOR_BINARY_NAME="mdoctor-test" HOME="$TMPHOME" ./install.sh >"$TMPHOME/override.out" 2>&1
+  MDOCTOR_BINARY_NAME="mdoctor-test" HOME="$TMPHOME" ./install.sh >"$TMPHOME/override.out" 2>&1 \
+  || { tail -n 20 "$TMPHOME/override.out"; fail "override-y install failed"; }
 assert_contains "$TMPHOME/override.out" 'ln -s'
 assert_file_exists "$TMPHOME/bin/mdoctor-test"
 printf 'n\n' | MDOCTOR_INSTALL_DIR="$TMPHOME/seed" MDOCTOR_BIN_DIR="$TMPHOME/bin" \
@@ -123,7 +124,8 @@ assert_file_exists "$TMPHOME/bin/mdoctor-clobber"
 # Reinstall over mdoctor's own symlink succeeds.
 MDOCTOR_INSTALL_DIR="$TMPHOME/seed" MDOCTOR_BIN_DIR="$TMPHOME/bin" \
   MDOCTOR_BINARY_NAME="mdoctor-test" MDOCTOR_ASSUME_YES=true \
-  HOME="$TMPHOME" ./install.sh >/dev/null 2>&1
+  HOME="$TMPHOME" ./install.sh >"$TMPHOME/reinstall.out" 2>&1 \
+  || { tail -n 20 "$TMPHOME/reinstall.out"; fail "own-symlink reinstall failed"; }
 assert_file_exists "$TMPHOME/bin/mdoctor-test"
 
 pass "install dir validation + uninstall confirmation"
