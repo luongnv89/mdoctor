@@ -57,7 +57,7 @@ run() {
   if [ "$DRY_RUN" = true ]; then
     echo "[dry-run] $*"
   else
-    eval "$@"
+    "$@"
   fi
 }
 

@@ -1,0 +1,7 @@
+{
+  "result": "PASS",
+  "issues_found": 0,
+  "fixable_count": 0,
+  "issues": [],
+  "summary": "The PR correctly converts the stale node_modules scan from newline-delimited to NUL-delimited I/O, preventing filename-injection bugs when directory names contain newlines. Three changes in cleanups/dev_caches.sh: (1) find now emits -print0 and the read loop uses -d '', (2) a portable timeout guard falls back to plain find on macOS where GNU timeout is absent, and (3) awk NR==1 with +0 robustly extracts the du size even when paths contain newlines. The new test in tests/test_nul_scan.sh validates the critical edge case — a newline-named sibling directory with a stale node_modules — and passes. All 7 CI checks pass (Lint, Test macOS/Linux/Bash 3.2, Release Sanity, Socket Security x2). No correctness, security, or edge-case issues found."
+}
