@@ -16,8 +16,14 @@ repos:
     rev: v0.11.0.1 # Task 2.3: same version as CI (shellcheck-py==0.11.0.1)
     hooks:
       - id: shellcheck
-        args: ["-S", "error", "-e", "SC1091"]  # Match lint_shell.sh policy: errors only
+        args: ["-S", "warning", "-e", "SC1091"]  # Match lint_shell.sh policy: warning level and above
         types: [shell]
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1 # Task 3.5: pinned secret scanner (CI runs the same version)
+    hooks:
+      - id: gitleaks
+        args: ["--verbose"]
 
   - repo: local
     hooks:
