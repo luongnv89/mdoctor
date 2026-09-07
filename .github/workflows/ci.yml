@@ -9,13 +9,15 @@ on:
 jobs:
   lint:
     name: Lint
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@11bd5960a326750d5838078e36cf38b85af677262 # v4
 
-      - name: Install ShellCheck
-        run: brew install shellcheck
+      # Same ShellCheck as the pre-commit hook (Task 2.3: one version
+      # string, 0.11.0.1, in both files).
+      - name: Install ShellCheck 0.11.0.1
+        run: pipx install 'shellcheck-py==0.11.0.1'
 
       - name: Run ShellCheck policy linter
         run: |
