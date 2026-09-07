@@ -566,7 +566,7 @@ cmd_clean() {
     init_colors
     debug_log "cmd_clean module=${selected_module} force=${selected_force} debug=${MDOCTOR_DEBUG}"
 
-    # Set globals (used by sourced cleanup modules via run_cmd)
+    # Set globals (used by sourced cleanup modules via run_cmd_args)
     # shellcheck disable=SC2034
     DRY_RUN=true
     LOGFILE="$(platform_log_dir)/mdoctor_cleanup.log"

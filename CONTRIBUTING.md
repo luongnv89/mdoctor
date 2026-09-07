@@ -79,12 +79,20 @@ check_your_feature() {
 clean_your_cache() {
   header "Cleaning Your Cache"
   if [ -d "${HOME}/.yourcache" ]; then
-    run_cmd "rm -rf \"${HOME}/.yourcache\"/*"
+    # Argv form only — never pass a command string. Validate the target,
+    # then run with an argument vector so nothing is ever re-parsed by a shell.
+    validate_deletion_path "${HOME}/.yourcache" || return 1
+    run_cmd_args rm -rf -- "${HOME}/.yourcache"/_tmp_* || return 1
   else
     log "No cache found."
   fi
 }
 ```
+
+> Never use a string-eval path (`bash -c`, `eval`, or a single-string command
+> runner). Destructive modules route deletions through `lib/safety.sh`
+> (`validate_deletion_path`, `safe_remove`) and execute commands only via
+> `run_cmd_args` with separate arguments.
 
 2. Source it in `cleanup.sh` and call the function
 3. Increment `PROGRESS_TOTAL` in `cleanup.sh`
