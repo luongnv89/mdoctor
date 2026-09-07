@@ -67,8 +67,17 @@ if command -v script >/dev/null 2>&1; then
 fi
 
 # --- Task 4.2: installer override validation + no-clobber symlink ---
-# A seed install dir (valid markers) keeps the installer hermetic.
-git clone -q "$ROOT_DIR" "$TMPHOME/seed" 2>/dev/null
+# A seed install dir (valid markers) keeps the installer hermetic. A plain
+# `git clone` of the checkout can fail on shallow/detached CI checkouts
+# (merge refs carry no branches), so fall back to synthesized markers —
+# the override validation below is exercised deterministically either way.
+git clone -q "$ROOT_DIR" "$TMPHOME/seed" 2>"$TMPHOME/seed-clone.err" || echo "DBG seed-clone rc=$?"
+if [ ! -f "$TMPHOME/seed/mdoctor" ]; then
+  echo "DBG seed-clone lacked a checkout; synthesizing markers"
+  rm -rf "$TMPHOME/seed"
+  mkdir -p "$TMPHOME/seed/.git"
+  cp "$ROOT_DIR/mdoctor" "$TMPHOME/seed/mdoctor"
+fi
 export MDOCTOR_SKIP_PLATFORM_CHECK=true
 export MDOCTOR_REPO_URL="$ROOT_DIR"
 
