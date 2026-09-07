@@ -446,6 +446,21 @@ safe_remove() {
   return 0
 }
 
+# _canonical_path PATH — resolve symlinks / . / .. to a canonical absolute
+# path (Task 3.1/3.2). Prefers realpath, falls back to readlink -f, then
+# to the (normalized) input when neither can resolve (e.g. missing path).
+_canonical_path() {
+  local p="${1-}"
+  [ -n "$p" ] || { echo ""; return 0; }
+  if command -v realpath >/dev/null 2>&1; then
+    realpath "$p" 2>/dev/null || printf '%s' "$p"
+  elif readlink -f "$p" >/dev/null 2>&1; then
+    readlink -f "$p"
+  else
+    printf '%s' "$p"
+  fi
+}
+
 safe_remove_children() {
   local dir="${1-}"
   local allow_symlink=false
@@ -454,7 +469,24 @@ safe_remove_children() {
     allow_symlink=true
   fi
 
+  # Task 3.1: a symlinked directory argument is rejected BEFORE any glob
+  # expansion — otherwise "$dir"/* would enumerate (and delete) the
+  # link TARGET's children. Explicit --allow-symlink opts in.
+  if [ -L "$dir" ] && [ "$allow_symlink" != true ]; then
+    _safety_error "$MDOCTOR_SAFE_ERR_SYMLINK_BLOCKED" "$dir" "blocked symlinked directory argument without explicit allow"
+    return "$MDOCTOR_SAFE_ERR_SYMLINK_BLOCKED"
+  fi
+
   validate_deletion_path "$dir" || return $?
+
+  # Task 3.1: canonicalize (resolving any remaining indirection) and
+  # re-validate the canonical result before touching anything.
+  local canon_dir
+  canon_dir="$(_canonical_path "$dir")"
+  if [ "$canon_dir" != "$dir" ]; then
+    validate_deletion_path "$canon_dir" || return $?
+    dir="$canon_dir"
+  fi
 
   if [ ! -d "$dir" ]; then
     return 0

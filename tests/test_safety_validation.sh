@@ -150,4 +150,19 @@ while IFS= read -r dir; do
 done < <(platform_crash_dirs)
 set -e
 
+# Task 3.1: a symlinked directory argument is rejected (code 23) before
+# any glob expansion — the link target's contents must survive even a
+# forced clean that reaches the same helper.
+mkdir -p "$TMPHOME/Documents" "$TMPHOME/.cache"
+echo "precious" > "$TMPHOME/Documents/keep.txt"
+ln -s "$TMPHOME/Documents" "$TMPHOME/.cache/pip"
+set +e
+safe_remove_children "$TMPHOME/.cache/pip" >/dev/null 2>&1
+[ "$?" -eq "$MDOCTOR_SAFE_ERR_SYMLINK_BLOCKED" ] || fail "Expected symlink-blocked code for symlinked dir argument"
+set -e
+assert_file_exists "$TMPHOME/Documents/keep.txt"
+MDOCTOR_ASSUME_YES=true HOME="$TMPHOME" ./mdoctor clean --force -m dev >/dev/null 2>&1 || true
+assert_file_exists "$TMPHOME/Documents/keep.txt"
+rm -f "$TMPHOME/.cache/pip"
+
 pass "safety validation + whitelist protection"
