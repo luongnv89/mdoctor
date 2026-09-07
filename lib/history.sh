@@ -20,7 +20,9 @@ history_save() {
 
   mkdir -p "$HISTORY_DIR"
   # Task 3.4: state dirs/files are private at creation.
-  chmod 700 "$HISTORY_DIR"
+  if [ ! -d "$HISTORY_DIR" ]; then
+    chmod 700 "$HISTORY_DIR"
+  fi
 
   local ts
   ts="$(date +%Y%m%d_%H%M%S)"
@@ -179,7 +181,7 @@ history_show() {
     # Task 3.4: same validation for the regression comparison.
     if ! _history_is_uint "$prev_s" || ! _history_is_uint "$last_s"; then
       echo "warning: skipping regression check with invalid scores" >&2
-      return 0
+      return
     fi
 
     if (( last_s < prev_s )); then
