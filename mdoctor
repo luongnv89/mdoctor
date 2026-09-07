@@ -270,6 +270,21 @@ cmd_clean_preflight_summary_module() {
 # COMMAND: check
 ########################################
 
+# Task 3.3: strict allowlist for check-module names. Rejects paths,
+# traversal and option-lookalikes before any path is constructed, then
+# requires membership in the platform-filtered registry — a file merely
+# existing under checks/ is never enough to source it.
+is_valid_check_module() {
+  local needle="${1-}"
+  case "$needle" in
+    ""|*/*|*..*|-*) return 1 ;;
+  esac
+  case "$needle" in
+    *[!a-z0-9_]* ) return 1 ;;
+  esac
+  get_module_index "$needle" check >/dev/null 2>&1
+}
+
 cmd_check() {
   local module=""
   local json_flag=false
@@ -301,9 +316,15 @@ cmd_check() {
         echo "  -h, --help            Show this help"
         echo
         echo "Check modules (all [SAFE] read-only):"
-        echo "  Hardware:  battery, hardware, bluetooth, usb"
-        echo "  System:    system, disk, updates, security, startup, network, performance, storage"
-        echo "  Software:  homebrew, node, python, devtools, shell, apps, git_config, containers"
+        if is_macos; then
+          echo "  Hardware:  battery, hardware, bluetooth, usb"
+          echo "  System:    system, disk, updates, security, startup, network, performance, storage"
+          echo "  Software:  homebrew, node, python, devtools, shell, apps, git_config, containers"
+        else
+          echo "  Hardware:  hardware"
+          echo "  System:    system, disk, updates, security, startup, network, performance, storage"
+          echo "  Software:  node, python, devtools, shell, apps, git_config, containers, apt"
+        fi
         return 0
         ;;
       *)
@@ -326,13 +347,18 @@ cmd_check() {
   echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
 
   if [ -n "$module" ]; then
-    # Run a single check module
+    # Run a single check module — allowlisted before anything is sourced.
+    source "${MDOCTOR_DIR}/lib/metadata.sh"
+    register_all_modules
+    if ! is_valid_check_module "$module"; then
+      error "Unknown check module: ${module}"
+      echo "Available check modules:"
+      list_modules_by_category check
+      return 1
+    fi
     local check_file="${MDOCTOR_DIR}/checks/${module}.sh"
     if [ ! -f "$check_file" ]; then
-      error "Unknown check module: ${module}"
-      echo "Available modules: battery, hardware, bluetooth, usb,"
-      echo "  system, disk, updates, security, startup, network, performance, storage,"
-      echo "  homebrew, node, python, devtools, shell, apps, git_config, containers"
+      error "Check module file missing: ${check_file}"
       return 1
     fi
 
@@ -957,9 +983,13 @@ cmd_info() {
 # COMMAND: list
 ########################################
 
-cmd_list() {
-  source "${MDOCTOR_DIR}/lib/metadata.sh"
-
+# Module registration (Task 3.3: shared by cmd_list and the single-module
+# check path, which validates names against this same registry).
+register_all_modules() {
+  # Idempotent: several commands may run per process.
+  if [ "${_MDOCTOR_MODULES_REGISTERED:-false}" = true ]; then
+    return 0
+  fi
   # Register all modules for listing (platform-filtered)
   # Check modules — Hardware
   if is_macos; then
@@ -1030,6 +1060,13 @@ cmd_list() {
   if is_linux; then
     register_module fix apt        System   LOW  fix_apt         "Fix APT packages (update, upgrade, autoremove)"
   fi
+  _MDOCTOR_MODULES_REGISTERED=true
+}
+
+cmd_list() {
+  source "${MDOCTOR_DIR}/lib/metadata.sh"
+
+  register_all_modules
 
   echo "${BOLD}${BLUE}== All Modules ($(platform_name)) ==${RESET}"
   echo
