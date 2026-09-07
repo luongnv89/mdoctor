@@ -58,14 +58,18 @@ check_performance() {
     fi
   fi
 
-  # Top 5 CPU-consuming processes
+  # Top 5 CPU-consuming processes (Task 2.5: guarded long-option ps)
   local top_cpu
-  if is_macos; then
-    top_cpu=$(ps -arcwwxo "pid,%cpu,comm" 2>/dev/null | head -6 | tail -5)
+  if ! command -v ps >/dev/null 2>&1; then
+    status_info "Skipping top-CPU probe: ps not found."
   else
-    top_cpu=$(ps -eo pid,%cpu,comm --sort=-%cpu 2>/dev/null | head -6 | tail -5)
+    if is_macos; then
+      top_cpu=$(ps -arcwwxo "pid,%cpu,comm" 2>/dev/null | head -6 | tail -5)
+    else
+      top_cpu=$(ps -eo pid,%cpu,comm --sort=-%cpu 2>/dev/null | head -6 | tail -5)
+    fi
   fi
-  if [ -n "$top_cpu" ]; then
+  if [ -n "${top_cpu:-}" ]; then
     status_info "Top CPU processes:"
     local line
     while IFS= read -r line; do
@@ -79,14 +83,18 @@ check_performance() {
     done <<< "$top_cpu"
   fi
 
-  # Top 5 memory-consuming processes
+  # Top 5 memory-consuming processes (Task 2.5: guarded long-option ps)
   local top_mem
-  if is_macos; then
-    top_mem=$(ps -amcwwxo "pid,rss,comm" 2>/dev/null | head -6 | tail -5)
+  if ! command -v ps >/dev/null 2>&1; then
+    status_info "Skipping top-memory probe: ps not found."
   else
-    top_mem=$(ps -eo pid,rss,comm --sort=-rss 2>/dev/null | head -6 | tail -5)
+    if is_macos; then
+      top_mem=$(ps -amcwwxo "pid,rss,comm" 2>/dev/null | head -6 | tail -5)
+    else
+      top_mem=$(ps -eo pid,rss,comm --sort=-rss 2>/dev/null | head -6 | tail -5)
+    fi
   fi
-  if [ -n "$top_mem" ]; then
+  if [ -n "${top_mem:-}" ]; then
     status_info "Top memory processes:"
     local line
     while IFS= read -r line; do
@@ -107,41 +115,45 @@ check_performance() {
     done <<< "$top_mem"
   fi
 
-  # Zombie processes
+  # Zombie processes (Task 2.5: guarded ps)
   local zombie_count
-  # shellcheck disable=SC2009
-  zombie_count=$(ps -eo stat 2>/dev/null | grep -c '^Z' || true)
-  if (( zombie_count > 0 )); then
-    status_warn "Zombie processes: ${zombie_count}"
-    # List zombie processes with their parent PIDs
-    local zombie_list
-    zombie_list=$(ps -eo pid,ppid,stat,comm 2>/dev/null | awk '$3 ~ /^Z/ {print $1, $2, $4}')
-    if [ -n "$zombie_list" ]; then
-      status_info "Zombie process details (PID → Parent PID — Command):"
-      local parent_pids=""
-      while IFS= read -r zline; do
-        local zpid zppid zname
-        zpid=$(echo "$zline" | awk '{print $1}')
-        zppid=$(echo "$zline" | awk '{print $2}')
-        zname=$(echo "$zline" | awk '{$1=""; $2=""; print}' | sed 's/^ *//')
-        status_info "  PID ${zpid} → Parent ${zppid} — ${zname}"
-        if [ -n "$parent_pids" ]; then
-          parent_pids="${parent_pids} ${zppid}"
-        else
-          parent_pids="${zppid}"
+  if ! command -v ps >/dev/null 2>&1; then
+    status_info "Skipping zombie probe: ps not found."
+  else
+    # shellcheck disable=SC2009
+    zombie_count=$(ps -eo stat 2>/dev/null | grep -c '^Z' || true)
+    if (( zombie_count > 0 )); then
+      status_warn "Zombie processes: ${zombie_count}"
+      # List zombie processes with their parent PIDs
+      local zombie_list
+      zombie_list=$(ps -eo pid,ppid,stat,comm 2>/dev/null | awk '$3 ~ /^Z/ {print $1, $2, $4}')
+      if [ -n "$zombie_list" ]; then
+        status_info "Zombie process details (PID → Parent PID — Command):"
+        local parent_pids=""
+        while IFS= read -r zline; do
+          local zpid zppid zname
+          zpid=$(echo "$zline" | awk '{print $1}')
+          zppid=$(echo "$zline" | awk '{print $2}')
+          zname=$(echo "$zline" | awk '{$1=""; $2=""; print}' | sed 's/^ *//')
+          status_info "  PID ${zpid} → Parent ${zppid} — ${zname}"
+          if [ -n "$parent_pids" ]; then
+            parent_pids="${parent_pids} ${zppid}"
+          else
+            parent_pids="${zppid}"
+          fi
+        done <<< "$zombie_list"
+        # Deduplicate parent PIDs
+        local unique_parents
+        unique_parents=$(echo "$parent_pids" | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/ *$//')
+        if [ -n "$unique_parents" ]; then
+          add_action "Found ${zombie_count} zombie process(es). Kill their parent process(es) to clean up: kill -HUP ${unique_parents}"
         fi
-      done <<< "$zombie_list"
-      # Deduplicate parent PIDs
-      local unique_parents
-      unique_parents=$(echo "$parent_pids" | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/ *$//')
-      if [ -n "$unique_parents" ]; then
-        add_action "Found ${zombie_count} zombie process(es). Kill their parent process(es) to clean up: kill -HUP ${unique_parents}"
+      else
+        add_action "Found ${zombie_count} zombie process(es). These are defunct processes that can be cleaned up by killing their parent."
       fi
     else
-      add_action "Found ${zombie_count} zombie process(es). These are defunct processes that can be cleaned up by killing their parent."
+      status_ok "No zombie processes."
     fi
-  else
-    status_ok "No zombie processes."
   fi
 
   # Load average assessment
