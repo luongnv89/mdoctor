@@ -75,4 +75,40 @@ if [ "$(uname -s)" = "Linux" ]; then
   done
 fi
 
+# Task 3.3: check-module allowlist — traversal never sources anything.
+# (The error text echoes the rejected name; the proof is the missing
+# canary: the payload file was never sourced.)
+printf '#!/usr/bin/env bash\ntouch "%s/canary.txt"\n' "$TMPDIR_TEST" >"$TMPDIR_TEST/payload.sh"
+set +e
+./mdoctor check -m ../../../../tmp/payload >"$TMPDIR_TEST/check_traversal.txt" 2>&1
+rc=$?
+set -e
+[ "$rc" -ne 0 ] || fail "Expected non-zero exit for traversal module name"
+assert_contains "$TMPDIR_TEST/check_traversal.txt" "Unknown check module"
+[ ! -f "$TMPDIR_TEST/canary.txt" ] || fail "Traversal module name sourced a file (canary exists)"
+
+# Names with / or .. are rejected before path construction.
+for _bad in "a/b" ".." "../apt" "-m"; do
+  set +e
+  ./mdoctor check -m "$_bad" >"$TMPDIR_TEST/check_bad.txt" 2>&1
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "Expected non-zero exit for module name '$_bad'"
+done
+
+# An existing-but-unregistered file is an unknown module, never a silent no-op.
+set +e
+./mdoctor check -m diagnose_performance >"$TMPDIR_TEST/check_unreg.txt" 2>&1
+rc=$?
+set -e
+[ "$rc" -ne 0 ] || fail "Expected non-zero exit for unregistered module file"
+assert_contains "$TMPDIR_TEST/check_unreg.txt" "Unknown check module"
+
+# apt is accepted on Linux and listed in help + error text.
+if [ "$(uname -s)" = "Linux" ]; then
+  ./mdoctor check --help >"$TMPDIR_TEST/check_help_apt.txt" 2>&1
+  assert_contains "$TMPDIR_TEST/check_help_apt.txt" "apt"
+  assert_contains "$TMPDIR_TEST/check_unreg.txt" "apt"
+fi
+
 pass "command parsing + help coverage"
