@@ -89,7 +89,13 @@ history_show() {
   while (( i < total )); do
     local file="${files[$i]}"
     local line
-    line="$(cat "$file" 2>/dev/null)" || continue
+    # An unreadable file must still advance the index: `|| continue`
+    # would jump back to the loop condition and retry the same entry
+    # forever (Task 4.7).
+    if ! line="$(cat "$file" 2>/dev/null)"; then
+      i=$((i + 1))
+      continue
+    fi
 
     # Parse JSON fields using parameter expansion (pure Bash)
     local ts score rating warnings failures

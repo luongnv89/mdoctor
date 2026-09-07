@@ -15,6 +15,10 @@ _bench_elapsed() {
   awk -v s="$1" -v e="$2" 'BEGIN {printf "%.3f", e - s}'
 }
 
+_bench_cleanup_tmp() {
+  rm -rf "${_BENCH_TMP_DIR-}" 2>/dev/null || true
+}
+
 run_benchmark() {
   echo "${BOLD}${BLUE}== System Benchmark ==${RESET}"
   echo
@@ -24,8 +28,11 @@ run_benchmark() {
   local tmp_dir
   tmp_dir="$(mdoctor_mktemp_dir mdoctor-bench)"
 
-  # Ensure cleanup
-  trap 'rm -rf "$tmp_dir"' EXIT
+  # Ensure cleanup via the ordered exit-hook list (Task 4.7): a bare
+  # `trap ... EXIT` here would clobber the session/spinner handlers, and
+  # the old `trap - EXIT` disarm would have cleared them too.
+  _BENCH_TMP_DIR="$tmp_dir"
+  register_exit_hook _bench_cleanup_tmp
 
   ########################################
   # DISK I/O
@@ -120,5 +127,6 @@ run_benchmark() {
   echo
 
   rm -rf "$tmp_dir"
-  trap - EXIT
+  _BENCH_TMP_DIR=""
+  unregister_exit_hook _bench_cleanup_tmp
 }

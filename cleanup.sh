@@ -116,7 +116,9 @@ step() {
 OP_SESSION_ACTIVE=false
 
 _finish_cleanup_session() {
-	local rc=$?
+	# Invoked via the ordered exit-hook list with the script's exit
+	# status as $1 (falls back to $? for direct calls).
+	local rc="${1:-$?}"
 	progress_stop || true
 	if [ "$OP_SESSION_ACTIVE" = true ] && declare -f op_session_end >/dev/null 2>&1; then
 		if [ "$rc" -eq 0 ]; then
@@ -127,7 +129,10 @@ _finish_cleanup_session() {
 	fi
 }
 
-trap _finish_cleanup_session EXIT
+# Ordered exit hook (Task 4.7): a bare `trap ... EXIT` here would be
+# silently replaced by the first spinner start, losing the session-end
+# record. register_exit_hook stacks instead of replacing.
+register_exit_hook _finish_cleanup_session
 
 cleanup_preflight_path_kb() {
 	local path="${1-}"

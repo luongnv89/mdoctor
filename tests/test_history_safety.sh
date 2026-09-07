@@ -47,4 +47,22 @@ HOME="$TMPHOME" ./mdoctor clean -m trash >/dev/null 2>&1
 [ "$(file_mode "$TMPHOME/.config/mdoctor/cleanup_scope.conf")" = "600" ] || fail "Expected 0600 on scope file"
 [ "$(file_mode "$TMPHOME/.config/mdoctor/cleanup_whitelist")" = "600" ] || fail "Expected 0600 on whitelist file"
 
+# Task 4.7: an unreadable history file is skipped, never retried forever.
+# (Before the fix, `|| continue` skipped the index increment and the same
+# entry was retried indefinitely.)
+mkdir -p "$TMPHOME/.mdoctor/history"
+echo '{"timestamp":"2026-09-01T00:00:00Z","score":80,"rating":"Good","warnings":1,"failures":0}' >"$TMPHOME/.mdoctor/history/20260901_000000.json"
+echo '{"timestamp":"2026-09-02T00:00:00Z","score":85,"rating":"Good","warnings":0,"failures":0}' >"$TMPHOME/.mdoctor/history/20260902_000000.json"
+chmod 000 "$TMPHOME/.mdoctor/history/20260901_000000.json"
+set +e
+if command -v timeout >/dev/null 2>&1; then
+  HOME="$TMPHOME" timeout 10 ./mdoctor history >"$TMPHOME/history2.out" 2>"$TMPHOME/history2.err"
+else
+  HOME="$TMPHOME" ./mdoctor history >"$TMPHOME/history2.out" 2>"$TMPHOME/history2.err"
+fi
+rc=$?
+set -e
+[ "$rc" -eq 0 ] || fail "history hung or failed on an unreadable entry (rc=$rc)"
+chmod 644 "$TMPHOME/.mdoctor/history/20260901_000000.json"
+
 pass "history validation + private state modes"

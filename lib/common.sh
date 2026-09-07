@@ -41,6 +41,45 @@ init_colors() {
 }
 
 ########################################
+# ORDERED EXIT HOOKS (Task 4.7)
+########################################
+# Bash traps replace rather than stack: every `trap ... EXIT` silently
+# discards the previously installed handler. So EXIT-time actions register
+# here and the single trap below runs them in order with the script's exit
+# status. Never install a bare `trap ... EXIT` anywhere else — use
+# register_exit_hook / unregister_exit_hook instead.
+_EXIT_HOOKS=""
+
+register_exit_hook() {
+  local hook="${1-}"
+  [ -n "$hook" ] || return 1
+  case " ${_EXIT_HOOKS} " in
+    *" ${hook} "*) return 0 ;;
+  esac
+  _EXIT_HOOKS="${_EXIT_HOOKS} ${hook}"
+}
+
+unregister_exit_hook() {
+  local hook="${1-}"
+  [ -n "$hook" ] || return 1
+  _EXIT_HOOKS=" ${_EXIT_HOOKS} "
+  _EXIT_HOOKS="${_EXIT_HOOKS// ${hook} / }"
+  _EXIT_HOOKS="${_EXIT_HOOKS# }"
+  _EXIT_HOOKS="${_EXIT_HOOKS% }"
+}
+
+_run_exit_hooks() {
+  local _rc=$?
+  local hook
+  for hook in ${_EXIT_HOOKS}; do
+    "$hook" "$_rc" || true
+  done
+  return "$_rc"
+}
+
+trap _run_exit_hooks EXIT
+
+########################################
 # SPINNER / PROGRESS BAR
 ########################################
 
@@ -101,8 +140,9 @@ progress_start() {
   ) &
 
   SPINNER_PID=$!
-  # Ensure spinner is cleaned up on script exit
-  trap 'progress_stop' EXIT
+  # Spinner cleanup runs as an ordered exit hook — never a bare
+  # `trap ... EXIT` here, which would clobber other handlers (Task 4.7).
+  register_exit_hook progress_stop
 }
 
 progress_stop() {
