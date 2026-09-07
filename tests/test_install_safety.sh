@@ -71,15 +71,19 @@ fi
 # `git clone` of the checkout can fail on shallow/detached CI checkouts
 # (merge refs carry no branches), so fall back to synthesized markers —
 # the override validation below is exercised deterministically either way.
-git clone -q "$ROOT_DIR" "$TMPHOME/seed" 2>"$TMPHOME/seed-clone.err" || echo "DBG seed-clone rc=$?"
+git clone -q "$ROOT_DIR" "$TMPHOME/seed" 2>/dev/null || true
 if [ ! -f "$TMPHOME/seed/mdoctor" ]; then
-  echo "DBG seed-clone lacked a checkout; synthesizing markers"
   rm -rf "$TMPHOME/seed"
   mkdir -p "$TMPHOME/seed/.git"
   cp "$ROOT_DIR/mdoctor" "$TMPHOME/seed/mdoctor"
 fi
 export MDOCTOR_SKIP_PLATFORM_CHECK=true
 export MDOCTOR_REPO_URL="$ROOT_DIR"
+# Channel main: this block exercises override validation, which is
+# channel-independent — tracking branch head keeps it hermetic on tagless
+# checkouts (shallow CI merge refs) instead of requiring vX.Y.Z tags
+# (stable-channel tags are covered by test_release_tags.sh).
+export MDOCTOR_CHANNEL=main
 
 # Binary name with / is rejected.
 set +e
