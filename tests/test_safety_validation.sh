@@ -70,13 +70,14 @@ fi
 # Task 0.2: a forced logs cleanup leaves other apps' data alone but still
 # cleans mdoctor's own log dir. (MDOCTOR_ASSUME_YES pre-set for the 0.5
 # confirmation gate; ignored until it lands.)
+# NOTE: `touch -t` (not -d) — BSD touch has no -d flag.
 mkdir -p "$TMPHOME/.local/share/other-app"
 echo "keep" > "$TMPHOME/.local/share/other-app/old.log"
-touch -d '10 days ago' "$TMPHOME/.local/share/other-app/old.log"
+touch -t 200001010000 "$TMPHOME/.local/share/other-app/old.log"
 own_log_dir="$(platform_user_log_dir)"
 mkdir -p "$own_log_dir"
 echo "stale" > "$own_log_dir/old.log"
-touch -d '10 days ago' "$own_log_dir/old.log"
+touch -t 200001010000 "$own_log_dir/old.log"
 MDOCTOR_ASSUME_YES=true HOME="$TMPHOME" ./mdoctor clean --force -m logs >/dev/null 2>&1
 assert_file_exists "$TMPHOME/.local/share/other-app/old.log"
 assert_file_not_exists "$own_log_dir/old.log"

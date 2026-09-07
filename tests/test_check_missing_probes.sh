@@ -45,9 +45,25 @@ for _d in /usr/bin /bin /usr/sbin /sbin; do
     [ -e "$TMPD/farm/$_b" ] || ln -s "$_f" "$TMPD/farm/$_b"
   done
 done
+# The farm must stay executable on minimal images (Alpine has no
+# /usr/bin/bash) and on macOS (no GNU timeout): link the essentials
+# from the ambient PATH and fall back to running without timeout.
+for _need in bash env sh; do
+  if [ ! -e "$TMPD/farm/$_need" ]; then
+    _p="$(command -v "$_need" 2>/dev/null || true)"
+    [ -n "$_p" ] && ln -s "$_p" "$TMPD/farm/$_need"
+  fi
+done
+_run_lim() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 280 "$@"
+  else
+    "$@"
+  fi
+}
 
 set +e
-PATH="$TMPD/farm" HOME="$TMPD/home" timeout 280 ./mdoctor check >"$TMPD/check.out" 2>&1
+PATH="$TMPD/farm" HOME="$TMPD/home" _run_lim ./mdoctor check >"$TMPD/check.out" 2>&1
 rc=$?
 set -e
 [ "$rc" -eq 0 ] || { tail -n 20 "$TMPD/check.out"; fail "Expected mdoctor check exit 0 with missing probe binaries, got $rc"; }
@@ -64,7 +80,7 @@ done
 
 # The connection/top-CPU/zombie probes of `diagnose` degrade the same way.
 set +e
-PATH="$TMPD/farm" HOME="$TMPD/home" timeout 280 ./mdoctor diagnose >"$TMPD/diag.out" 2>&1
+PATH="$TMPD/farm" HOME="$TMPD/home" _run_lim ./mdoctor diagnose >"$TMPD/diag.out" 2>&1
 rc=$?
 set -e
 [ "$rc" -eq 0 ] || { tail -n 20 "$TMPD/diag.out"; fail "Expected mdoctor diagnose exit 0 with missing probe binaries, got $rc"; }
