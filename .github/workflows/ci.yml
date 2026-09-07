@@ -176,6 +176,11 @@ jobs:
           # sanity install fails with "No release tags found".
           fetch-tags: true
 
+      # The checkout above fetches a single merge ref; make sure the
+      # release tags are present regardless of checkout flag quirks.
+      - name: Fetch release tags for stable-channel install
+        run: git fetch --depth=1 origin "+refs/tags/v*:refs/tags/v*"
+
       - name: Installer/uninstaller isolated-path sanity
         run: |
           set -euo pipefail
