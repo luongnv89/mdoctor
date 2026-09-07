@@ -224,53 +224,6 @@ run_cmd_args() {
   return "$rc"
 }
 
-run_cmd_legacy() {
-  local cmd="${1-}"
-  if [ -z "$cmd" ]; then
-    log "[ERROR] run_cmd_legacy called without command string"
-    op_error "CMD_INVALID" "run_cmd_legacy" "called without command string"
-    return 1
-  fi
-
-  # Central fail-closed predicate (Task 1.6): only rc 1 executes.
-  local _dry_rc=0
-  is_dry_run || _dry_rc=$?
-  if [ "$_dry_rc" -ne 1 ]; then
-    log "[DRY RUN][LEGACY] $cmd"
-    debug_log "run_cmd_legacy dry-run command=${cmd}"
-    op_record "DRY_RUN_CMD_LEGACY" "$cmd"
-    return 0
-  fi
-
-  log "[RUN][LEGACY] $cmd"
-  debug_log "run_cmd_legacy exec command=${cmd}"
-  bash -c "$cmd"
-  local rc=$?
-  if [ "$rc" -ne 0 ]; then
-    log "[ERROR] legacy command failed (exit $rc): $cmd"
-    debug_log "run_cmd_legacy failed exit=${rc} command=${cmd}"
-    op_error "CMD_FAIL_LEGACY" "$cmd" "exit=$rc"
-  else
-    debug_log "run_cmd_legacy success command=${cmd}"
-    op_record "RUN_CMD_LEGACY" "$cmd" "exit=0"
-  fi
-  return "$rc"
-}
-
-run_cmd() {
-  if [ "$#" -eq 0 ]; then
-    log "[ERROR] run_cmd called without command"
-    op_error "CMD_INVALID" "run_cmd" "called without command"
-    return 1
-  fi
-
-  if [ "$#" -eq 1 ]; then
-    run_cmd_legacy "$1"
-  else
-    run_cmd_args "$@"
-  fi
-}
-
 header() {
   echo
   log "========== $* =========="
