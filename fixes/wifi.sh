@@ -6,15 +6,14 @@
 #
 
 fix_wifi() {
-  echo "${BOLD}${BLUE}== Fixing Wi-Fi ==${RESET}"
-  echo
+  header "Fixing Wi-Fi"
 
   if ! is_macos; then
     echo "${YELLOW}Wi-Fi fix is macOS-only (networksetup/ipconfig) — skipping on $(platform_name).${RESET}" >&2
     return 1
   fi
 
-  # Detect active Wi-Fi interface
+  # Detect active Wi-Fi interface (read-only probe)
   local wifi_if
   wifi_if=$(networksetup -listallhardwareports 2>/dev/null | awk '/Wi-Fi/{getline; print $2}')
   if [ -z "$wifi_if" ]; then
@@ -25,18 +24,26 @@ fix_wifi() {
   echo "Detected Wi-Fi interface: ${wifi_if}"
   echo
 
+  local step_rc=0
+
   echo "${CYAN}[1/3]${RESET} Renewing DHCP lease..."
-  sudo ipconfig set "$wifi_if" DHCP 2>/dev/null || true
+  run_cmd_args sudo ipconfig set "$wifi_if" DHCP 2>/dev/null || step_rc=$?
 
   echo "${CYAN}[2/3]${RESET} Flushing DNS cache..."
-  sudo dscacheutil -flushcache 2>/dev/null || true
-  sudo killall -HUP mDNSResponder 2>/dev/null || true
+  run_cmd_args sudo dscacheutil -flushcache 2>/dev/null || step_rc=$?
+  run_cmd_args sudo killall -HUP mDNSResponder 2>/dev/null || step_rc=$?
 
   echo "${CYAN}[3/3]${RESET} Cycling Wi-Fi off/on..."
-  networksetup -setairportpower "$wifi_if" off 2>/dev/null || true
+  run_cmd_args networksetup -setairportpower "$wifi_if" off 2>/dev/null || step_rc=$?
   sleep 2
-  networksetup -setairportpower "$wifi_if" on 2>/dev/null || true
+  run_cmd_args networksetup -setairportpower "$wifi_if" on 2>/dev/null || step_rc=$?
 
   echo
-  echo "${GREEN}Wi-Fi fix complete. Connection should re-establish in a few seconds.${RESET}"
+  if [ "$step_rc" -eq 0 ]; then
+    status_ok "Wi-Fi fix complete. Connection should re-establish in a few seconds."
+    return 0
+  else
+    status_warn "Wi-Fi fix reported errors (see above)."
+    return 1
+  fi
 }

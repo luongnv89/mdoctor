@@ -6,8 +6,7 @@
 #
 
 fix_timemachine() {
-  echo "${BOLD}${BLUE}== Time Machine Repair ==${RESET}"
-  echo
+  header "Time Machine Repair"
 
   if ! is_macos; then
     echo "${YELLOW}Time Machine fix is macOS-only (tmutil) — skipping on $(platform_name).${RESET}" >&2
@@ -18,11 +17,11 @@ fix_timemachine() {
   echo "${YELLOW}It may take a significant amount of time depending on backup size.${RESET}"
   echo
 
-  # Show destination info
+  # Show destination info (read-only probes)
   local dest_info
   dest_info=$(tmutil destinationinfo 2>/dev/null || true)
   if [ -z "$dest_info" ] || echo "$dest_info" | grep -qi "no destinations"; then
-    echo "${RED}No Time Machine destination configured.${RESET}"
+    status_fail "No Time Machine destination configured."
     echo "Set up Time Machine in System Settings > General > Time Machine."
     return 1
   fi
@@ -31,7 +30,7 @@ fix_timemachine() {
   echo "$dest_info"
   echo
 
-  # Last backup date
+  # Last backup date (read-only probe)
   local last_backup
   last_backup=$(tmutil latestbackup 2>/dev/null || echo "")
   if [ -n "$last_backup" ]; then
@@ -42,10 +41,11 @@ fix_timemachine() {
   echo
 
   echo "Verifying Time Machine backup integrity..."
-  sudo tmutil verifychecksums / 2>/dev/null || {
-    echo "${YELLOW}Verification completed (some errors may be expected for in-use files).${RESET}"
-  }
-
-  echo
-  echo "${GREEN}Time Machine repair check complete.${RESET}"
+  if run_cmd_args sudo tmutil verifychecksums / 2>/dev/null; then
+    status_ok "Time Machine repair check complete."
+    return 0
+  else
+    status_warn "Verification completed with errors (some are expected for in-use files)."
+    return 1
+  fi
 }

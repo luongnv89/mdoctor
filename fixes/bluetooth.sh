@@ -6,8 +6,7 @@
 #
 
 fix_bluetooth() {
-  echo "${BOLD}${BLUE}== Resetting Bluetooth ==${RESET}"
-  echo
+  header "Resetting Bluetooth"
 
   echo "${YELLOW}Note: Connected Bluetooth devices may need to be re-paired after reset.${RESET}"
   echo
@@ -20,8 +19,12 @@ fix_bluetooth() {
   fi
 
   echo "Restarting Bluetooth daemon..."
-  sudo pkill -HUP bluetoothd 2>/dev/null || true
-
-  echo "${GREEN}Bluetooth module reset. The daemon will auto-restart via launchd.${RESET}"
-  echo "If devices disconnect, re-pair them from System Settings > Bluetooth."
+  if run_cmd_args sudo pkill -HUP bluetoothd 2>/dev/null; then
+    status_ok "Bluetooth module reset. The daemon will auto-restart via launchd."
+    echo "If devices disconnect, re-pair them from System Settings > Bluetooth."
+    return 0
+  else
+    status_warn "Could not reset the Bluetooth module."
+    return 1
+  fi
 }

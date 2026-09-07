@@ -6,23 +6,30 @@
 #
 
 fix_dns() {
-  echo "${BOLD}${BLUE}== Flushing DNS Cache ==${RESET}"
-  echo
+  header "Flushing DNS Cache"
+
+  local step_rc=0
 
   if is_macos; then
     echo "Flushing macOS DNS cache..."
-    sudo dscacheutil -flushcache 2>/dev/null || true
-    sudo killall -HUP mDNSResponder 2>/dev/null || true
+    run_cmd_args sudo dscacheutil -flushcache 2>/dev/null || step_rc=$?
+    run_cmd_args sudo killall -HUP mDNSResponder 2>/dev/null || step_rc=$?
   else
     echo "Flushing Linux DNS cache..."
     if command -v resolvectl >/dev/null 2>&1; then
-      sudo resolvectl flush-caches 2>/dev/null || true
+      run_cmd_args sudo resolvectl flush-caches 2>/dev/null || step_rc=$?
     elif command -v systemd-resolve >/dev/null 2>&1; then
-      sudo systemd-resolve --flush-caches 2>/dev/null || true
+      run_cmd_args sudo systemd-resolve --flush-caches 2>/dev/null || step_rc=$?
     else
       echo "No systemd-resolved found. If using nscd: sudo systemctl restart nscd"
     fi
   fi
 
-  echo "${GREEN}DNS cache flushed.${RESET}"
+  if [ "$step_rc" -eq 0 ]; then
+    status_ok "DNS cache flushed."
+    return 0
+  else
+    status_warn "DNS flush reported errors (see above)."
+    return 1
+  fi
 }

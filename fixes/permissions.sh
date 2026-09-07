@@ -6,8 +6,7 @@
 #
 
 fix_permissions() {
-  echo "${BOLD}${BLUE}== Resetting Permissions ==${RESET}"
-  echo
+  header "Resetting Permissions"
 
   # Task 1.2: this module exists to repair Homebrew-owned trees. The
   # recursive /usr/local reassignment is a privilege-escalation setup on
@@ -24,18 +23,18 @@ fix_permissions() {
   echo "Resetting Homebrew permissions..."
   local brew_prefix
   brew_prefix="$(brew --prefix)"
-  if sudo chown -R "$(whoami)" "${brew_prefix}/share" "${brew_prefix}/lib" "${brew_prefix}/Cellar" 2>/dev/null; then
-    echo "${GREEN}Homebrew permissions reset.${RESET}"
-  else
-    echo "${RED}Failed to reset Homebrew permissions.${RESET}" >&2
+  if ! run_cmd_args sudo chown -R "$(whoami)" "${brew_prefix}/share" "${brew_prefix}/lib" "${brew_prefix}/Cellar" 2>/dev/null; then
+    status_fail "Failed to reset Homebrew permissions."
     return 1
   fi
+  status_ok "Homebrew permissions reset."
 
   echo "Resetting /usr/local permissions..."
-  if sudo chown -R "$(whoami)" /usr/local 2>/dev/null; then
-    echo "${GREEN}Permissions reset complete.${RESET}"
+  if run_cmd_args sudo chown -R "$(whoami)" /usr/local 2>/dev/null; then
+    status_ok "Permissions reset complete."
+    return 0
   else
-    echo "${RED}Failed to reset /usr/local permissions.${RESET}" >&2
+    status_fail "Failed to reset /usr/local permissions."
     return 1
   fi
 }

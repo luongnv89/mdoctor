@@ -6,28 +6,35 @@
 #
 
 fix_homebrew() {
-  echo "${BOLD}${BLUE}== Fixing Homebrew ==${RESET}"
-  echo
+  header "Fixing Homebrew"
 
   if ! command -v brew >/dev/null 2>&1; then
-    echo "${RED}Error:${RESET} Homebrew is not installed." >&2
+    status_fail "Homebrew is not installed."
     echo "Install it with: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
     return 1
   fi
 
+  local step_rc=0
+
   echo "${CYAN}[1/4]${RESET} Updating Homebrew..."
-  brew update
+  run_cmd_args brew update || step_rc=$?
 
   echo "${CYAN}[2/4]${RESET} Upgrading outdated packages..."
-  brew upgrade
+  run_cmd_args brew upgrade || step_rc=$?
 
   echo "${CYAN}[3/4]${RESET} Cleaning up old versions..."
-  brew cleanup -s
-  brew autoremove
+  run_cmd_args brew cleanup -s || step_rc=$?
+  run_cmd_args brew autoremove || step_rc=$?
 
   echo "${CYAN}[4/4]${RESET} Running brew doctor..."
-  brew doctor || true
+  run_cmd_args brew doctor || step_rc=$?
 
   echo
-  echo "${GREEN}Homebrew fixes complete.${RESET}"
+  if [ "$step_rc" -eq 0 ]; then
+    status_ok "Homebrew fixes complete."
+    return 0
+  else
+    status_warn "Homebrew fixes reported errors (see above)."
+    return 1
+  fi
 }

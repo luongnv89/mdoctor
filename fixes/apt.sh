@@ -7,8 +7,9 @@
 #
 
 fix_apt() {
-  echo "${BOLD}${BLUE}== APT Package Manager Fix ==${RESET}"
-  echo
+  header "APT Package Manager Fix"
+
+  local step_rc=0
 
   if ! command -v apt-get >/dev/null 2>&1; then
     echo "APT not available on this system."
@@ -16,21 +17,27 @@ fix_apt() {
   fi
 
   echo "Updating package lists..."
-  sudo apt-get update
+  run_cmd_args sudo apt-get update || step_rc=$?
 
   echo "Fixing broken packages..."
-  sudo dpkg --configure -a 2>/dev/null || true
-  sudo apt-get --fix-broken install -y
+  run_cmd_args sudo dpkg --configure -a 2>/dev/null || step_rc=$?
+  run_cmd_args sudo apt-get --fix-broken install -y || step_rc=$?
 
   echo "Upgrading packages..."
-  sudo apt-get upgrade -y
+  run_cmd_args sudo apt-get upgrade -y || step_rc=$?
 
   echo "Removing unused packages..."
-  sudo apt-get autoremove -y
+  run_cmd_args sudo apt-get autoremove -y || step_rc=$?
 
   echo "Cleaning package cache..."
-  sudo apt-get clean
+  run_cmd_args sudo apt-get clean || step_rc=$?
 
   echo
-  echo "${GREEN}APT package manager fix complete.${RESET}"
+  if [ "$step_rc" -eq 0 ]; then
+    status_ok "APT package manager fix complete."
+    return 0
+  else
+    status_warn "APT fix reported errors (see above)."
+    return 1
+  fi
 }

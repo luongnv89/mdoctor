@@ -6,8 +6,7 @@
 #
 
 fix_disk() {
-  echo "${BOLD}${BLUE}== Freeing Disk Space ==${RESET}"
-  echo
+  header "Freeing Disk Space"
 
   # Task 1.3: every step below is macOS-shaped (purge, macOS log layout).
   # Refuse on Linux instead of printing progress for work that never
@@ -21,8 +20,9 @@ fix_disk() {
   source "${MDOCTOR_DIR}/lib/logging.sh"
   source "${MDOCTOR_DIR}/lib/disk.sh"
 
-  # shellcheck disable=SC2034
-  DRY_RUN=false
+  # Task 4.4: no local DRY_RUN override — the ambient mode (force by
+  # default under `mdoctor fix`, dry-run with DRY_RUN=true) flows into
+  # the cleanup helpers and run_cmd_args alike.
   LOGFILE="$(platform_log_dir)/mdoctor_cleanup.log"
   # shellcheck disable=SC2034
   DAYS_OLD="${DAYS_OLD_OVERRIDE:-7}"
@@ -45,13 +45,22 @@ fix_disk() {
   clean_logs
 
   echo "${CYAN}[4/4]${RESET} Purging system caches..."
-  sudo purge 2>/dev/null || true
+  local step_rc=0
+  run_cmd_args sudo purge 2>/dev/null || step_rc=$?
 
   local used_after_kb
   used_after_kb="$(disk_used_kb)"
   local freed_kb=$((used_before_kb - used_after_kb))
-  if ((freed_kb < 0)); then freed_kb=0; fi
+  if ((freed_kb < 0)); then
+    freed_kb=0
+  fi
 
   echo
-  echo "${GREEN}Disk cleanup complete. Freed approximately $(human_readable_kb "$freed_kb").${RESET}"
+  if [ "$step_rc" -eq 0 ]; then
+    status_ok "Disk cleanup complete. Freed approximately $(human_readable_kb "$freed_kb")."
+    return 0
+  else
+    status_warn "Disk cleanup finished with errors (purge failed)."
+    return 1
+  fi
 }

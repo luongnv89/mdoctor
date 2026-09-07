@@ -798,7 +798,9 @@ cmd_fix() {
     export MDOCTOR_DEBUG
   fi
 
+  source "${MDOCTOR_DIR}/lib/common.sh"
   source "${MDOCTOR_DIR}/lib/logging.sh"
+  init_colors
   debug_log "cmd_fix target=${target:-<none>} debug=${MDOCTOR_DEBUG}"
 
   if [ -z "$target" ]; then
@@ -823,19 +825,25 @@ cmd_fix() {
   # Source fix modules
   local fix_file="${MDOCTOR_DIR}/fixes/${target}.sh"
 
+  # Task 4.4: fix is an explicit apply — DRY_RUN defaults to false here
+  # (DRY_RUN=true in the environment opts into a dry run, honored by
+  # run_cmd_args in every module). The operations log records the session.
+  DRY_RUN="${DRY_RUN:-false}"
+  export DRY_RUN
+  op_session_start "fix:${target}"
+
+  local fix_rc=0
   case "$target" in
     homebrew|dns|disk|permissions|spotlight|bluetooth|audio|wifi|timemachine|apt)
       if [ -f "$fix_file" ]; then
         # shellcheck source=/dev/null
         source "$fix_file"
         debug_log "fix target start=${target}"
-        "fix_${target}"
-        local fix_rc=$?
+        "fix_${target}" || fix_rc=$?
         debug_log "fix target end=${target} rc=${fix_rc}"
-        return "$fix_rc"
       else
         error "Fix module not found: ${fix_file}"
-        return 1
+        fix_rc=1
       fi
       ;;
     all)
@@ -864,14 +872,21 @@ cmd_fix() {
           echo
         fi
       done
-      return "$all_rc"
+      fix_rc="$all_rc"
       ;;
     *)
       error "Unknown fix target: ${target}"
       echo "Run 'mdoctor fix --help' for available targets."
-      return 1
+      fix_rc=1
       ;;
   esac
+
+  if [ "$fix_rc" -eq 0 ]; then
+    op_session_end "ok"
+  else
+    op_session_end "error:${fix_rc}"
+  fi
+  return "$fix_rc"
 }
 
 ########################################
