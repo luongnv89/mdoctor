@@ -16,13 +16,15 @@ fi
 _MDOCTOR_COMMON_LOADED=true
 
 init_colors() {
+  # Each tput is failure-proofed: without TERM (CI, minimal envs) tput
+  # errors, and under `set -e` that would kill the caller silently.
   if command -v tput >/dev/null 2>&1; then
-    RED="$(tput setaf 1)"
-    GREEN="$(tput setaf 2)"
-    YELLOW="$(tput setaf 3)"
-    BLUE="$(tput setaf 4)"
-    BOLD="$(tput bold)"
-    RESET="$(tput sgr0)"
+    RED="$(tput setaf 1 2>/dev/null || true)"
+    GREEN="$(tput setaf 2 2>/dev/null || true)"
+    YELLOW="$(tput setaf 3 2>/dev/null || true)"
+    BLUE="$(tput setaf 4 2>/dev/null || true)"
+    BOLD="$(tput bold 2>/dev/null || true)"
+    RESET="$(tput sgr0 2>/dev/null || true)"
   else
     RED=""
     GREEN=""
