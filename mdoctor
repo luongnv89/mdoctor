@@ -1215,7 +1215,7 @@ cmd_version() {
 
 cmd_update() {
   local check_only=false
-  local channel="stable"
+  local channel=""
   local debug_flag=false
 
   while [[ $# -gt 0 ]]; do
@@ -1239,17 +1239,23 @@ cmd_update() {
       --help|-h)
         echo "Usage: mdoctor update [options]"
         echo
-        echo "Update mdoctor to the latest stable release."
+        echo "Update mdoctor to the latest stable release tag."
         echo
         echo "Options:"
         echo "  --check              Check for updates without applying"
-        echo "  --channel <name>     Update channel (supported: stable)"
+        echo "  --channel <name>     Update channel: stable (latest vX.Y.Z tag,"
+        echo "                       default) or main (branch head — opt in to"
+        echo "                       track main)"
         echo "  --debug              Enable structured debug diagnostics"
         echo "  -h, --help           Show this help"
         echo
         echo "Environment Variables:"
-        echo "  MDOCTOR_UPDATE_REMOTE   Override git remote (default: origin)"
-        echo "  MDOCTOR_UPDATE_BRANCH   Override git branch (default: main)"
+        echo "  MDOCTOR_UPDATE_REMOTE   Override git remote name (default: origin;"
+        echo "                          must be a configured remote, never a URL)"
+        echo "  MDOCTOR_UPDATE_BRANCH   Branch for --channel main (default: main)"
+        echo "  MDOCTOR_CHANNEL         Same as --channel (default: stable)"
+        echo "  MDOCTOR_REQUIRE_TAG_SIGNATURE"
+        echo "                          Refuse unsigned release tags (default: false)"
         return 0
         ;;
       *)
@@ -1265,11 +1271,17 @@ cmd_update() {
     export MDOCTOR_DEBUG
   fi
 
-  if [ "$channel" != "stable" ]; then
-    error "Unsupported update channel: ${channel}"
-    echo "Supported channels: stable"
-    return 1
+  if [ -z "${channel:-}" ]; then
+    channel="${MDOCTOR_CHANNEL:-stable}"
   fi
+  case "$channel" in
+    stable|main) ;;
+    *)
+      error "Unsupported update channel: ${channel}"
+      echo "Supported channels: stable, main"
+      return 1
+      ;;
+  esac
 
   if ! command -v git >/dev/null 2>&1; then
     error "git is required for updates but not found."
@@ -1284,13 +1296,131 @@ cmd_update() {
 
   local remote="${MDOCTOR_UPDATE_REMOTE:-origin}"
   local branch="${MDOCTOR_UPDATE_BRANCH:-main}"
+
+  # Task 4.1: the remote must be a configured remote NAME, never a URL —
+  # validated before any `git fetch` runs.
+  case "$remote" in
+    ""|*[^A-Za-z0-9_-]*)
+      error "Invalid update remote '${remote}': must be a configured remote name (not a URL)."
+      return 1
+      ;;
+  esac
+  if ! git -C "$MDOCTOR_DIR" remote | grep -qx "$remote"; then
+    error "Unknown git remote '${remote}' in ${MDOCTOR_DIR} (see: git remote -v)."
+    echo "Set MDOCTOR_UPDATE_REMOTE to a configured remote name, never a URL."
+    return 1
+  fi
   local remote_ref="${remote}/${branch}"
 
   if [ "${MDOCTOR_DEBUG}" = "true" ]; then
-    echo "${DIM}[debug]${RESET} update remote=${remote} branch=${branch} check_only=${check_only}"
+    echo "${DIM}[debug]${RESET} update remote=${remote} branch=${branch} channel=${channel} check_only=${check_only}"
   fi
 
   echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
+
+  if [ "$channel" = "main" ]; then
+    update_from_branch "$remote" "$branch" "$remote_ref" "$check_only"
+    return $?
+  fi
+
+  update_from_tag "$remote" "$check_only"
+  return $?
+}
+
+# Task 4.1 helpers: tag-channel self-update.
+mdoctor_latest_tag() {
+  git -C "$MDOCTOR_DIR" tag --list 'v*.*.*' 2>/dev/null \
+    | awk '/^v[0-9]+\.[0-9]+\.[0-9]+$/ {t=$0; sub(/^v/, "", t); print t}' \
+    | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1 | awk '{if ($0 != "") print "v" $0}'
+}
+
+mdoctor_verify_tag() {
+  local tag="$1"
+  local objtype
+  objtype="$(git -C "$MDOCTOR_DIR" cat-file -t "$tag" 2>/dev/null || true)"
+  if [ "$objtype" != "tag" ]; then
+    error "Refusing to update to '${tag}': not an annotated release tag."
+    return 1
+  fi
+  local verify_out verify_rc
+  set +e
+  verify_out="$(git -C "$MDOCTOR_DIR" verify-tag "$tag" 2>&1)"
+  verify_rc=$?
+  set -e
+  if [ "$verify_rc" -eq 0 ]; then
+    return 0
+  fi
+  case "$verify_out" in
+    *"BAD signature"*)
+      error "BAD signature on release tag '${tag}' — refusing to update."
+      return 1
+      ;;
+  esac
+  if [ "${MDOCTOR_REQUIRE_TAG_SIGNATURE:-false}" = true ]; then
+    error "Release tag '${tag}' has no verifiable signature and MDOCTOR_REQUIRE_TAG_SIGNATURE=true."
+    return 1
+  fi
+  echo "Warning: release tag '${tag}' is not cryptographically verified." >&2
+  return 0
+}
+
+update_from_tag() {
+  local remote="$1" check_only="$2"
+
+  echo "Checking release tags from ${remote}..."
+  if ! git -C "$MDOCTOR_DIR" fetch --quiet --tags "$remote"; then
+    error "Failed to fetch tags from ${remote}."
+    return 1
+  fi
+
+  local tag
+  tag="$(mdoctor_latest_tag)"
+  if [ -z "$tag" ]; then
+    error "No release tags (vX.Y.Z) found."
+    return 1
+  fi
+
+  # The tag's signature is verified BEFORE anything is merged.
+  mdoctor_verify_tag "$tag" || return 1
+
+  local local_sha tag_sha local_short tag_short
+  local_sha="$(git -C "$MDOCTOR_DIR" rev-parse HEAD 2>/dev/null || true)"
+  tag_sha="$(git -C "$MDOCTOR_DIR" rev-list -n 1 "$tag" 2>/dev/null || true)"
+  if [ -z "$local_sha" ] || [ -z "$tag_sha" ]; then
+    error "Unable to resolve local git refs for update check."
+    return 1
+  fi
+  local_short="$(git -C "$MDOCTOR_DIR" rev-parse --short "$local_sha")"
+  tag_short="$(git -C "$MDOCTOR_DIR" rev-parse --short "$tag_sha")"
+
+  if [ "$local_sha" = "$tag_sha" ]; then
+    echo "Already up to date (${tag}, ${local_short})."
+    return 0
+  fi
+
+  echo "Update available: ${local_short} -> ${tag} (${tag_short})"
+
+  if [ "$check_only" = true ]; then
+    return 0
+  fi
+
+  if ! git -C "$MDOCTOR_DIR" merge --ff-only "$tag"; then
+    error "Update failed. Repository may have local changes or diverged history."
+    echo "Try resolving git state manually in: ${MDOCTOR_DIR}"
+    return 1
+  fi
+
+  chmod +x "${MDOCTOR_DIR}/mdoctor" "${MDOCTOR_DIR}/doctor.sh" "${MDOCTOR_DIR}/cleanup.sh" 2>/dev/null || true
+  if [ -d "${MDOCTOR_DIR}/fixes" ]; then
+    chmod +x "${MDOCTOR_DIR}"/fixes/*.sh 2>/dev/null || true
+  fi
+
+  echo "Update complete: ${local_short} -> ${tag}"
+}
+
+update_from_branch() {
+  local remote="$1" branch="$2" remote_ref="$3" check_only="$4"
+
   echo "Checking updates from ${remote_ref}..."
 
   if ! git -C "$MDOCTOR_DIR" fetch --quiet "$remote" "$branch"; then
