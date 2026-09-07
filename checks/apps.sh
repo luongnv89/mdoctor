@@ -25,7 +25,9 @@ check_apps() {
   local crash_apps=""
   local dir
 
-  for dir in "${crash_dirs[@]}"; do
+  # Bash 3.2 floor: "${arr[@]}" on an empty array is unbound under
+  # `set -u` — the ${arr[@]+"${arr[@]}"} idiom expands to nothing instead.
+  for dir in "${crash_dirs[@]+"${crash_dirs[@]}"}"; do
     local crashes
     crashes=$(find "$dir" -type f \( -name "*.crash" -o -name "*.ips" -o -name "*.diag" \) -mtime -7 2>/dev/null || true)
     if [ -n "$crashes" ]; then

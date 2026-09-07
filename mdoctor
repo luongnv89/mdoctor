@@ -633,7 +633,9 @@ cmd_clean() {
 
     IFS=',' read -r -a picks <<< "$input"
 
-    for token in "${picks[@]}"; do
+    # Bash 3.2 floor: empty picks (e.g. input ",") would be unbound under
+    # `set -u` — the ${arr[@]+"${arr[@]}"} idiom expands to nothing instead.
+    for token in "${picks[@]+"${picks[@]}"}"; do
       [ -z "$token" ] && continue
       case "$token" in
         *[!0-9]*)

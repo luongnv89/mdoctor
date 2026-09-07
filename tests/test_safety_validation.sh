@@ -134,12 +134,17 @@ for p in \
   "$TMPHOME/.cargo/registry/cache" \
   "$TMPHOME/.local/share/apport" \
   "$TMPHOME/workspace/proj/node_modules" \
-  "${TMPDIR:-/tmp}/mdoctor-probe"; do
+  "/tmp/mdoctor-probe"; do
   validate_deletion_path "$p" >/dev/null 2>&1
   [ "$?" -eq 0 ] || fail "Expected allowlist accept for legitimate target '$p'"
 done
 while IFS= read -r dir; do
   [ -n "$dir" ] || continue
+  # /Library/Logs/DiagnosticReports is deliberately rejected (Task 0.4
+  # acceptance) — covered by the reject list above, skipped here.
+  case "$dir" in
+    /Library/Logs/DiagnosticReports) continue ;;
+  esac
   validate_deletion_path "$dir" >/dev/null 2>&1
   [ "$?" -eq 0 ] || fail "Expected allowlist accept for crash dir '$dir'"
 done < <(platform_crash_dirs)
