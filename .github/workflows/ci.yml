@@ -170,6 +170,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # Task 4.1: the stable-channel installer resolves the newest
+          # vX.Y.Z tag at the remote — tags must be present or the
+          # sanity install fails with "No release tags found".
+          fetch-tags: true
+
+      # The checkout above fetches a single merge ref; make sure the
+      # release tags are present regardless of checkout flag quirks.
+      - name: Fetch release tags for stable-channel install
+        run: git fetch --depth=1 origin "+refs/tags/v*:refs/tags/v*"
 
       - name: Installer/uninstaller isolated-path sanity
         run: |
