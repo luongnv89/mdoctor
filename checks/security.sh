@@ -148,6 +148,10 @@ check_security() {
   local listening_count
   if is_macos; then
     listening_count=$(lsof -iTCP -sTCP:LISTEN -P 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
+  elif ! command -v ss >/dev/null 2>&1; then
+    # Task 2.5: guarded ss; absent ss reports a skip, never an error.
+    status_info "Skipping listening-ports probe: ss not found."
+    listening_count=""
   else
     listening_count=$(ss -tlnp 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
   fi

@@ -100,6 +100,12 @@ check_top_cpu_consumers() {
   local top_cpu line pid pct name
   local high_count=0
 
+  # Task 2.5: guarded long-option ps; absent ps reports a skip.
+  if ! command -v ps >/dev/null 2>&1; then
+    status_info "Skipping top-CPU probe: ps not found."
+    return 0
+  fi
+
   if is_macos; then
     top_cpu=$(ps -arcwwxo "pid,%cpu,comm" 2>/dev/null | head -11 | tail -10)
   else
@@ -373,6 +379,12 @@ check_disk_hotspots() {
 ########################################
 
 check_zombie_processes() {
+  # Task 2.5: guarded ps; absent ps reports a skip.
+  if ! command -v ps >/dev/null 2>&1; then
+    status_info "Skipping zombie probe: ps not found."
+    return 0
+  fi
+
   local zombie_count
   zombie_count=$(ps -eo stat 2>/dev/null | grep -c '^Z' || true)
 
@@ -473,10 +485,17 @@ check_open_connections() {
     conn_detail=$(netstat -an 2>/dev/null | grep -c LISTEN 2>/dev/null || echo 0)
     conn_detail=$(echo "$conn_detail" | tr -d '\n\r ')
   else
-    conn_count=$(ss -tun 2>/dev/null | grep -c ESTAB 2>/dev/null || echo 0)
-    conn_count=$(echo "$conn_count" | tr -d '\n\r ')
-    conn_detail=$(ss -tun 2>/dev/null | grep -c LISTEN 2>/dev/null || echo 0)
-    conn_detail=$(echo "$conn_detail" | tr -d '\n\r ')
+    # Task 2.5: guarded ss; absent ss reports a skip and counts as zero.
+    if ! command -v ss >/dev/null 2>&1; then
+      status_info "Skipping connection-count probe: ss not found."
+      conn_count=0
+      conn_detail=0
+    else
+      conn_count=$(ss -tun 2>/dev/null | grep -c ESTAB 2>/dev/null || echo 0)
+      conn_count=$(echo "$conn_count" | tr -d '\n\r ')
+      conn_detail=$(ss -tun 2>/dev/null | grep -c LISTEN 2>/dev/null || echo 0)
+      conn_detail=$(echo "$conn_detail" | tr -d '\n\r ')
+    fi
   fi
 
   if (( conn_count > 5000 )); then

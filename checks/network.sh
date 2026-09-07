@@ -5,28 +5,46 @@
 # Category: System
 #
 
+# ping_host HOST — one ping packet with a platform-correct per-packet
+# timeout (Task 2.5). macOS `ping -W` is MILLISECONDS, Linux `ping -W`
+# is SECONDS: the old shared `-W 1000` waited 1000s per packet on Linux.
+ping_host() {
+  if is_macos; then
+    ping -c 1 -W 1000 "$@"
+  else
+    ping -c 1 -W 1 "$@"
+  fi
+}
+
 check_network() {
   step "Network Diagnostics"
 
-  # Basic connectivity
-  if ping -c 1 -W 1000 1.1.1.1 >/dev/null 2>&1; then
-    status_ok "Can reach the internet (ping 1.1.1.1 succeeded)."
+  # Basic connectivity (Task 2.5: guarded; absent ping reports a skip,
+  # never an error).
+  if ! command -v ping >/dev/null 2>&1; then
+    status_info "Skipping connectivity probe: ping not found."
   else
-    status_warn "Ping to 1.1.1.1 failed."
-    add_action "Check network connectivity or firewall rules (ping to 1.1.1.1 fails)."
-  fi
+    if ping_host 1.1.1.1 >/dev/null 2>&1; then
+      status_ok "Can reach the internet (ping 1.1.1.1 succeeded)."
+    else
+      status_warn "Ping to 1.1.1.1 failed."
+      add_action "Check network connectivity or firewall rules (ping to 1.1.1.1 fails)."
+    fi
 
-  if ping -c 1 -W 1000 github.com >/dev/null 2>&1; then
-    status_ok "Can reach github.com."
-  else
-    status_warn "Cannot reach github.com."
-    add_action "Check DNS / network configuration: unable to reach github.com."
+    if ping_host github.com >/dev/null 2>&1; then
+      status_ok "Can reach github.com."
+    else
+      status_warn "Cannot reach github.com."
+      add_action "Check DNS / network configuration: unable to reach github.com."
+    fi
   fi
 
   # DNS resolution speed
   local dns_start dns_end dns_ms
   dns_start=$(perl -MTime::HiRes=time -e 'printf "%.3f\n", time()' 2>/dev/null || echo "")
-  if [ -n "$dns_start" ]; then
+  if ! command -v nslookup >/dev/null 2>&1; then
+    status_info "Skipping DNS timing probe: nslookup not found."
+  elif [ -n "$dns_start" ]; then
     nslookup google.com >/dev/null 2>&1
     dns_end=$(perl -MTime::HiRes=time -e 'printf "%.3f\n", time()' 2>/dev/null || echo "")
     if [ -n "$dns_end" ]; then
