@@ -27,6 +27,21 @@ chmod +x mdoctor
 
 No build step or dependencies required -- mdoctor is pure Bash.
 
+## Pre-commit Hooks
+
+Install the hooks once per checkout so trailing whitespace, YAML,
+private keys, ShellCheck (`-S warning`) and `bash -n` are checked
+automatically (CI runs the same hooks via `pre-commit run --all-files`):
+
+```bash
+pip install pre-commit  # or: brew install pre-commit
+pre-commit install
+```
+
+Executable bits are enforced by the hooks
+(`check-shebang-scripts-are-executable`) — never `chmod` in CI to mask
+a missing bit; fix it with `git update-index --chmod=+x <file>`.
+
 ## Project Structure
 
 - `mdoctor` -- Unified CLI entry point

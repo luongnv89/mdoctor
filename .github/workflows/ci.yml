@@ -30,35 +30,29 @@ jobs:
         run: pipx install 'shellcheck-py==0.11.0.1'
 
       - name: Run ShellCheck policy linter
-        run: |
-          chmod +x scripts/lint_shell.sh
-          ./scripts/lint_shell.sh
+        run: ./scripts/lint_shell.sh
 
       # The bash-syntax sweep lives in scripts/lint_shell.sh (Task 2.2:
       # single discovery source) — invoke it, don't duplicate its find.
       - name: Check bash syntax for all scripts
         run: ./scripts/lint_shell.sh
 
-  secrets:
-    name: Secrets (gitleaks)
+  hooks:
+    name: Hooks (pre-commit)
     runs-on: ubuntu-24.04 # Task 2.4: pinned image
     timeout-minutes: 10
     needs: lint
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          fetch-depth: 0 # full history: a pushed secret fails even in an old commit
 
-      # Same scanner as the pre-commit hook (Task 3.5: gitleaks 8.30.1).
-      - name: Install gitleaks 8.30.1
+      # Task 2.8: the hooks run in CI on every file. Executable bits come
+      # from git, never from chmod steps (removed) — a missing +x fails
+      # the check-shebang-scripts-are-executable hook loudly.
+      - name: Run pre-commit on all files
         run: |
-          curl -sL --max-time 120 "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz" -o /tmp/gitleaks.tgz
-          tar -xzf /tmp/gitleaks.tgz -C /tmp
-          /tmp/gitleaks version
-
-      - name: Scan history for secrets
-        run: /tmp/gitleaks detect --source . --verbose
+          pipx install pre-commit
+          pre-commit run --all-files --show-diff-on-failure
 
   test:
     name: Test (macOS)
@@ -68,9 +62,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
-      - name: Make scripts executable
-        run: chmod +x mdoctor doctor.sh cleanup.sh tests/run.sh tests/test_*.sh tests/helpers/assert.sh
 
       - name: Run shell regression harness
         timeout-minutes: 10
@@ -102,9 +93,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
-      - name: Make scripts executable
-        run: chmod +x mdoctor doctor.sh cleanup.sh tests/run.sh tests/test_*.sh tests/helpers/assert.sh tests/helpers/bin/* tests/helpers/bin-macos/*
 
       - name: Record pre-suite host state (Task 1.7)
         run: |
@@ -183,9 +171,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - name: Make install scripts executable
-        run: chmod +x install.sh uninstall.sh
-
       - name: Installer/uninstaller isolated-path sanity
         run: |
           set -euo pipefail
@@ -195,13 +180,10 @@ jobs:
           TMP_BIN="$TMP_ROOT/bin"
           mkdir -p "$TMP_BIN"
 
-          # Task 4.2: the installer refuses symlink creation on a non-tty
-          # without an explicit opt-in — same ASSUME_YES as uninstall below.
           MDOCTOR_REPO_URL="$PWD" \
           MDOCTOR_INSTALL_DIR="$TMP_INSTALL" \
           MDOCTOR_BIN_DIR="$TMP_BIN" \
           MDOCTOR_BINARY_NAME="mdoctor" \
-          MDOCTOR_ASSUME_YES=true \
           ./install.sh
 
           "$TMP_BIN/mdoctor" version
