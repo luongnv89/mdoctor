@@ -83,6 +83,7 @@ assert_file_not_exists "$own_log_dir/old.log"
 
 # Task 0.3: empty HOME fails closed — every target is protected.
 set +e
+# shellcheck disable=SC1007 # intentional: `HOME=` (empty) is the case under test, not a typo
 HOME= bash -c 'source lib/safety.sh; validate_deletion_path /Library/Caches >/dev/null 2>&1'
 [ "$?" -eq "$MDOCTOR_SAFE_ERR_PROTECTED_TARGET" ] || fail "Expected protected-target code with empty HOME"
 set -e
@@ -97,6 +98,7 @@ EOF
 _MDOCTOR_WHITELIST_LOADED=false
 mkdir -p "$TMPHOME/.cache/protected-models"
 echo "weights" > "$TMPHOME/.cache/protected-models/keep.bin"
+# shellcheck disable=SC2034 # read dynamically by safe_remove via ${DRY_RUN:-true}; not visible statically
 DRY_RUN=false
 safe_remove "$TMPHOME/.cache/protected-models" >/dev/null 2>&1 || true
 safe_remove "$TMPHOME//.cache/protected-models" >/dev/null 2>&1 || true

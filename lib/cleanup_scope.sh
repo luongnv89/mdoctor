@@ -108,6 +108,7 @@ cleanup_scope_is_excluded() {
 
   local pat=""
   for pat in "${_MDOCTOR_SCOPE_EXCLUDE_GLOBS[@]}"; do
+    # shellcheck disable=SC2254 # exclude entries ARE globs by design (EXCLUDE_GLOB=); quoting would break matching
     case "$path" in
       $pat) return 0 ;;
     esac

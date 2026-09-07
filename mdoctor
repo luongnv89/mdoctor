@@ -166,7 +166,6 @@ cmd_clean_preflight_summary_module() {
   echo "This run will perform destructive cleanup operations."
   echo "Touched targets:"
 
-  local add_path
   add_path() {
     local label="$1"
     local path="$2"

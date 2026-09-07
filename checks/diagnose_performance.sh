@@ -60,19 +60,15 @@ get_linux_iowait_pct() {
 ########################################
 
 check_load_average() {
-  local cores load1 load5 load15 load_int threshold ratio_int
+  local cores load1 load_int threshold
   local ratio_pct
 
   if is_macos; then
     cores=$(sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
     load1=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}')
-    load5=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $3}')
-    load15=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $4}')
   else
     cores=$(nproc 2>/dev/null || echo 4)
     load1=$(awk '{print $1}' /proc/loadavg 2>/dev/null || echo "")
-    load5=$(awk '{print $2}' /proc/loadavg 2>/dev/null || echo "")
-    load15=$(awk '{print $3}' /proc/loadavg 2>/dev/null || echo "")
   fi
 
   if [ -z "$load1" ] || [ -z "$cores" ]; then
@@ -151,17 +147,15 @@ check_memory_usage() {
 
   if is_macos; then
     # macOS: use sysctl for physical memory stats
-    local page_size active_pages wired_pages free_pages total_bytes
+    local page_size active_pages wired_pages total_bytes
     page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096)
     active_pages=$(vm_stat 2>/dev/null | awk '/Pages active/ {gsub("\\.","",$3); print $3+0}')
     wired_pages=$(vm_stat 2>/dev/null | awk '/Pages wired down/ {gsub("\\.","",$4); print $4+0}')
-    free_pages=$(vm_stat 2>/dev/null | awk '/Pages free/ {gsub("\\.","",$3); print $3+0}')
 
     total_bytes=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
-    local active_kb wired_kb free_kb
+    local active_kb wired_kb
     active_kb=$(( ${active_pages:-0} * page_size / 1024 ))
     wired_kb=$(( ${wired_pages:-0} * page_size / 1024 ))
-    free_kb=$(( ${free_pages:-0} * page_size / 1024 ))
     local used_kb=$((active_kb + wired_kb))
     total_kb=$((total_bytes / 1024))
 
@@ -426,7 +420,7 @@ check_fd_limits() {
   local open_fds=0
   if is_macos; then
     # macOS: use sysctl for system-wide file descriptor count (no lsof scan)
-    local max_files open_files
+    local open_files
     open_files=$(sysctl -n kern.num_files 2>/dev/null | tr -d '\n\r ' || echo 0)
     fd_limit=$(sysctl -n kern.maxfiles 2>/dev/null | awk '{print $1}')
     if [ -n "$open_files" ] && [ -n "$fd_limit" ] && (( fd_limit > 0 )) 2>/dev/null; then
