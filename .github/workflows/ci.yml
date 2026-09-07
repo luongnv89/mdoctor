@@ -6,10 +6,20 @@ on:
   pull_request:
     branches: [main]
 
+# Task 2.6: least privilege (no job writes to the API) and one active
+# run per ref (a second push cancels the first).
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     name: Lint
     runs-on: ubuntu-24.04 # Task 2.4: pinned image
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@11bd5960a326750d5838078e36cf38b85af677262 # v4
@@ -32,6 +42,7 @@ jobs:
   test:
     name: Test (macOS)
     runs-on: macos-26 # Task 2.4: pinned image
+    timeout-minutes: 15
     needs: lint
 
     steps:
@@ -41,6 +52,7 @@ jobs:
         run: chmod +x mdoctor doctor.sh cleanup.sh tests/run.sh tests/test_*.sh tests/helpers/assert.sh
 
       - name: Run shell regression harness
+        timeout-minutes: 10
         run: ./tests/run.sh
 
       - name: mdoctor help
@@ -64,6 +76,7 @@ jobs:
   test-linux:
     name: Test (Linux/Ubuntu)
     runs-on: ubuntu-24.04 # Task 2.4: pinned image
+    timeout-minutes: 15
     needs: lint
 
     steps:
@@ -126,6 +139,7 @@ jobs:
   test-bash32:
     name: Test (Bash 3.2 compat)
     runs-on: ubuntu-24.04 # Task 2.4: pinned image
+    timeout-minutes: 15
     needs: lint
     container:
       image: bash@sha256:3a13e5da38baa575985778cd09ce8ac736d4b4dafc91a430e71271f6e5311b89 # bash:3.2
@@ -141,6 +155,7 @@ jobs:
 
   release-sanity:
     name: Release Sanity
+    timeout-minutes: 10
     runs-on: macos-26 # Task 2.4: pinned image
     needs: [lint, test, test-linux]
 
