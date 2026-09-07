@@ -5,6 +5,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/tests/helpers/assert.sh"
+source "$ROOT_DIR/lib/platform.sh"
 
 ORIG_HOME="${HOME}"
 TMPHOME="${ORIG_HOME}/.mdoctor-test-history.$$.$RANDOM"
@@ -26,11 +27,22 @@ HOME="$TMPHOME" ./mdoctor history >"$TMPHOME/history.out" 2>"$TMPHOME/history.er
 assert_file_not_exists "$CANARY"
 assert_contains "$TMPHOME/history.err" "invalid score"
 
+# Portable file-mode query, gated on the platform predicates (a blind
+# BSD-then-GNU fallback misfires: GNU stat -f means --filesystem and
+# prints garbage to stdout while still failing).
+file_mode() {
+  if is_macos; then
+    stat -f "%Lp" "$1" 2>/dev/null || echo ""
+  else
+    stat -c "%a" "$1" 2>/dev/null || echo ""
+  fi
+}
+
 # Fresh state run creates private dirs/files: config dir 0700, op log 0600.
 # (A dry-run clean writes state — oplog, whitelist, scope — without deleting.)
 rm -rf "$TMPHOME/.config" "$TMPHOME/.mdoctor"
 HOME="$TMPHOME" ./mdoctor clean -m trash >/dev/null 2>&1
-[ "$(stat -c %a "$TMPHOME/.config/mdoctor")" = "700" ] || fail "Expected 0700 on config dir"
-[ "$(stat -c %a "$TMPHOME/.config/mdoctor/operations.log")" = "600" ] || fail "Expected 0600 on operations log"
+[ "$(file_mode "$TMPHOME/.config/mdoctor")" = "700" ] || fail "Expected 0700 on config dir"
+[ "$(file_mode "$TMPHOME/.config/mdoctor/operations.log")" = "600" ] || fail "Expected 0600 on operations log"
 
 pass "history validation + private state modes"
