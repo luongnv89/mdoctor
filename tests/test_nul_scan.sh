@@ -44,13 +44,19 @@ touch -t 200001010000 "$WEIRD/node_modules" "$WEIRD/node_modules/stale.txt"
 
 NODE_MODULES_DAYS=30 clean_dev_caches >/dev/null 2>&1
 
-# important_project never passed to safe_remove ...
-if grep -qz "important_project" "$REMOVED"; then
-  fail "important_project was passed to safe_remove"
-fi
-# ... while the newline name arrived as one atomic candidate.
-if ! grep -qzF "$WEIRD/node_modules" "$REMOVED"; then
-  fail "newline-named node_modules was not passed whole to safe_remove"
-fi
+# important_project never passed to safe_remove, and the newline name
+# arrived as one atomic candidate. Compared with a NUL-delimited read
+# loop: grep -z is GNU-only (BSD/busybox grep reject it), and no
+# newline-based pipeline can express a name containing a newline.
+found_weird=false
+while IFS= read -r -d '' entry; do
+  case "$entry" in
+    *important_project*) fail "important_project was passed to safe_remove" ;;
+  esac
+  if [ "$entry" = "$WEIRD/node_modules" ]; then
+    found_weird=true
+  fi
+done <"$REMOVED"
+[ "$found_weird" = true ] || fail "newline-named node_modules was not passed whole to safe_remove"
 
 pass "NUL-delimited node_modules scan"

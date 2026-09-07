@@ -118,6 +118,12 @@ clean_dev_caches() {
       # Task 3.6: NUL-delimited (filenames may contain newlines; a
       # newline-delimited loop would split one name into two and could
       # hand a fragment to safe_remove).
+      # timeout(1) is GNU-only; where it is missing (e.g. macOS) run
+      # find directly instead of silently scanning nothing.
+      local find_cmd=(find)
+      if command -v timeout >/dev/null 2>&1; then
+        find_cmd=(timeout 60 find)
+      fi
       while IFS= read -r -d '' nm_dir; do
         [ -z "$nm_dir" ] && continue
 
@@ -144,7 +150,7 @@ clean_dev_caches() {
           nm_total_kb=$((nm_total_kb + nm_sz))
           nm_count=$((nm_count + 1))
         fi
-      done < <(timeout 60 find "${search_dir}" -maxdepth 5 -type d -name "node_modules" -not -path "*/node_modules/*/node_modules" -mtime "+${NODE_MODULES_DAYS}" -print0 2>/dev/null)
+      done < <("${find_cmd[@]}" "${search_dir}" -maxdepth 5 -type d -name "node_modules" -not -path "*/node_modules/*/node_modules" -mtime "+${NODE_MODULES_DAYS}" -print0 2>/dev/null)
     done
 
     if (( nm_count > 0 )); then
