@@ -185,6 +185,7 @@ jobs:
 
           MDOCTOR_INSTALL_DIR="$TMP_INSTALL" \
           MDOCTOR_BIN_LINK="$TMP_BIN/mdoctor" \
+          MDOCTOR_ASSUME_YES=true \
           ./uninstall.sh
 
           test ! -e "$TMP_BIN/mdoctor"
