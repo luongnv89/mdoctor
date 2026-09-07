@@ -198,6 +198,37 @@ if ! command -v git >/dev/null 2>&1; then
   fi
 fi
 
+# Validate install overrides BEFORE any clone/update (Task 4.2): invalid
+# input fails fast with no side effects (no rm -rf, no re-clone) and the
+# policy error is deterministic regardless of install-dir git state.
+validate_bin_override() {
+  # Binary name: strict charset, never a path.
+  case "$BINARY_NAME" in
+    ""|*/*)
+      fail "Invalid binary name '${BINARY_NAME}': must be a plain filename (no /)."
+      ;;
+  esac
+  case "$BINARY_NAME" in
+    *[!A-Za-z0-9_.-]*)
+      fail "Invalid binary name '${BINARY_NAME}': allowed characters are A-Z a-z 0-9 _ . -."
+      ;;
+  esac
+  # Bin dir: allowlisted, or an existing directory ending in /bin.
+  case "$BIN_DIR" in
+    /usr/local/bin|"${HOME}/.local/bin"|"${HOME}/bin") ;;
+    *)
+      case "$BIN_DIR" in
+        */bin) ;;
+        *)
+          fail "Invalid bin directory '${BIN_DIR}': must be an existing directory ending in /bin."
+          ;;
+      esac
+      [ -d "$BIN_DIR" ] || fail "Invalid bin directory '${BIN_DIR}': directory does not exist."
+      ;;
+  esac
+}
+validate_bin_override
+
 ########################################
 # Banner
 ########################################
@@ -273,35 +304,8 @@ if [ -d "${INSTALL_DIR}/fixes" ]; then
 fi
 
 # Create symlink (Task 4.2: validated overrides, confirmed, no clobber)
-validate_bin_override() {
-  # Binary name: strict charset, never a path.
-  case "$BINARY_NAME" in
-    ""|*/*)
-      fail "Invalid binary name '${BINARY_NAME}': must be a plain filename (no /)."
-      ;;
-  esac
-  case "$BINARY_NAME" in
-    *[!A-Za-z0-9_.-]*)
-      fail "Invalid binary name '${BINARY_NAME}': allowed characters are A-Z a-z 0-9 _ . -."
-      ;;
-  esac
-  # Bin dir: allowlisted, or an existing directory ending in /bin.
-  case "$BIN_DIR" in
-    /usr/local/bin|"${HOME}/.local/bin"|"${HOME}/bin") ;;
-    *)
-      case "$BIN_DIR" in
-        */bin) ;;
-        *)
-          fail "Invalid bin directory '${BIN_DIR}': must be an existing directory ending in /bin."
-          ;;
-      esac
-      [ -d "$BIN_DIR" ] || fail "Invalid bin directory '${BIN_DIR}': directory does not exist."
-      ;;
-  esac
-}
-
+# (Override values were validated up front in pre-flight; see above.)
 info "Creating symlink: ${BIN_DIR}/${BINARY_NAME} -> ${INSTALL_DIR}/mdoctor"
-validate_bin_override
 
 BIN_LINK="${BIN_DIR}/${BINARY_NAME}"
 if [ -n "${MDOCTOR_BIN_DIR:-}" ] || [ -n "${MDOCTOR_BINARY_NAME:-}" ]; then
