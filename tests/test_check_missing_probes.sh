@@ -71,12 +71,16 @@ set -e
 for _skip in \
   "Skipping connectivity probe: ping not found." \
   "Skipping DNS timing probe: nslookup not found." \
-  "Skipping listening-ports probe: ss not found." \
   "Skipping top-CPU probe: ps not found." \
   "Skipping top-memory probe: ps not found." \
   "Skipping zombie probe: ps not found."; do
   assert_contains "$TMPD/check.out" "$_skip"
 done
+# ss-based probes only exist on the Linux branches (macOS uses
+# lsof/netstat): the listening-ports skip applies on Linux only.
+if [ "$(uname -s)" = "Linux" ]; then
+  assert_contains "$TMPD/check.out" "Skipping listening-ports probe: ss not found."
+fi
 
 # The connection/top-CPU/zombie probes of `diagnose` degrade the same way.
 set +e
@@ -85,10 +89,13 @@ rc=$?
 set -e
 [ "$rc" -eq 0 ] || { tail -n 20 "$TMPD/diag.out"; fail "Expected mdoctor diagnose exit 0 with missing probe binaries, got $rc"; }
 for _skip in \
-  "Skipping connection-count probe: ss not found." \
   "Skipping top-CPU probe: ps not found." \
   "Skipping zombie probe: ps not found."; do
   assert_contains "$TMPD/diag.out" "$_skip"
 done
+# The ss connection probe is Linux-only (macOS uses netstat).
+if [ "$(uname -s)" = "Linux" ]; then
+  assert_contains "$TMPD/diag.out" "Skipping connection-count probe: ss not found."
+fi
 
 pass "host-binary guards + platform ping timeout"
