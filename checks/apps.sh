@@ -76,7 +76,7 @@ check_apps() {
   else
     if command -v dpkg >/dev/null 2>&1; then
       local pkg_count
-      pkg_count=$(dpkg -l 2>/dev/null | grep -c '^ii' || echo 0)
+      pkg_count=$(dpkg -l 2>/dev/null | grep -c '^ii' || true)
       status_info "Installed packages (dpkg): ${pkg_count}"
     fi
   fi

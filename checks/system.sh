@@ -45,7 +45,9 @@ check_system() {
       wired_pages=$(vm_stat | awk '/Pages wired down/ {gsub("\\.","",$4); print $4}')
 
       local total_kb used_kb free_kb
-      total_kb=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1024 ))
+      local total_bytes
+      total_bytes=$(sysctl -n hw.memsize 2>/dev/null || true)
+      total_kb=$(( ${total_bytes:-0} / 1024 ))
       used_kb=$(( (active_pages + inactive_pages + wired_pages) * page_size / 1024 ))
       free_kb=$(( total_kb - used_kb ))
 

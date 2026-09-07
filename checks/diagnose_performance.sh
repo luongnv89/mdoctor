@@ -158,12 +158,12 @@ check_memory_usage() {
     active_pages=$(vm_stat 2>/dev/null | awk '/Pages active/ {gsub("\\.","",$3); print $3+0}')
     wired_pages=$(vm_stat 2>/dev/null | awk '/Pages wired down/ {gsub("\\.","",$4); print $4+0}')
 
-    total_bytes=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
+    total_bytes=$(sysctl -n hw.memsize 2>/dev/null || true)
     local active_kb wired_kb
     active_kb=$(( ${active_pages:-0} * page_size / 1024 ))
     wired_kb=$(( ${wired_pages:-0} * page_size / 1024 ))
     local used_kb=$((active_kb + wired_kb))
-    total_kb=$((total_bytes / 1024))
+    total_kb=$(( ${total_bytes:-0} / 1024 ))
 
     if (( total_kb > 0 )); then
       pct=$((used_kb * 100 / total_kb))
@@ -271,9 +271,11 @@ check_swap_usage() {
       status_info "Swap: unavailable"
     fi
   else
-    swap_total=$(awk '/^SwapTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
-    swap_free=$(awk '/^SwapFree:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
-    swap_used=$((swap_total - swap_free))
+    swap_total=$(awk '/^SwapTotal:/ {print $2}' /proc/meminfo 2>/dev/null || true)
+    swap_free=$(awk '/^SwapFree:/ {print $2}' /proc/meminfo 2>/dev/null || true)
+    swap_total="${swap_total:-0}"
+    swap_free="${swap_free:-0}"
+    swap_used=$((${swap_total:-0} - ${swap_free:-0}))
 
     if (( swap_total > 0 )); then
       pct=$((swap_used * 100 / swap_total))
@@ -433,7 +435,7 @@ check_fd_limits() {
   if is_macos; then
     # macOS: use sysctl for system-wide file descriptor count (no lsof scan)
     local open_files
-    open_files=$(sysctl -n kern.num_files 2>/dev/null | tr -d '\n\r ' || echo 0)
+    open_files=$(sysctl -n kern.num_files 2>/dev/null | tr -d '\n\r ' || true)
     fd_limit=$(sysctl -n kern.maxfiles 2>/dev/null | awk '{print $1}')
     if [ -n "$open_files" ] && [ -n "$fd_limit" ] && (( fd_limit > 0 )) 2>/dev/null; then
       open_files=$((open_files + 0))
@@ -480,9 +482,9 @@ check_open_connections() {
   local conn_detail=""
 
   if is_macos; then
-    conn_count=$(netstat -an 2>/dev/null | grep -c ESTABLISHED 2>/dev/null || echo 0)
+    conn_count=$(netstat -an 2>/dev/null | grep -c ESTABLISHED 2>/dev/null || true)
     conn_count=$(echo "$conn_count" | tr -d '\n\r ')
-    conn_detail=$(netstat -an 2>/dev/null | grep -c LISTEN 2>/dev/null || echo 0)
+    conn_detail=$(netstat -an 2>/dev/null | grep -c LISTEN 2>/dev/null || true)
     conn_detail=$(echo "$conn_detail" | tr -d '\n\r ')
   else
     # Task 2.5: guarded ss; absent ss reports a skip and counts as zero.
@@ -491,9 +493,9 @@ check_open_connections() {
       conn_count=0
       conn_detail=0
     else
-      conn_count=$(ss -tun 2>/dev/null | grep -c ESTAB 2>/dev/null || echo 0)
+      conn_count=$(ss -tun 2>/dev/null | grep -c ESTAB 2>/dev/null || true)
       conn_count=$(echo "$conn_count" | tr -d '\n\r ')
-      conn_detail=$(ss -tun 2>/dev/null | grep -c LISTEN 2>/dev/null || echo 0)
+      conn_detail=$(ss -tun 2>/dev/null | grep -c LISTEN 2>/dev/null || true)
       conn_detail=$(echo "$conn_detail" | tr -d '\n\r ')
     fi
   fi
@@ -530,8 +532,10 @@ check_swap_thrashing() {
     fi
   else
     local swap_total swap_used
-    swap_total=$(awk '/^SwapTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
-    swap_used=$(awk 'BEGIN{t=0} /^SwapTotal:/{t=$2} /^SwapFree:/{print t-$2}' /proc/meminfo 2>/dev/null || echo 0)
+    swap_total=$(awk '/^SwapTotal:/ {print $2}' /proc/meminfo 2>/dev/null || true)
+    swap_used=$(awk 'BEGIN{t=0} /^SwapTotal:/{t=$2} /^SwapFree:/{print t-$2}' /proc/meminfo 2>/dev/null || true)
+    swap_total="${swap_total:-0}"
+    swap_used="${swap_used:-0}"
     if (( swap_total > 0 )); then
       swap_pct=$((swap_used * 100 / swap_total))
     fi

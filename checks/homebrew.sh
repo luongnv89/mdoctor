@@ -33,7 +33,8 @@ check_homebrew() {
   outdated_file="$(mdoctor_mktemp_file brew-outdated)"
   brew outdated >"$outdated_file" 2>/dev/null || true
   local outdated_count
-  outdated_count=$(wc -l <"$outdated_file" 2>/dev/null | tr -d ' ' || echo 0)
+  outdated_count=$(wc -l <"$outdated_file" 2>/dev/null | tr -d ' ' || true)
+  outdated_count="${outdated_count:-0}"
 
   if [[ "$outdated_count" == "0" ]]; then
     status_ok "No outdated Homebrew formulae."
