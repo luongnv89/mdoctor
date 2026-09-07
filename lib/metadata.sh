@@ -4,6 +4,12 @@
 # Module metadata registry using parallel indexed arrays (Bash 3.2 compatible)
 #
 
+# Guard against double-sourcing (re-sourcing would wipe the registry).
+if [ "${_MDOCTOR_METADATA_LOADED:-false}" = true ]; then
+  return 0 2>/dev/null || true
+fi
+_MDOCTOR_METADATA_LOADED=true
+
 ########################################
 # MODULE REGISTRY
 ########################################
