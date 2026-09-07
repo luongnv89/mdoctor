@@ -1,6 +1,8 @@
-#!/usr/bin/env bash
-# Hermetic test stubs: these shadow real host binaries so the regression
-# suite can never reach a live daemon or package manager (Task 0.1).
+# Hermetic test stubs (no shebang here on purpose: this file is
+# documentation, and lint_shell.sh picks up extensionless files with a
+# bash shebang — READMEs must not match).
+# These shadow real host binaries so the regression suite can never
+# reach a live daemon or package manager (Task 0.1).
 # tests/run.sh prepends this directory to PATH for the whole suite.
 # Invocations are appended to $MDOCTOR_STUB_LOG (if set) as "<name> <argv>".
 #

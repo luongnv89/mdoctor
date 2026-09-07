@@ -22,19 +22,10 @@ jobs:
           chmod +x scripts/lint_shell.sh
           ./scripts/lint_shell.sh
 
+      # The bash-syntax sweep lives in scripts/lint_shell.sh (Task 2.2:
+      # single discovery source) — invoke it, don't duplicate its find.
       - name: Check bash syntax for all scripts
-        run: |
-          find . \( -name '*.sh' -o -name 'mdoctor' \) \
-            -not -path './.specify/*' \
-            -not -path './.claude/*' \
-            -not -path './.codex/*' \
-            -not -path './.opencode/*' \
-            -not -path './openspec/*' \
-            -not -name '*-old.sh' \
-            | while read -r script; do
-            echo "Syntax check: $script"
-            bash -n "$script"
-          done
+        run: ./scripts/lint_shell.sh
 
   test:
     name: Test (macOS)

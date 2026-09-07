@@ -1,4 +1,4 @@
-exclude: '^(\.specify/|\.claude/|\.codex/|\.opencode/|openspec/|.*-old\.sh)'
+exclude: '^(\.specify/|\.claude/|\.codex/|\.opencode/|openspec/)'
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
