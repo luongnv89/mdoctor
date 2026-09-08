@@ -103,6 +103,10 @@ Current coverage includes:
 - safety validation + whitelist protection
 - dry-run vs force cleanup semantics
 - interactive cleanup selection behavior
+- `fixes/` lane — stub-`PATH` exact command sequences for the five
+  macOS-only fix modules plus off-macOS refusals
+  (`tests/test_fixes_lane.bats`, harness in
+  `tests/helpers/fixes_lane.bash`)
 
 Run shell lint policy (high-severity gate):
 
