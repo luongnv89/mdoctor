@@ -221,6 +221,10 @@ teardown_file() {
   PATH="$(_hermetic_path)" HOME="$TEST_TMP/home" \
     _run_lim ./mdoctor check -m startup >"$out" 2>&1 || true
   assert_contains "$out" "Startup Items"
+  if [ "$(uname -s)" = "Darwin" ]; then
+    assert_contains "$out" "Launch"
+    return 0
+  fi
   assert_contains "$out" "systemd"
   local nosys="$TEST_TMP/startup_nosystemd_farm"
   mkdir -p "$nosys"
