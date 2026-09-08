@@ -91,6 +91,8 @@ check_startup() {
       if (( user_enabled > 0 )); then
         status_info "User-level enabled services: ${user_enabled}"
       fi
+    else
+      status_info "systemd not available; startup check skipped."
     fi
   fi
 }
