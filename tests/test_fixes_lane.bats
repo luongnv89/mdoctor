@@ -330,7 +330,7 @@ Ethernet Address: aa:bb:cc:dd:ee:ff"
     # shellcheck source=/dev/null
     source "$_f"
     "fix_$_m" >/dev/null 2>&1 || true
-    _extra="$(grep -Ev '^(tmutil |networksetup |brew --prefix)' "$_log" || true)"
+    _extra="$(grep -Ev '^(tmutil (destinationinfo|latestbackup)|networksetup -listallhardwareports|brew --prefix)$' "$_log" || true)"
     [ -z "$_extra" ] || fail "dry-run guard violated by fix $_m — executed under DRY_RUN=true: $_extra"
   done
 }
