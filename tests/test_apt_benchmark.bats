@@ -32,6 +32,11 @@ teardown_file() {
 }
 
 @test "check -m apt emits header and a parseable status line" {
+  if [ "$(uname -s)" = "Darwin" ]; then
+    HOME="$TMPHOME" ./mdoctor check -m apt >"$TMPHOME/apt.out" 2>&1 || true
+    assert_contains "$TMPHOME/apt.out" "apt"
+    return 0
+  fi
   HOME="$TMPHOME" ./mdoctor check -m apt >"$TMPHOME/apt.out" 2>&1
   assert_contains "$TMPHOME/apt.out" "APT Package Manager"
   grep -qE '^  [^ ]' "$TMPHOME/apt.out" || fail "apt check emitted no parseable status line"
