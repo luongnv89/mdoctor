@@ -40,15 +40,22 @@ teardown_file() {
 }
 
 @test "whitelist-protected descendant survives safe_remove" {
-  # Whitelist exact directory and ensure descendant is protected
+  # Whitelist exact directory and ensure descendant is protected.
+  # Assert the whitelist decision and safe_remove's documented skip
+  # contract (rc=0, no deletion), not merely file survival — a renamed
+  # whitelist function must fail the test, not silently pass it.
   cat > "$MDOCTOR_CLEANUP_WHITELIST_FILE" <<EOF
 ~/.Trash
 EOF
-  _MDOCTOR_WHITELIST_LOADED=false
+  reload_cleanup_whitelist
   mkdir -p "$TMPHOME/.Trash"
   echo "keep" > "$TMPHOME/.Trash/protect.txt"
   DRY_RUN=false
-  safe_remove "$TMPHOME/.Trash/protect.txt" >/dev/null 2>&1 || true
+  local rc_whitelisted=0 rc_skip=0
+  is_whitelisted_cleanup_path "$TMPHOME/.Trash/protect.txt" >/dev/null 2>&1 || rc_whitelisted=$?
+  [ "$rc_whitelisted" -eq 0 ] || fail "Expected whitelist match (rc=0) for descendant of whitelisted dir, got $rc_whitelisted"
+  safe_remove "$TMPHOME/.Trash/protect.txt" >/dev/null 2>&1 || rc_skip=$?
+  [ "$rc_skip" -eq 0 ] || fail "Expected safe_remove whitelist skip (rc=0), got $rc_skip"
   assert_file_exists "$TMPHOME/.Trash/protect.txt"
 }
 
@@ -108,7 +115,7 @@ EOF
   cat > "$MDOCTOR_CLEANUP_WHITELIST_FILE" <<EOF
 ~/.cache/protected-models
 EOF
-  _MDOCTOR_WHITELIST_LOADED=false
+  reload_cleanup_whitelist
   mkdir -p "$TMPHOME/.cache/protected-models"
   echo "weights" > "$TMPHOME/.cache/protected-models/keep.bin"
   # shellcheck disable=SC2034 # read dynamically by safe_remove via ${DRY_RUN:-true}; not visible statically
