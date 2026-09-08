@@ -166,6 +166,19 @@ fi
 
 out=$(run_ok "check-json" ./mdoctor check -m system --json)
 
+# Task 5.4: the JSON report carries MDOCTOR_VERSION (mdoctor:30) via env
+# propagation into doctor.sh — no literal fallback remains, so the field
+# must be the real version, never null. Only the full audit emits JSON,
+# so like the full-check section this is gated to macOS (avoids the
+# docker/nslookup hang risk on Linux CI).
+if [ "$_IS_MACOS" = true ]; then
+  out=$(run_ok "check-json-full" ./mdoctor check --json)
+  if [ -n "$out" ]; then
+    _check assert_contains "$out" '"version": "3.0.0"'
+    _check assert_not_contains "$out" '"version": null'
+  fi
+fi
+
 ########################################
 # 8. Dry-Run Cleanup (full)
 ########################################

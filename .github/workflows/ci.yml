@@ -30,6 +30,8 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: No self-hosted runners (Task 5.2 runner floor v2.327.1)
         # Every job uses a GitHub-hosted runner, so v5.0.0's minimum
         # runner version (v2.327.1) is always satisfied. The pattern is
@@ -38,8 +40,6 @@ jobs:
           pat='runs-on:'
           pat="${pat}.*self-hosted"
           test "$(grep -c "$pat" .github/workflows/ci.yml || true)" = "0"
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Same ShellCheck as the pre-commit hook (Task 2.3: one version
       # string, 0.11.0.1, in both files).
