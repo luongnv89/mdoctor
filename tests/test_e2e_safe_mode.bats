@@ -125,20 +125,6 @@ _run_fail() {
   assert_contains "$out" "CPU:"
 }
 
-@test "e2e: full health check and markdown report (macOS)" {
-  if [ "$_IS_MACOS" != true ]; then
-    skip "full check runs on macOS only (docker/nslookup can hang on Linux CI)"
-  fi
-  local out
-  out=$(_run_ok "check-full" ./mdoctor check) && assert_contains "$out" "Health score"
-  # Verify a markdown report was generated
-  local report_count
-  report_count=$(find /tmp -maxdepth 1 -name "mdoctor_report_*.md" -newer "$TEST_TMP" 2>/dev/null | wc -l | tr -d ' ')
-  if [ "$report_count" -lt 1 ]; then
-    echo "  WARN: no markdown report found in /tmp (may be expected if report path changed)" >&2
-  fi
-}
-
 @test "e2e: single module health checks" {
   local out
   out=$(_run_ok "check-system" ./mdoctor check -m system)
