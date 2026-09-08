@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Stub for `resolvectl` (Linux systemd-resolved DNS control): records argv,
+# never executes. Lives beside the macOS stubs so the fixes lane stays on
+# one stub-PATH; it is reached only when a module probes for the binary.
+if [ -n "${MDOCTOR_STUB_LOG:-}" ]; then
+  printf 'resolvectl %s\n' "$*" >>"$MDOCTOR_STUB_LOG"
+fi
+exit 0
