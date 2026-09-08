@@ -28,7 +28,7 @@ installer flow.
 - `tests/` — `run.sh` runner + `test_*.sh` files + `helpers/`.
 - `docs/` — user/developer docs; `docs/AGENT_ENVIRONMENT.md` is the
   agent-runbook source of truth.
-- `.specify/`, `openspec/` — excluded from lint and build sweep.
+- `openspec/` — excluded from lint and build sweep.
 
 ## Conventions
 

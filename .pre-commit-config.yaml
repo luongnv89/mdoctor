@@ -1,4 +1,4 @@
-exclude: '^(\.specify/|\.claude/|\.codex/|\.opencode/|openspec/)'
+exclude: '^(\.claude/|\.codex/|\.opencode/|openspec/)'
 
 # Task 5.3 (W5): pre-commit-hooks v6.0.0 requires Python >= 3.9 —
 # pre-commit builds each hook repo in its own virtualenv from the

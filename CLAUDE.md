@@ -15,7 +15,6 @@ report 0 errors):
 ```bash
 find . \( -name '*.sh' -o -name 'mdoctor' -o -name 'cleanup.sh' -o -name 'doctor.sh' -o -name 'install.sh' -o -name 'uninstall.sh' \) \
   -not -path './.git/*' \
-  -not -path './.specify/*' \
   -not -path './openspec/*' \
   -exec bash -n {} + && echo BUILD-OK
 ```

@@ -27,13 +27,6 @@ gui/node_modules/
 .env.local
 
 .claude
-CLAUDE.local.md
 
-.codex
-AGENTS.override.md
-
-.gemini
-.opencode
-.windsurf
 .specify
 # openspec/  # tracked for OpenSpec task-loop workflow
