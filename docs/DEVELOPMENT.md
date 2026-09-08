@@ -114,6 +114,7 @@ CI lanes map to local commands:
 - **Lint** → `./scripts/lint_shell.sh` + repository `bash -n` syntax pass
 - **Test (macOS)** → `./tests/run.sh` + smoke commands (`mdoctor help/version/info/check/clean`)
 - **Test (Linux)** → same regression suite + smoke commands on Ubuntu
+- **Coverage (kcov, Task 6.1)** → kcov v43 (built from pinned source) runs `./tests/run.sh`; the job summary prints the coverage percentage, enforces the `COVERAGE_MIN` ratchet floor, and uploads the HTML report as the `coverage` artifact (see `MODERNIZATION_PLAN.md` M3)
 - **Test (Bash 3.2)** → `bash@sha256:3a13e5da…` container (`image: bash@sha256:` pinned in `ci.yml`) running `./tests/run.sh`
 - **Release Sanity** → isolated installer/uninstaller flow using env-overridden temp paths
 

@@ -189,6 +189,86 @@ jobs:
       - name: Run test suite under Bash 3.2
         run: timeout 300 bash ./tests/run.sh
 
+  coverage:
+    # Task 6.1 (F-TEST-004 / M3): bash coverage with kcov on the Linux lane.
+    # kcov is absent from the Ubuntu 24.04 package archive, so it is built
+    # from a pinned v43 source checkout. The HTML report is uploaded as the
+    # `coverage` artifact, the job summary records the M3 baseline percentage,
+    # and a floor (COVERAGE_MIN, ratcheted from that baseline) fails the job
+    # before the number can silently regress.
+    name: Coverage (kcov)
+    runs-on: ubuntu-24.04 # Task 2.4: pinned image
+    timeout-minutes: 30
+    needs: lint
+    env:
+      # M3 coverage ratchet (Task 6.1): the first kcov baseline measured
+      # 60.87% on 2026-09-08 (2483/4079 lines across 42 product files,
+      # tests/ excluded from the report). Keep this at or just below the
+      # recorded baseline so the number cannot silently regress.
+      COVERAGE_MIN: "55"
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build kcov v43 from source (pinned)
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            binutils-dev build-essential cmake libssl-dev \
+            libcurl4-openssl-dev libelf-dev zlib1g-dev libdw-dev libiberty-dev
+          git clone --filter=blob:none https://github.com/SimonKagstrom/kcov.git /tmp/kcov-src
+          git -C /tmp/kcov-src checkout a39874f938ce13f7a65f253120d1ec946b349ffe # v43
+          cmake -S /tmp/kcov-src -B /tmp/kcov-build -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/kcov-build -j"$(nproc)"
+          sudo cmake --install /tmp/kcov-build
+
+      - name: Run test suite under kcov
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/coverage"
+          kcov \
+            --bash-parser="$(command -v bash)" \
+            --include-path="$PWD" \
+            --exclude-pattern=/tests/ \
+            --clean \
+            "$RUNNER_TEMP/coverage" \
+            ./tests/run.sh
+
+      - name: Report coverage and enforce the M3 ratchet
+        run: |
+          set -euo pipefail
+          report="$(find "$RUNNER_TEMP/coverage" -maxdepth 2 -name coverage.json | head -1)"
+          test -n "$report" || { echo "✗ no kcov coverage.json produced"; exit 1; }
+          pct="$(python3 -c 'import json, sys; print(float(json.load(open(sys.argv[1]))["percent_covered"]))' "$report")"
+          covered="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["covered_lines"])' "$report")"
+          total="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["total_lines"])' "$report")"
+          echo "kcov report: $report"
+          {
+            echo "## Coverage (Task 6.1 — M3 baseline)"
+            echo ""
+            echo "Suite run under \`kcov\` on the Linux lane: **${pct}%** covered"
+            echo "("${covered}"/"${total}" lines, report: \`${report}\`)."
+            echo ""
+            echo "Ratchet floor: **${COVERAGE_MIN}%** (\`COVERAGE_MIN\`, just below the recorded baseline)."
+          } >> "$GITHUB_STEP_SUMMARY"
+          python3 - "$pct" "$COVERAGE_MIN" <<'PY'
+          import sys
+          measured, floor = float(sys.argv[1]), float(sys.argv[2])
+          if measured < floor:
+              print(f"✗ Coverage {measured:.2f}% below the {floor:.1f}% ratchet floor")
+              sys.exit(1)
+          print(f"✓ Coverage {measured:.2f}% meets the {floor:.1f}% ratchet floor")
+          PY
+
+      - name: Upload kcov HTML report (Task 6.1)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage
+          path: ${{ runner.temp }}/coverage
+          if-no-files-found: error
+
   release-sanity:
     name: Release Sanity
     timeout-minutes: 10
