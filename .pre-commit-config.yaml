@@ -1,5 +1,18 @@
 exclude: '^(\.specify/|\.claude/|\.codex/|\.opencode/|openspec/)'
 
+# Task 5.3 (W5): pre-commit-hooks v6.0.0 requires Python >= 3.9 —
+# pre-commit builds each hook repo in its own virtualenv from the
+# interpreter it finds, so a contributor or runner on Python 3.8 or older
+# gets an environment-build failure rather than a clear message. The floor
+# is asserted in CI ('Assert Python >= 3.9' step in the hooks job), named
+# in CONTRIBUTING.md's hook-install step, and recorded here. The
+# interpreter itself is left at the default `python3` (not pinned to a
+# `python3.9` binary that may not exist); the CI assert enforces the floor.
+# All 7 configured hook ids below (trailing-whitespace, end-of-file-fixer,
+# check-yaml, check-added-large-files, check-executables-have-shebangs,
+# check-shebang-scripts-are-executable, detect-private-key) still exist in
+# v6.0.0 — none was among v6's removals — so no hook silently stops running.
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -32,6 +45,13 @@ repos:
         entry: bash -n
         language: system
         types: [shell]
+
+      - id: bash32-compat
+        name: bash 3.2 banned-construct check (Task 5.1)
+        entry: ./scripts/check_bash32.sh
+        language: system
+        types: [shell]
+        pass_filenames: false
 
       # NOTE (Task 0.1): no hook invokes the full `./tests/run.sh` suite on
       # pre-push. The suite is hermetic (HOME sandbox + pre-flight-only force

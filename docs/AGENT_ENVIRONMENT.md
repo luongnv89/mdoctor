@@ -83,16 +83,30 @@ from the destructive full suite).
 
 ## 5. Bash 3.2 compatibility floor
 
-Target Bash is **3.2** (ships with macOS). Bash 4+ constructs are banned:
+Target Bash is **3.2** (ships with macOS). The floor is deliberate: this
+project ships no Bash of its own, the 3.2 path executes only on macOS
+where Apple's vendored Bash 3.2.57 cannot be upgraded by this project,
+and raising the floor would break the zero-dependencies promise on the
+primary platform. A full-text sweep of all 70 shell files found zero
+uses of any Bash 4+ construct. Bash 4+ constructs are banned:
 
 - associative arrays (`declare -A`)
+- namerefs (`declare -n`)
 - `mapfile` / `readarray`
 - `&>>` redirection (use `>>file 2>&1`)
 - `globstar` (`**`)
 - `[[ ... ]]` regex subtleties beyond 3.2 support; prefer `case`
 - `${var,,}` / `${var^^}` case modification
 - `read -i`, `read -t 0`-style newer options
+- `coproc`
 - process substitution edge cases (`<( )` is OK in 3.2 but keep minimal)
+
+Enforced by `./scripts/check_bash32.sh` (the six policy constructs
+above are exactly what it greps for; the extra style bullets here are
+convention, not grep-enforced). It runs inside
+`./scripts/lint_shell.sh`, as a local pre-commit hook, and as a CI
+step — see `docs/DEVELOPMENT.md` "Bash 3.2 compatibility floor
+(policy)" for the canonical policy.
 
 Parity check (useful before CI changes):
 

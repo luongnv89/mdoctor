@@ -44,11 +44,21 @@ This removes the symlink and `~/.mdoctor` directory.
 
 ## Releasing a New Version
 
+`MDOCTOR_VERSION` in the `mdoctor` script is the single source of truth.
+Every other version site must match it — enforced by
+`./scripts/check_version.sh` (and by the release workflow, which fails
+the build otherwise):
+
 1. Update `MDOCTOR_VERSION` in the `mdoctor` script
-2. Update `docs/CHANGELOG.md`
-3. Commit and push to `main`
-4. Create/push release tag (e.g., `v3.0.0`)
-5. Create draft release notes, then publish release
+2. Update `docs/CHANGELOG.md` (add `## [X]`), `RELEASE_NOTES.md` (title
+   `## vX` plus the `...vX` changelog link), and the worked example
+   below so all three name the same version
+3. Run `./scripts/check_version.sh` locally — it must exit 0
+4. Commit and push to `main`
+5. Create/push release tag (e.g., `v3.0.0`) — the `Release` workflow
+   (`push: tags: v*.*.*`) re-runs the agreement check against the tag
+   and creates the GitHub release automatically, with no further file
+   edits
 
 Example (`gh` CLI):
 
@@ -56,6 +66,8 @@ Example (`gh` CLI):
 git tag -a v3.0.0 -m "mdoctor v3.0.0"
 git push origin v3.0.0
 
+# The Release workflow then creates the release titled "mdoctor v3.0.0"
+# with docs/CHANGELOG.md as the notes. Manual equivalent (fallback only):
 gh release create v3.0.0 \
   --repo luongnv89/mdoctor \
   --title "mdoctor v3.0.0" \

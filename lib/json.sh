@@ -63,7 +63,15 @@ json_build_output() {
   esc_rating="$(json_escape "$rating")"
 
   printf '{\n'
-  printf '  "version": "%s",\n' "$(json_escape "${MDOCTOR_VERSION:-3.0.0}")"
+  # Task 5.4: MDOCTOR_VERSION is the single source of truth (set by the
+  # `mdoctor` dispatcher). No literal fallback lives here: an unset
+  # variable emits null rather than silently reporting a fabricated,
+  # potentially stale version.
+  if [ -n "${MDOCTOR_VERSION:-}" ]; then
+    printf '  "version": "%s",\n' "$(json_escape "$MDOCTOR_VERSION")"
+  else
+    printf '  "version": null,\n'
+  fi
   printf '  "timestamp": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf '  "hostname": "%s",\n' "$(json_escape "$(hostname)")"
   printf '  "score": %d,\n' "$score"

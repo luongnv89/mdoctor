@@ -15,6 +15,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Task 5.2 (W4): actions/checkout is pinned to the v7.0.1 commit SHA on all
+# six refs. v5.0.0 set a minimum compatible runner version of v2.327.1;
+# immaterial here because every job uses a GitHub-hosted runner (always at
+# or above that version) — asserted by the 'No self-hosted runners' step
+# in the lint job. Whoever adds a self-hosted runner later must keep it
+# at or above v2.327.1. No input renamed or removed across v5/v6/v7 is in
+# use (the only non-default input is `fetch-tags: true`, still valid in v7).
+
 jobs:
   lint:
     name: Lint
@@ -22,7 +30,16 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: No self-hosted runners (Task 5.2 runner floor v2.327.1)
+        # Every job uses a GitHub-hosted runner, so v5.0.0's minimum
+        # runner version (v2.327.1) is always satisfied. The pattern is
+        # built in two halves so this very step never matches itself.
+        run: |
+          pat='runs-on:'
+          pat="${pat}.*self-hosted"
+          test "$(grep -c "$pat" .github/workflows/ci.yml || true)" = "0"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Same ShellCheck as the pre-commit hook (Task 2.3: one version
       # string, 0.11.0.1, in both files).
@@ -37,6 +54,12 @@ jobs:
       - name: Check bash syntax for all scripts
         run: ./scripts/lint_shell.sh
 
+      # Task 5.1 (W3): Bash 3.2 floor policy check. Also runs inside
+      # lint_shell.sh above; kept as an explicit step so the policy
+      # gate is visible in the job log.
+      - name: Check Bash 3.2 banned constructs
+        run: ./scripts/check_bash32.sh
+
   hooks:
     name: Hooks (pre-commit)
     runs-on: ubuntu-24.04 # Task 2.4: pinned image
@@ -44,11 +67,15 @@ jobs:
     needs: lint
 
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Task 2.8: the hooks run in CI on every file. Executable bits come
       # from git, never from chmod steps (removed) — a missing +x fails
       # the check-shebang-scripts-are-executable hook loudly.
+      # Task 5.3 (W5): pre-commit-hooks v6.0.0 requires Python >= 3.9.
+      - name: Assert Python >= 3.9 (Task 5.3 hook floor)
+        run: python3 -c 'import sys; assert sys.version_info >= (3,9)'
+
       - name: Run pre-commit on all files
         run: |
           pipx install pre-commit
@@ -61,7 +88,7 @@ jobs:
     needs: lint
 
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Run shell regression harness
         timeout-minutes: 10
@@ -92,7 +119,7 @@ jobs:
     needs: lint
 
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Record pre-suite host state (Task 1.7)
         run: |
@@ -157,7 +184,7 @@ jobs:
       - name: Install git and nodejs for checkout
         run: apk add --no-cache git nodejs
 
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Run test suite under Bash 3.2
         run: timeout 300 bash ./tests/run.sh
@@ -169,7 +196,7 @@ jobs:
     needs: [lint, test, test-linux]
 
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Task 4.1: the stable-channel installer resolves the newest
           # vX.Y.Z tag at the remote — tags must be present or the
