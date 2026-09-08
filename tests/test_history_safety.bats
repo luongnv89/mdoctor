@@ -44,7 +44,7 @@ EOF
 @test "fresh state run creates private dirs and files" {
   rm -rf "$TMPHOME/.config" "$TMPHOME/.mdoctor"
   HOME="$TMPHOME" ./mdoctor clean -m trash >/dev/null 2>&1
-  [ "$(file_mode "$TMPHOME/.config/mdoctor")" = "700" ] || fail "Expected 0700 on config dir"
+  [ "$(file_mode "$TMPHOME/.config/mdoctor")" = "700" ] || fail "Expected 0700 on config dir, got: [$(file_mode "$TMPHOME/.config/mdoctor")] platform=${MDOCTOR_PLATFORM:-unset}"
   [ "$(file_mode "$TMPHOME/.config/mdoctor/operations.log")" = "600" ] || fail "Expected 0600 on operations log"
   [ "$(file_mode "$TMPHOME/.config/mdoctor/cleanup_scope.conf")" = "600" ] || fail "Expected 0600 on scope file"
   [ "$(file_mode "$TMPHOME/.config/mdoctor/cleanup_whitelist")" = "600" ] || fail "Expected 0600 on whitelist file"

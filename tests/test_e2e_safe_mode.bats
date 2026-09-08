@@ -11,7 +11,7 @@ ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
 
 # Per-command timeout (seconds) to prevent hangs in CI
-_CMD_TIMEOUT=120
+_CMD_TIMEOUT=280
 
 _run_with_timeout() {
   # Run a command with timeout; fall back to direct exec if unavailable

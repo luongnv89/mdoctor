@@ -31,7 +31,7 @@ teardown_file() {
 @test "helpers land under a 0700 per-user dir" {
   dir="$(mdoctor_tmpdir)"
   [ -d "$dir" ] || fail "Expected tmpdir to exist"
-  [ "$(file_mode "$dir")" = "700" ] || fail "Expected 0700 on tmpdir"
+  [ "$(file_mode "$dir")" = "700" ] || fail "Expected 0700 on tmpdir, got: [$(file_mode "$dir")] dir=$dir platform=${MDOCTOR_PLATFORM:-unset}"
   f="$(mdoctor_mktemp_file probe)"
   [ -f "$f" ] || fail "Expected mktemp file to exist"
   rm -f "$f"

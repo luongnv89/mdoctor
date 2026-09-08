@@ -151,7 +151,10 @@ EOF
     "/tmp/mdoctor-probe"; do
     rc=0
     validate_deletion_path "$p" >/dev/null 2>&1 || rc=$?
-    [ "$rc" -eq 0 ] || fail "Expected allowlist accept for legitimate target '$p'"
+    if [ "$rc" -ne 0 ]; then
+      echo "allowlist reject: '$p' rc=$rc MDOCTOR_PLATFORM=${MDOCTOR_PLATFORM:-unset} TMPDIR=${TMPDIR:-unset}"
+      fail "Expected allowlist accept for legitimate target '$p' (rc=$rc)"
+    fi
   done
   local dir
   while IFS= read -r dir; do

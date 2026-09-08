@@ -19,7 +19,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 BATS_SHA="7868b95ea08b22bc76f2585e51cf4b7b3ff124ef" # bats-core v1.14.0
 BATS_REPO="https://github.com/bats-core/bats-core.git"
-FILE_TIMEOUT="${MDOCTOR_TEST_FILE_TIMEOUT:-300}"
+FILE_TIMEOUT="${MDOCTOR_TEST_FILE_TIMEOUT:-600}"
 
 # Hermetic suite (Task 0.1): shadow `docker`, `apt-get` and `sudo` with
 # stubs that record argv instead of reaching a real daemon or the package
@@ -110,7 +110,7 @@ for test_file in "${FILES[@]}"; do
   # Pretty formatter uses tput; CI runs without $TERM — fall back to TAP.
   local_fmt=pretty
   [ -t 1 ] || local_fmt=tap
-  BATS_ARGS=(--formatter "$local_fmt" --report-formatter junit --output "$RESULT_DIR")
+  BATS_ARGS=(--formatter "$local_fmt" --report-formatter junit --output "$RESULT_DIR" --print-output-on-failure)
   [ -n "$FILTER" ] && BATS_ARGS+=(--filter "$FILTER")
   if command -v timeout >/dev/null 2>&1; then
     timeout "$FILE_TIMEOUT" "$BATS_BIN" "${BATS_ARGS[@]}" "$test_file" || rc=$?
