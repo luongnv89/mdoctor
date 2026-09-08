@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Stub for `brew`: records argv, never executes.
+# `brew --prefix` prints a canned prefix (env-overridable) so the
+# permissions fix module builds its chown argv deterministically.
+if [ -n "${MDOCTOR_STUB_LOG:-}" ]; then
+  printf 'brew %s\n' "$*" >>"$MDOCTOR_STUB_LOG"
+fi
+case "${1-}" in
+  --prefix)
+    echo "${MDOCTOR_STUB_BREW_PREFIX:-/opt/homebrew}"
+    ;;
+esac
+exit 0
