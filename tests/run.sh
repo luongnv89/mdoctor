@@ -107,7 +107,10 @@ for test_file in "${FILES[@]}"; do
   # not per-test — bats-core has no native per-test timeout; upgrade when
   # bats ships one or a per-test watchdog helper is added.)
   rc=0
-  BATS_ARGS=(--formatter pretty --report-formatter junit --output "$RESULT_DIR")
+  # Pretty formatter uses tput; CI runs without $TERM — fall back to TAP.
+  local_fmt=pretty
+  [ -t 1 ] || local_fmt=tap
+  BATS_ARGS=(--formatter "$local_fmt" --report-formatter junit --output "$RESULT_DIR")
   [ -n "$FILTER" ] && BATS_ARGS+=(--filter "$FILTER")
   if command -v timeout >/dev/null 2>&1; then
     timeout "$FILE_TIMEOUT" "$BATS_BIN" "${BATS_ARGS[@]}" "$test_file" || rc=$?

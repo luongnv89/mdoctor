@@ -31,6 +31,7 @@ repos:
       - id: shellcheck
         args: ["-S", "warning", "-e", "SC1091"]  # Match lint_shell.sh policy: warning level and above
         types: [shell]
+        exclude: '\.bats$'  # Task 6.2: bats syntax, not parseable as bash
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1 # Task 3.5: pinned secret scanner (CI runs the same version)
@@ -45,6 +46,7 @@ repos:
         entry: bash -n
         language: system
         types: [shell]
+        exclude: '\.bats$'  # Task 6.2: bats syntax, not parseable as bash
 
       - id: bash32-compat
         name: bash 3.2 banned-construct check (Task 5.1)
