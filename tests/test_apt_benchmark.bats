@@ -41,11 +41,11 @@ teardown_file() {
   source "$ROOT_DIR/lib/platform.sh"
   source "$ROOT_DIR/lib/common.sh"
   source "$ROOT_DIR/lib/benchmark.sh"
-  [ "$(/bin/bash -c 'source lib/platform.sh; source lib/common.sh; source lib/benchmark.sh; _bench_elapsed 1 2.5')" = "1.500" ] || fail "expected _bench_elapsed 1 2.5 to be 1.500"
+  [ "$(bash -c 'source lib/platform.sh; source lib/common.sh; source lib/benchmark.sh; _bench_elapsed 1 2.5')" = "1.500" ] || fail "expected _bench_elapsed 1 2.5 to be 1.500"
   declare -f run_benchmark >/dev/null || fail "run_benchmark not defined"
   declare -f _bench_time >/dev/null || fail "_bench_time not defined"
   grep -q "MB/s" "$ROOT_DIR/lib/benchmark.sh" || fail "benchmark missing MB/s unit"
   grep -q "ms" "$ROOT_DIR/lib/benchmark.sh" || fail "benchmark missing ms unit"
-  _t="$(/bin/bash -c 'source lib/platform.sh; source lib/common.sh; source lib/benchmark.sh; _bench_time')"
+  _t="$(bash -c 'source lib/platform.sh; source lib/common.sh; source lib/benchmark.sh; _bench_time')"
   [ -n "$_t" ] || fail "_bench_time produced no output"
 }
