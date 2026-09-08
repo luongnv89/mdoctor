@@ -433,9 +433,9 @@ cmd_check() {
   else
     # Run full doctor
     if [ "$json_flag" = true ]; then
-      JSON_ENABLED=true MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/doctor.sh"
+      JSON_ENABLED=true MDOCTOR_VERSION="${MDOCTOR_VERSION}" MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/doctor.sh"
     else
-      MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/doctor.sh"
+      MDOCTOR_VERSION="${MDOCTOR_VERSION}" MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/doctor.sh"
     fi
   fi
 }

@@ -57,10 +57,16 @@ Also run once per checkout: `pre-commit install` (plus
 
 ## Bash 3.2 floor
 
-Target Bash is **3.2** (macOS system Bash). Bash 4+ constructs are
-**banned**: `declare -A`, `mapfile`/`readarray`, `&>>`, `globstar`
-(`**`), `${var,,}`/`${var^^}`, newer `read` options. See
-`docs/AGENT_ENVIRONMENT.md` for the full banned list and the
+Target Bash is **3.2** (macOS system Bash). The floor is deliberate (no
+vendored Bash; Apple's 3.2.57 cannot be upgraded by this project;
+raising it breaks the zero-dependencies promise). Bash 4+ constructs
+are **banned**: `declare -A`, `declare -n` (namerefs),
+`mapfile`/`readarray`, `&>>`, `coproc`, `globstar` (`**`),
+`${var,,}`/`${var^^}`, newer `read` options. Canonical policy:
+`docs/DEVELOPMENT.md` "Bash 3.2 compatibility floor (policy)".
+Enforced by `./scripts/check_bash32.sh` (runs inside
+`./scripts/lint_shell.sh`, as a pre-commit hook, and as a CI step).
+See `docs/AGENT_ENVIRONMENT.md` for the full banned list and the
 digest-pinned `bash:3.2` parity-check command (same digest as CI's
 `image: bash@sha256:`).
 

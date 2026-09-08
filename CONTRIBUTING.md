@@ -38,9 +38,30 @@ pip install pre-commit  # or: brew install pre-commit
 pre-commit install
 ```
 
+Requires Python >= 3.9: `pre-commit-hooks` v6.0.0 builds each hook repo
+in its own virtualenv from the interpreter it finds, so Python 3.8 or
+older fails at environment-build time. Verify with
+`python3 -c 'import sys; assert sys.version_info >= (3,9)'` (CI asserts
+the same floor on every lane that runs the hooks).
+
 Executable bits are enforced by the hooks
 (`check-shebang-scripts-are-executable`) — never `chmod` in CI to mask
 a missing bit; fix it with `git update-index --chmod=+x <file>`.
+
+## Bash 3.2 compatibility floor
+
+Target Bash is **3.2** (macOS system Bash) and the floor is deliberate
+— see `docs/DEVELOPMENT.md` "Bash 3.2 compatibility floor (policy)"
+for the rationale and the exact banned-construct list (associative
+arrays, namerefs, `mapfile`/`readarray`, `${var^^}`/`${var,,}`,
+`&>>`, `coproc`). Do not introduce any of them. The grep-based check:
+
+```bash
+./scripts/check_bash32.sh
+```
+
+runs inside `./scripts/lint_shell.sh`, as a pre-commit hook, and as a
+CI step, and must exit 0.
 
 ## Project Structure
 

@@ -8,6 +8,42 @@
 
 No build tools, package managers, or runtimes are required. mdoctor is pure Bash.
 
+## Bash 3.2 compatibility floor (policy)
+
+The Bash 3.2 floor is deliberate and enforced — not a legacy accident:
+
+- This project ships no Bash of its own; the 3.2 path executes only on
+  macOS, where Apple's vendored Bash 3.2.57 cannot be upgraded by this
+  project.
+- Raising the floor would break the zero-dependencies promise on the
+  primary platform, so the constraint survives any contributor who did
+  not read the audit report.
+
+A full-text sweep of all shell files found zero uses of any Bash 4+
+construct. The following constructs are **banned** — do not introduce
+them in any tracked shell file (`*.sh`, `*.bash`, or extensionless
+executables with a Bash shebang):
+
+- associative arrays (`declare -A`)
+- namerefs (`declare -n`)
+- `mapfile` / `readarray`
+- `${var^^}` / `${var,,}` case modification
+- `&>>` redirection (use `>>file 2>&1`)
+- `coproc`
+
+Enforcement is a grep-based check with the same exclusion set as the
+lint script (`.git/`, `.specify/`, `.claude/`, `.codex/`, `.opencode/`,
+`openspec/`, `node_modules/` are never scanned):
+
+```bash
+./scripts/check_bash32.sh
+```
+
+It runs inside `./scripts/lint_shell.sh` (so every CI Lint lane runs
+it), as a local pre-commit hook (`bash32-compat`), and as an explicit
+`Check Bash 3.2 banned constructs` step in `.github/workflows/ci.yml`.
+It must exit 0 on the current tree.
+
 Install the pre-commit hooks once per checkout (CI enforces them with
 `pre-commit run --all-files`):
 

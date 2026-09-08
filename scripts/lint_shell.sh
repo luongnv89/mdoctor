@@ -51,3 +51,7 @@ printf -- '- %s\n' "${files[@]}"
 shellcheck -S warning "${files[@]}"
 
 echo "ShellCheck lint passed."
+
+# Task 5.1 (W3): Bash 3.2 floor policy check over the same file list
+# (single discovery source — pass the list, don't re-discover).
+"$(dirname "$0")/check_bash32.sh" "${files[@]}"
