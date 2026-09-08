@@ -332,9 +332,9 @@ mdoctor/
 ├── scripts/
 │   └── lint_shell.sh    # Shared ShellCheck policy entrypoint (local + CI)
 ├── tests/
-│   ├── run.sh
-│   ├── helpers/assert.sh
-│   └── test_*.sh        # Regression coverage for parsing/safety/cleanup behavior
+│   ├── run.sh            # bats-core delegation, filter, JUnit, watchdog
+│   ├── helpers/assert.bash
+│   └── test_*.bats       # Regression coverage for parsing/safety/cleanup behavior
 ├── openspec/            # Task-scoped change artifacts and archived specs
 └── docs/                # Documentation
     ├── GUIDEBOOK.md

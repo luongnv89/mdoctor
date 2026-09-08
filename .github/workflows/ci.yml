@@ -90,6 +90,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Task 6.2: tests/run.sh wraps each .bats file in a timeout watchdog;
+      # macOS runners ship no GNU timeout, so put coreutils' on PATH.
+      - name: Install GNU timeout (coreutils)
+        run: |
+          brew install coreutils
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+
       - name: Run shell regression harness
         timeout-minutes: 10
         run: ./tests/run.sh
@@ -153,6 +160,39 @@ jobs:
             echo ""
             echo "External-state guard: no Docker volume removed, no package autoremoved."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # Task 6.2: render JUnit results as per-test annotations and keep the
+      # raw report as an artifact. Zero new third-party actions — the
+      # annotation emitter is a stdlib-only XML walk.
+      - name: Emit per-test failure annotations (Task 6.2)
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob, os
+          import xml.etree.ElementTree as ET
+          paths = glob.glob("test-results/junit.xml")
+          if not paths:
+              print("::warning::no JUnit report produced by tests/run.sh")
+              raise SystemExit(0)
+          root = ET.parse(paths[0]).getroot()
+          for case in root.iter("testcase"):
+              failure = case.find("failure")
+              if failure is None:
+                  continue
+              name = case.get("name", "?").replace("%", "%25")
+              classname = case.get("classname", "")
+              msg = (failure.get("message") or failure.text or "test failed").strip().splitlines()[0][:200]
+              print(f"::error title={classname} › {name}::{msg}")
+          print(f"JUnit report: {sum(1 for _ in root.iter('testcase'))} testcases parsed")
+          PY
+
+      - name: Upload JUnit report (Task 6.2)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: junit-report
+          path: test-results/junit.xml
+          if-no-files-found: ignore
 
       - name: mdoctor help
         run: ./mdoctor help
