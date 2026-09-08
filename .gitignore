@@ -30,3 +30,6 @@ gui/node_modules/
 
 .specify
 # openspec/  # tracked for OpenSpec task-loop workflow
+
+# Task 6.2: bats/JUnit suite outputs
+test-results/

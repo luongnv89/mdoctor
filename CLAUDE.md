@@ -21,23 +21,21 @@ find . \( -name '*.sh' -o -name 'mdoctor' -o -name 'cleanup.sh' -o -name 'doctor
 
 ## Test
 
-Command of record: `./tests/run.sh` (runs all `tests/test_*.sh`, must
-pass 9/9).
+Command of record: `./tests/run.sh` (bats-core suite, per-assertion
+reporting, must pass 19/19 files). The runner self-provisions bats-core
+v1.14.0 at a pinned SHA into `~/.cache/mdoctor/` on first use (override:
+`MDOCTOR_BATS_BIN`, filter: `./tests/run.sh -f '<name>'`). Each file runs
+under a 300 s watchdog (`MDOCTOR_TEST_FILE_TIMEOUT`); JUnit output lands
+in `test-results/junit.xml`.
 
 The suite is hermetic since Task 0.1: the force test
-(`tests/test_force_preflight_resilience.sh`) stops after its pre-flight
+(`tests/test_force_preflight_resilience.bats`) stops after its pre-flight
 summary via `MDOCTOR_PREFLIGHT_ONLY=true`, and `tests/run.sh` stubs
 `docker`, `apt-get` and `sudo` on `PATH` — safe to run on a developer
-machine. For a quicker signal, run the safe subset (skip the
-force-resilience file):
+machine. For a quicker signal, run a single test file directly:
 
 ```bash
-for f in tests/test_*.sh; do
-  case "$f" in
-    *test_force_preflight_resilience.sh) echo "SKIP (destructive until 0.1): $f" ;;
-    *) echo "== $f =="; bash "$f" ;;
-  esac
-done
+./tests/run.sh tests/test_command_parsing.bats
 ```
 
 ## Lint
