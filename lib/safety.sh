@@ -188,6 +188,14 @@ load_cleanup_whitelist() {
   _MDOCTOR_WHITELIST_LOADED=true
 }
 
+# Public reload entry point: force a re-read of the whitelist file.
+# Tests and long-lived shells use this instead of poking the private
+# _MDOCTOR_WHITELIST_LOADED flag (renaming-safe surface).
+reload_cleanup_whitelist() {
+  _MDOCTOR_WHITELIST_LOADED=false
+  load_cleanup_whitelist
+}
+
 is_whitelisted_cleanup_path() {
   local path
   path="$(_normalize_path "${1-}")"
