@@ -3,5 +3,14 @@
 if [ -n "${MDOCTOR_STUB_LOG:-}" ]; then
   printf "tmutil %s\n" "$*" >>"$MDOCTOR_STUB_LOG"
 fi
+# Argv-aware canned output (env-gated; default stays silent so the Task 1.3
+# refusal tests and the existing lane behavior are unchanged).
+case "${1-}" in
+  destinationinfo)
+    if [ -n "${MDOCTOR_STUB_TMUTIL_DESTOUT:-}" ]; then
+      printf '%s\n' "$MDOCTOR_STUB_TMUTIL_DESTOUT"
+    fi
+    ;;
+esac
 echo "stubbed tmutil: $*" >&2
 exit 0
