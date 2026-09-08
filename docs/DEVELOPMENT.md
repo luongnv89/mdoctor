@@ -32,7 +32,7 @@ executables with a Bash shebang):
 - `coproc`
 
 Enforcement is a grep-based check with the same exclusion set as the
-lint script (`.git/`, `.specify/`, `.claude/`, `.codex/`, `.opencode/`,
+lint script (`.git/`, `.claude/`, `.codex/`, `.opencode/`,
 `openspec/`, `node_modules/` are never scanned):
 
 ```bash

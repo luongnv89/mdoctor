@@ -45,7 +45,6 @@ else
   done < <(
     find . -type f \
       -not -path './.git/*' \
-      -not -path './.specify/*' \
       -not -path './.claude/*' \
       -not -path './.codex/*' \
       -not -path './.opencode/*' \
