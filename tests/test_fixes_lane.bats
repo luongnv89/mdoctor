@@ -30,7 +30,14 @@ fix_lane_stub_path
 setup_file() {
   cd "$ROOT_DIR" || return 1
   export TEST_TMP
-  TEST_TMP="$(mktemp -d)"
+  # Under the repo checkout, not mktemp: on macOS TMPDIR is /var/folders/...
+  # (canonicalized by realpath to /private/var/folders/...), which
+  # is_protected_deletion_path blanket-protects — so a mktemp-based
+  # sandbox can never be cleaned by safe_remove there and the force-mode
+  # canaries would always survive. Matches the .mdoctor-test- idiom used
+  # by the other lanes.
+  TEST_TMP="${ROOT_DIR}/.mdoctor-test-fixes-lane.$$.$RANDOM"
+  mkdir -p "$TEST_TMP"
 }
 
 teardown_file() {
