@@ -52,7 +52,13 @@ fix_lane_stub_path() {
 # SANDBOX_HOME in the calling shell — callers must invoke it directly
 # (never inside "$( ... )", which would subshell away the HOME export).
 fix_lane_sandbox_home() {
-  local home="${1}/home"
+  # Trust boundary: this function rm -rf's under "$1" — refuse an empty
+  # or degenerate base so it can never collapse onto a system directory.
+  local home="${1:-}/home"
+  if [ -z "${1:-}" ] || [ "$home" = "/home" ] || [ "$home" = "/" ]; then
+    echo "fix_lane_sandbox_home: non-empty BASE_DIR required, got '${1:-}'" >&2
+    return 1
+  fi
   rm -rf "$home"
   mkdir -p "$home/.Trash" "$home/Library/Caches" "$home/Library/Logs"
   export HOME="$home"
