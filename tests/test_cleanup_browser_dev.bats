@@ -34,6 +34,21 @@ teardown_file() {
 }
 
 @test "clean -m browser runs, emits header and the expected target set" {
+  if [ "$(uname -s)" = "Darwin" ]; then
+    mkdir -p "$TMPHOME/Library/Caches/Google/Chrome" "$TMPHOME/Library/Caches/com.apple.Safari" "$TMPHOME/Library/Caches/Firefox"
+    echo sentinel > "$TMPHOME/Library/Caches/Google/Chrome/f1"
+    echo sentinel > "$TMPHOME/Library/Caches/com.apple.Safari/f2"
+    echo sentinel > "$TMPHOME/Library/Caches/Firefox/f3"
+    HOME="$TMPHOME" ./mdoctor clean -m browser >"$TMPHOME/browser.out" 2>&1
+    assert_contains "$TMPHOME/browser.out" "Cleaning browser caches"
+    assert_contains "$TMPHOME/browser.out" "Chrome"
+    assert_contains "$TMPHOME/browser.out" "Safari"
+    assert_contains "$TMPHOME/browser.out" "Firefox"
+    assert_file_exists "$TMPHOME/Library/Caches/Google/Chrome/f1"
+    assert_file_exists "$TMPHOME/Library/Caches/com.apple.Safari/f2"
+    assert_file_exists "$TMPHOME/Library/Caches/Firefox/f3"
+    return 0
+  fi
   mkdir -p "$TMPHOME/.cache/google-chrome" "$TMPHOME/.cache/chromium" "$TMPHOME/.cache/mozilla/firefox"
   echo sentinel > "$TMPHOME/.cache/google-chrome/f1"
   echo sentinel > "$TMPHOME/.cache/chromium/f2"
