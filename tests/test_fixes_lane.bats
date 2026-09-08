@@ -61,6 +61,21 @@ teardown() {
   [ "$resolved" = "$ROOT_DIR/tests/helpers/bin-macos/tmutil" ] || fail "tmutil resolves to $resolved"
 }
 
+@test "fixes lane: sandbox-home guard refuses empty, all-slash and root bases" {
+  local rc=0 out
+  out="$(fix_lane_sandbox_home "" 2>&1)" || rc=$?
+  [ "$rc" -eq 1 ] || fail "empty base accepted (rc=$rc)"
+  echo "$out" | grep -q "non-empty BASE_DIR required" || fail "wrong refusal for empty base: $out"
+  rc=0
+  out="$(fix_lane_sandbox_home "/" 2>&1)" || rc=$?
+  [ "$rc" -eq 1 ] || fail "root base accepted (rc=$rc)"
+  rc=0
+  out="$(fix_lane_sandbox_home "//" 2>&1)" || rc=$?
+  [ "$rc" -eq 1 ] || fail "'//' base accepted (rc=$rc)"
+  # The refusal paths above must never touch the caller's HOME.
+  [ "$HOME" = "$SANDBOX_HOME" ] || fail "guard path clobbered HOME"
+}
+
 @test "fixes lane: fix audio issues exactly the Core Audio restart sequence" {
   fix_lane_as_macos
   fix_lane_begin "$STUB_LOG"

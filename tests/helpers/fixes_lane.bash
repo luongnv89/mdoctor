@@ -53,14 +53,37 @@ fix_lane_stub_path() {
 # (never inside "$( ... )", which would subshell away the HOME export).
 fix_lane_sandbox_home() {
   # Trust boundary: this function rm -rf's under "$1" — refuse an empty
-  # or degenerate base so it can never collapse onto a system directory.
-  local home="${1:-}/home"
-  if [ -z "${1:-}" ] || [ "$home" = "/home" ] || [ "$home" = "/" ]; then
-    echo "fix_lane_sandbox_home: non-empty BASE_DIR required, got '${1:-}'" >&2
+  # or all-slash base up front, then canonicalize the base (resolves "."
+  # and ".." plus symlinks such as macOS /var/folders pointing at
+  # /private/var/folders) and refuse one that still resolves to the
+  # filesystem root, so "$home" can never collapse onto "/", "/home" or
+  # any other system directory.
+  # ponytail: a base that is a symlink to a broad parent (e.g. /Users)
+  # still passes; the lane only ever passes a fresh mktemp dir, and
+  # closing every alias would need production-grade path policy here.
+  local base="${1:-}"
+  case "${base//\//}" in
+    "")
+      echo "fix_lane_sandbox_home: non-empty BASE_DIR required, got '${1:-}'" >&2
+      return 1
+      ;;
+  esac
+  base="$(mkdir -p "$base" && cd "$base" && pwd -P)" || {
+    echo "fix_lane_sandbox_home: cannot create BASE_DIR '$base'" >&2
+    return 1
+  }
+  if [ "$base" = "/" ]; then
+    echo "fix_lane_sandbox_home: degenerate BASE_DIR resolves to /" >&2
     return 1
   fi
+  local home="$base/home"
   rm -rf "$home"
   mkdir -p "$home/.Trash" "$home/Library/Caches" "$home/Library/Logs"
+  # HOME must already be canonical: the safety validators compare every
+  # canonical deletion target against roots resolved from HOME, so a
+  # non-canonical HOME (macOS mktemp hands out /var/folders/... paths)
+  # makes safe_remove_children refuse each sandboxed cleanup and the
+  # force-mode canaries survive (macOS CI failure, 2026-09-08).
   export HOME="$home"
   export LOGFILE="$home/mdoctor.log"
   export SANDBOX_HOME="$home"
