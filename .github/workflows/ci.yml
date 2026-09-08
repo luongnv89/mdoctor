@@ -91,11 +91,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Task 6.2: tests/run.sh wraps each .bats file in a timeout watchdog;
-      # macOS runners ship no GNU timeout, so put coreutils' on PATH.
-      - name: Install GNU timeout (coreutils)
+      # macOS runners ship no GNU timeout. Expose ONLY gtimeout as `timeout`
+      # — putting all of coreutils' gnubin on PATH would shadow the BSD
+      # stat/realpath the product (and these tests) rely on.
+      - name: Install GNU timeout (coreutils, timeout only)
         run: |
           brew install coreutils
-          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+          mkdir -p "$RUNNER_TEMP/ci-timeout-bin"
+          ln -sf "$(brew --prefix coreutils)/bin/gtimeout" "$RUNNER_TEMP/ci-timeout-bin/timeout"
+          echo "$RUNNER_TEMP/ci-timeout-bin" >> "$GITHUB_PATH"
 
       - name: Run shell regression harness
         timeout-minutes: 10

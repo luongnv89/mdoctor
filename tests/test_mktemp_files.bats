@@ -10,13 +10,12 @@ export ROOT_DIR
 source "$ROOT_DIR/lib/platform.sh"
 source "$ROOT_DIR/lib/common.sh"
 
-# Portable file-mode query, gated on the platform predicates (BSD stat
-# has no -c flag; GNU stat -f means --filesystem).
-if is_macos; then
-  file_mode() { stat -f "%Lp" "$1" 2>/dev/null || echo ""; }
-else
-  file_mode() { stat -c "%a" "$1" 2>/dev/null || echo ""; }
-fi
+# Portable file-mode query: GNU stat -c first (Linux, and macOS when
+# coreutils is installed), BSD stat -f fallback. GNU stat -f means
+# --filesystem, so -f must never be tried first.
+file_mode() {
+  stat -c "%a" "$1" 2>/dev/null || stat -f "%Lp" "$1" 2>/dev/null || echo ""
+}
 
 setup_file() {
   cd "$ROOT_DIR" || return 1
