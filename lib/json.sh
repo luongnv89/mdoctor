@@ -31,35 +31,40 @@ json_set_context() {
 
 # json_escape STRING → prints JSON-safe string (RFC 8259 §7: backslash,
 # double quote, and every control char U+0000–U+001F is escaped; U+0000
-# needs no handling because Bash strings can never contain NUL)
+# needs no handling because Bash strings can never contain NUL).
+# Per-character scan (ordinal via printf "'c", short forms + \u00XX):
+# pattern-substitution on raw control bytes and `printf %b '\0NNN'`
+# round-trips vary across Bash builds (Apple Bash 3.2 on macOS left a
+# raw control in the document, breaking `mdoctor check --json` there),
+# so no control byte is ever placed in a pattern or rebuilt from octal.
+# Bash 3.2 compatible (substring expansion, printf -v, += only).
 json_escape() {
   local str="$1"
-  str="${str//\\/\\\\}"       # backslash
-  str="${str//\"/\\\"}"       # double quote
-  str="${str//$'\b'/\\b}"     # backspace (U+0008)
-  str="${str//$'\f'/\\f}"     # form feed (U+000C)
-  str="${str//$'\n'/\\n}"     # newline
-  str="${str//$'\r'/\\r}"     # carriage return
-  str="${str//$'\t'/\\t}"     # tab
-  # Remaining C0 controls (U+0001–U+0007, U+000B, U+000E–U+001F, including
-  # the ANSI escape U+001B) have no short form, so emit \u00XX for each
-  # one still present. Pure-Bash loop: Bash 3.2 compatible.
-  local i oct ch hex
-  i=1
-  while (( i <= 31 )); do
-    case "$i" in
-      8|9|10|12|13)
-        i=$((i + 1))
-        continue
+  local out="" i ch code esc
+  i=0
+  while (( i < ${#str} )); do
+    ch="${str:$i:1}"
+    printf -v code '%d' "'$ch"
+    case "$code" in
+      92) out+='\\' ;;       # backslash
+      34) out+='\"' ;;       # double quote
+      8)  out+='\b' ;;       # backspace (U+0008)
+      9)  out+='\t' ;;       # tab (U+0009)
+      10) out+='\n' ;;       # newline (U+000A)
+      12) out+='\f' ;;       # form feed (U+000C)
+      13) out+='\r' ;;       # carriage return (U+000D)
+      *)
+        if (( code < 32 )); then
+          printf -v esc '\\u00%02x' "$code"
+          out+="$esc"
+        else
+          out+="$ch"
+        fi
         ;;
     esac
-    printf -v oct '%03o' "$i"
-    printf -v ch '%b' "\\0${oct}"
-    printf -v hex '\\u00%02x' "$i"
-    str="${str//"$ch"/"$hex"}"
     i=$((i + 1))
   done
-  echo "$str"
+  printf '%s' "$out"
 }
 
 # json_add_check MODULE CATEGORY RISK STATUS MESSAGE
