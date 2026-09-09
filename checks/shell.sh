@@ -50,15 +50,19 @@ check_one_shell_file() {
       target=$(echo "$target" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
       target=$(echo "$target" | sed -E 's/^["'\'']//; s/["'\'']$//')
 
-      case "$target" in
+      # Expand shell variables first (e.g. $ZSH, $NVM_DIR, $HOME)
+      local expanded_raw
+      expanded_raw="$(eval echo "$target" 2>/dev/null || echo "$target")"
+
+      case "$expanded_raw" in
         /*)
-          expanded="$target"
+          expanded="$expanded_raw"
           ;;
         ~/*)
-          expanded="${HOME}${target#\~}"
+          expanded="${HOME}${expanded_raw#\~}"
           ;;
         *)
-          expanded="${HOME}/${target}"
+          expanded="${HOME}/${expanded_raw}"
           ;;
       esac
 

@@ -30,7 +30,7 @@ check_updates_basic() {
   else
     step "System Updates"
 
-    # APT package updates
+    # APT package updates (Debian-family)
     if command -v apt-get >/dev/null 2>&1; then
       local upgradable
       upgradable=$(apt list --upgradable 2>/dev/null | grep -c 'upgradable' || true)
@@ -49,6 +49,18 @@ check_updates_basic() {
           status_warn "${security_updates} security update(s) pending"
           add_action "Security updates are pending. Run 'sudo apt upgrade' promptly."
         fi
+      fi
+    fi
+
+    # Pacman package updates (Arch-family)
+    if command -v pacman >/dev/null 2>&1; then
+      local upgradable
+      upgradable=$(pacman -Qu 2>/dev/null | wc -l | tr -d ' ')
+      if (( upgradable > 0 )); then
+        status_warn "${upgradable} package update(s) available"
+        add_action "Run 'sudo pacman -Syu' to apply pending updates."
+      else
+        status_ok "All packages are up to date."
       fi
     fi
 
