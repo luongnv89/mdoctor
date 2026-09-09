@@ -131,18 +131,23 @@ teardown_file() {
 
 @test "diagnose output contains status indicators" {
   # Narrowed alternation (issue #74): the old five-way pattern accepted
-  # essentially any output via its catch-all branches. A real run must
-  # carry the structural markers — the summary header and the completion
+  # essentially any output via its catch-all branches. A run must carry
+  # the structural markers — the summary header and the completion
   # line — plus exactly one of the two mutually exclusive outcomes.
-  local output
-  output="$(./mdoctor diagnose 2>&1)"
-  echo "$output" | grep -q "Diagnosis Summary" || fail "Expected 'Diagnosis Summary' in diagnose output"
-  echo "$output" | grep -q "Diagnosis complete." || fail "Expected 'Diagnosis complete.' in diagnose output"
-  if echo "$output" | grep -q "System healthy"; then
-    echo "$output" | grep -q "recommendation(s)" && fail "Healthy output must not list recommendations"
-  else
-    echo "$output" | grep -q "recommendation(s)" || fail "Unhealthy output must list recommendations"
-  fi
+  # Asserted on fixed inputs, not the live host: runner health varies
+  # (the Linux CI host is healthy, so a live run takes the healthy
+  # branch there), and a bare `grep -q ... && fail ...` line fails under
+  # bats either way — the assert_* helpers handle absence correctly.
+  run_diagnose_fixed healthy >"$TEST_TMP/diagnose_indicators_healthy.txt" 2>&1
+  assert_contains "$TEST_TMP/diagnose_indicators_healthy.txt" "Diagnosis Summary"
+  assert_contains "$TEST_TMP/diagnose_indicators_healthy.txt" "Diagnosis complete."
+  assert_contains "$TEST_TMP/diagnose_indicators_healthy.txt" "System healthy"
+  assert_not_contains "$TEST_TMP/diagnose_indicators_healthy.txt" "recommendation(s)"
+  run_diagnose_fixed unhealthy >"$TEST_TMP/diagnose_indicators_unhealthy.txt" 2>&1
+  assert_contains "$TEST_TMP/diagnose_indicators_unhealthy.txt" "Diagnosis Summary"
+  assert_contains "$TEST_TMP/diagnose_indicators_unhealthy.txt" "Diagnosis complete."
+  assert_contains "$TEST_TMP/diagnose_indicators_unhealthy.txt" "recommendation(s)"
+  assert_not_contains "$TEST_TMP/diagnose_indicators_unhealthy.txt" "System healthy"
 }
 
 @test "diagnose_performance.sh exists and is executable" {
