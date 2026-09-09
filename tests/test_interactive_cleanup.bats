@@ -8,6 +8,19 @@ export ROOT_DIR
 
 source "$ROOT_DIR/lib/platform.sh"
 
+# trash_menu_index (issue #74, F-TEST-015): derive the trash module's menu
+# number from the rendered interactive menu instead of hardcoding position
+# 1. The menu order follows the cleanup_modules array in `mdoctor`, so a
+# hardcoded `1` silently repoints a force cleanup at a different module if
+# that array is ever reordered. Prints the 1-based index on stdout.
+trash_menu_index() {
+  local menu idx
+  menu="$(HOME="$TMPHOME" ./mdoctor clean --interactive </dev/null 2>&1 || true)"
+  idx="$(printf '%s\n' "$menu" | sed -n 's/^ *\[\([0-9][0-9]*\)\] *trash\(  .*\)*$/\1/p' | head -1)"
+  [ -n "$idx" ] || { echo "trash module not found in interactive menu" >&2; return 1; }
+  printf '%s\n' "$idx"
+}
+
 setup_file() {
   cd "$ROOT_DIR" || return 1
   export TMPHOME TRASH_DIR
@@ -28,18 +41,34 @@ teardown_file() {
   rm -rf "$TMPHOME"
 }
 
-@test "dry-run interactive selection (module 1 = trash) does not delete" {
-  printf '1\n' | HOME="$TMPHOME" ./mdoctor clean --interactive >/dev/null 2>&1
+@test "dry-run interactive selection (trash by menu index) does not delete" {
+  # (Re)create the victim file so this test is independent of execution order.
+  echo "sample" > "$TRASH_DIR/interactive.txt"
+  local idx
+  idx="$(trash_menu_index)"
+  printf '%s\n' "$idx" | HOME="$TMPHOME" ./mdoctor clean --interactive >"$TMPHOME/dry_run.txt" 2>&1
+  # The selected module name must appear in the run output — this proves
+  # the derived index actually selected trash, not whatever sits at a
+  # hardcoded position.
+  assert_contains "$TMPHOME/dry_run.txt" "trash"
   assert_file_exists "$TRASH_DIR/interactive.txt"
 }
 
-@test "force interactive selection deletes after confirmation" {
-  printf '1\ny\n' | HOME="$TMPHOME" ./mdoctor clean --interactive --force >/dev/null 2>&1
+@test "force interactive selection deletes trash after confirmation" {
+  # Re-create the victim file: test ordering is not guaranteed and the
+  # dry-run test must not depend on this one having run first.
+  echo "sample" > "$TRASH_DIR/interactive.txt"
+  local idx
+  idx="$(trash_menu_index)"
+  printf '%s\ny\n' "$idx" | HOME="$TMPHOME" ./mdoctor clean --interactive --force >"$TMPHOME/force_run.txt" 2>&1
+  assert_contains "$TMPHOME/force_run.txt" "trash"
   assert_file_not_exists "$TRASH_DIR/interactive.txt"
 }
 
 @test "invalid interactive selection fails with non-zero exit" {
   local rc=0
-  printf '99\n' | HOME="$TMPHOME" ./mdoctor clean --interactive >/dev/null 2>&1 || rc=$?
+  printf '99\n' | HOME="$TMPHOME" ./mdoctor clean --interactive >"$TMPHOME/invalid_run.txt" 2>&1 || rc=$?
   [ "$rc" -ne 0 ] || fail "Expected non-zero exit for invalid interactive selection"
+  # The specific error must be reported, not just any failure.
+  assert_contains "$TMPHOME/invalid_run.txt" "Selection out of range"
 }

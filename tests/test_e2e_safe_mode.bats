@@ -25,9 +25,18 @@ _run_with_timeout() {
   fi
 }
 
+_e2e_hermetic_path() {
+  # Sparse PATH farm (same pattern as test_check_modules.bats): the
+  # suite-wide stubs first, then every host binary except the probes that
+  # can hang CI — so the shared full audit below stays fast and hang-free
+  # on every platform.
+  echo "$ROOT_DIR/tests/helpers/bin:$TEST_TMP/farm"
+}
+
 setup_file() {
   cd "$ROOT_DIR" || return 1
   export TEST_TMP TMPHOME TMPHOME2 E2E_ENV_OK E2E_SKIP_REASON _IS_MACOS
+  export E2E_JSON_OUT E2E_REPORT E2E_AUDIT_RC
   FIXTURE_ROOT="$(fixture_root)"
   export FIXTURE_ROOT
   TEST_TMP="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-e2e.$(fixture_run_id).XXXXXX")"
@@ -68,6 +77,38 @@ WL
 # empty
 WL
   echo "e2e-sample" >"$TMPHOME2/.Trash/e2e_test_file.txt"
+
+  # Sparse PATH farm for the shared full audit (see _e2e_hermetic_path).
+  mkdir -p "$TEST_TMP/farm" "$TEST_TMP/home"
+  for _d in /usr/bin /bin /usr/sbin /sbin; do
+    [ -d "$_d" ] || continue
+    for _f in "$_d"/*; do
+      [ -f "$_f" ] || continue
+      _b="$(basename "$_f")"
+      case "$_b" in
+        ping|nslookup|ss|ps|softwareupdate) continue ;;
+      esac
+      [ -e "$TEST_TMP/farm/$_b" ] || ln -s "$_f" "$TEST_TMP/farm/$_b"
+    done
+  done
+  for _need in bash env sh; do
+    if [ ! -e "$TEST_TMP/farm/$_need" ]; then
+      _p="$(command -v "$_need" 2>/dev/null || true)"
+      [ -n "$_p" ] && ln -s "$_p" "$TEST_TMP/farm/$_need"
+    fi
+  done
+
+  # Shared full audit (issue #74): one hermetic `check --json` run feeds
+  # both the JSON schema test and the deterministic-path report test, so
+  # the file pays for a full audit only once. MDOCTOR_REPORT_MD pins the
+  # markdown report to a known path instead of a fresh mktemp file.
+  E2E_JSON_OUT="$TEST_TMP/e2e_full_json.out"
+  E2E_REPORT="$TEST_TMP/e2e-report.md"
+  E2E_AUDIT_RC=0
+  PATH="$(_e2e_hermetic_path)" HOME="$TEST_TMP/home" \
+    MDOCTOR_REPORT_MD="$E2E_REPORT" \
+    _run_with_timeout ./mdoctor check --json \
+    >"$E2E_JSON_OUT" 2>"$TEST_TMP/e2e_full_json.err" || E2E_AUDIT_RC=$?
 }
 
 teardown_file() {
@@ -78,6 +119,15 @@ teardown_file() {
 setup() {
   if [ "${E2E_ENV_OK:-}" != true ]; then
     skip "e2e test requires a full OS environment (${E2E_SKIP_REASON:-missing capabilities})"
+  fi
+}
+
+_require_audit() {
+  # Fail — never warn — when the shared full audit did not succeed, so a
+  # broken audit can never silently green the JSON/report tests.
+  if [ "${E2E_AUDIT_RC:-1}" -ne 0 ]; then
+    tail -n 20 "$TEST_TMP/e2e_full_json.err" >&2 || true
+    fail "shared full audit 'mdoctor check --json' exited ${E2E_AUDIT_RC:-?} (expected 0)"
   fi
 }
 
@@ -145,33 +195,80 @@ _run_fail() {
 
 @test "e2e: single module health checks" {
   local out
-  out=$(_run_ok "check-system" ./mdoctor check -m system)
+  out=$(_run_ok "check-system" ./mdoctor check -m system) && assert_contains "$out" "OS:"
   # Network check uses nslookup/ping which can hang in minimal CI containers
   if [ "$_IS_MACOS" = true ]; then
-    _run_ok "check-network" ./mdoctor check -m network >/dev/null
+    out=$(_run_ok "check-network" ./mdoctor check -m network) && assert_contains "$out" "Network Diagnostics"
   fi
 }
 
-@test "e2e: JSON output carries the real version (macOS)" {
-  _run_ok "check-json" ./mdoctor check -m system --json >/dev/null
-  # Task 5.4: the JSON report carries MDOCTOR_VERSION via env propagation
-  # into doctor.sh — no literal fallback remains, so the field must be the
-  # real version, never null. Only the full audit emits JSON, so like the
-  # full-check section this is gated to macOS (avoids the docker/nslookup
-  # hang risk on Linux CI).
-  if [ "$_IS_MACOS" != true ]; then
-    skip "full JSON audit runs on macOS only"
+@test "e2e: JSON output parses and matches the schema" {
+  # The JSON document is piped through a real parser (issue #74,
+  # F-TEST-011) — string-grep alone would stay green on malformed JSON.
+  _require_audit
+  awk '/^\{/{flag=1} flag{print} /^\}/{if (flag) exit}' \
+    "$E2E_JSON_OUT" >"$TEST_TMP/e2e_json_doc.json"
+  [ -s "$TEST_TMP/e2e_json_doc.json" ] || fail "no JSON document found in 'mdoctor check --json' output"
+  # The JSON report carries MDOCTOR_VERSION (Task 5.4: single source of
+  # truth, no literal fallback) — the bare release version, without the
+  # `+commit` suffix that `mdoctor version` appends in dev trees.
+  local expect_version
+  expect_version="$(./mdoctor version | awk '{print $2}' | cut -d+ -f1)"
+  if command -v python3 >/dev/null 2>&1; then
+    MDOCTOR_EXPECT_VERSION="$expect_version" python3 - "$TEST_TMP/e2e_json_doc.json" <<'PYEOF' || fail "JSON schema assertion failed (see above)"
+import json, os, sys
+with open(sys.argv[1]) as f:
+    doc = json.load(f)  # malformed JSON raises -> suite fails
+assert isinstance(doc["version"], str) and doc["version"], "version must be a non-empty string"
+assert doc["version"] == os.environ["MDOCTOR_EXPECT_VERSION"], \
+    "version %r != dispatcher version %r" % (doc["version"], os.environ["MDOCTOR_EXPECT_VERSION"])
+assert isinstance(doc["timestamp"], str) and doc["timestamp"], "timestamp must be a non-empty string"
+assert isinstance(doc["hostname"], str) and doc["hostname"], "hostname must be a non-empty string"
+assert isinstance(doc["score"], int) and 0 <= doc["score"] <= 100, "score must be an int in 0..100"
+assert isinstance(doc["rating"], str) and doc["rating"], "rating must be a non-empty string"
+assert isinstance(doc["warnings"], int) and doc["warnings"] >= 0, "warnings must be a non-negative int"
+assert isinstance(doc["failures"], int) and doc["failures"] >= 0, "failures must be a non-negative int"
+assert isinstance(doc["actions"], list), "actions must be an array"
+assert isinstance(doc["checks"], list), "checks must be an array"
+PYEOF
+  elif command -v jq >/dev/null 2>&1; then
+    jq -e '(.version | type == "string" and length > 0)
+      and (.timestamp | type == "string" and length > 0)
+      and (.hostname | type == "string" and length > 0)
+      and (.score | type == "number" and . >= 0 and . <= 100)
+      and (.rating | type == "string" and length > 0)
+      and (.warnings | type == "number" and . >= 0)
+      and (.failures | type == "number" and . >= 0)
+      and (.actions | type == "array")
+      and (.checks | type == "array")
+      and (.version == $MDOCTOR_EXPECT_VERSION)' \
+      --arg MDOCTOR_EXPECT_VERSION "$expect_version" \
+      "$TEST_TMP/e2e_json_doc.json" >/dev/null \
+      || fail "JSON schema assertion failed (jq)"
+  else
+    skip "no JSON parser available (need python3 or jq)"
   fi
-  local out
-  out=$(_run_ok "check-json-full" ./mdoctor check --json)
-  assert_contains "$out" '"version": "3.0.0"'
-  assert_not_contains "$out" '"version": null'
+}
+
+@test "e2e: markdown report is written to the deterministic override path" {
+  # The report-generation check (issue #74): MDOCTOR_REPORT_MD pins the
+  # report location, and this test fails — it never degrades to a stderr
+  # warning — when the report is missing or lacks the expected content.
+  _require_audit
+  assert_file_exists "$E2E_REPORT"
+  [ -s "$E2E_REPORT" ] || fail "markdown report is empty: $E2E_REPORT"
+  assert_contains "$E2E_REPORT" "# mdoctor System Health Report"
+  assert_contains "$E2E_REPORT" "Health score"
+  assert_contains "$E2E_REPORT" "_End of report._"
 }
 
 @test "e2e: dry-run cleanup (full and single module)" {
   local out
   out=$(_run_ok "clean-dryrun-full" env HOME="$TMPHOME" ./mdoctor clean)
+  assert_contains "$out" "DRY_RUN=true"
+  assert_contains "$out" "Emptying Trash"
   out=$(_run_ok "clean-dryrun-trash" env HOME="$TMPHOME2" ./mdoctor clean -m trash)
+  assert_contains "$out" "Emptying Trash"
 }
 
 @test "e2e: history command" {
@@ -180,15 +277,16 @@ _run_fail() {
 }
 
 @test "e2e: debug mode" {
-  _run_ok "check-debug" ./mdoctor check -m system --debug >/dev/null
+  local out
+  out=$(_run_ok "check-debug" ./mdoctor check -m system --debug) && assert_contains "$out" "DEBUG"
 }
 
 @test "e2e: error handling for unknown commands and modules" {
   local out
   out=$(_run_fail "bad-command" ./mdoctor badcommand) && assert_contains "$out" "Unknown command"
   out=$(_run_fail "bad-check-module" ./mdoctor check -m nonexistent) && assert_contains "$out" "Unknown check module"
-  _run_fail "bad-clean-module" ./mdoctor clean -m nonexistent >/dev/null
-  _run_fail "fix-no-target" ./mdoctor fix >/dev/null
+  out=$(_run_fail "bad-clean-module" ./mdoctor clean -m nonexistent) && assert_contains "$out" "Unknown cleanup module"
+  out=$(_run_fail "fix-no-target" ./mdoctor fix) && assert_contains "$out" "Usage: mdoctor fix"
   out=$(_run_fail "bad-fix-target" ./mdoctor fix nonexistent) && assert_contains "$out" "Unknown fix target"
 }
 

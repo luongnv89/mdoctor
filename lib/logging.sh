@@ -25,7 +25,14 @@ md_append() {
 }
 
 md_init() {
-  REPORT_MD="$(mdoctor_mktemp_file mdoctor-report)"
+  # Deterministic report path (issue #74): automation and tests set
+  # MDOCTOR_REPORT_MD to assert on the report's location and content.
+  # Otherwise a fresh secure temp file is used, as before.
+  if [ -n "${MDOCTOR_REPORT_MD:-}" ]; then
+    REPORT_MD="$MDOCTOR_REPORT_MD"
+  else
+    REPORT_MD="$(mdoctor_mktemp_file mdoctor-report)"
+  fi
   : > "$REPORT_MD"  # truncate/create
   md_append "# mdoctor System Health Report"
   md_append ""
