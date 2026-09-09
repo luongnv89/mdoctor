@@ -100,7 +100,12 @@ teardown() {
   local t="$TEST_BASE/wl"
   mkdir -p "$t"
   : >"$MDOCTOR_CLEANUP_WHITELIST_FILE"
-  HOME="$HOME" MDOCTOR_CLEANUP_WHITELIST_FILE="$MDOCTOR_CLEANUP_WHITELIST_FILE" \
+  # Sanitized environment on purpose: coverage runners (kcov) export
+  # tracing variables (SHELLOPTS/PS4/BASH_ENV) that a `set -u` child
+  # would trip over, failing this test for instrumentation reasons
+  # instead of product reasons. Only the inputs under test cross over.
+  env -i PATH="/usr/bin:/bin" HOME="$HOME" ROOT_DIR="$ROOT_DIR" \
+    MDOCTOR_CLEANUP_WHITELIST_FILE="$MDOCTOR_CLEANUP_WHITELIST_FILE" \
     bash -c '
       set -u
       source "$ROOT_DIR/lib/platform.sh"
