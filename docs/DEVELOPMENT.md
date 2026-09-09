@@ -120,7 +120,7 @@ CI lanes map to local commands:
 - **Test (Linux)** → same regression suite + smoke commands on Ubuntu
 - **Coverage (kcov, Task 6.1)** → kcov v43 (built from pinned source) runs `./tests/run.sh`; the job summary prints the coverage percentage, enforces the `COVERAGE_MIN` ratchet floor, and uploads the HTML report as the `coverage` artifact (see `MODERNIZATION_PLAN.md` M3)
 - **Test (Bash 3.2)** → `bash@sha256:3a13e5da…` container (`image: bash@sha256:` pinned in `ci.yml`) running `./tests/run.sh`
-- **Release Sanity** → isolated installer/uninstaller flow using env-overridden temp paths
+- **Release Sanity** → `./tests/run.sh tests/test_installer.bats` (isolated installer/uninstaller round trip via env-overridden temp paths, matrixed across Ubuntu and macOS)
 
 Optional Bash 3.2 parity check (useful before CI changes):
 
@@ -128,14 +128,10 @@ Optional Bash 3.2 parity check (useful before CI changes):
 docker run --rm -v "$PWD":/repo -w /repo bash@sha256:3a13e5da38baa575985778cd09ce8ac736d4b4dafc91a430e71271f6e5311b89 bash ./tests/run.sh
 ```
 
-For local installer sanity on non-macOS environments (CI/dev only), use:
+For a local installer round trip (the same recipe CI runs), use:
 
 ```bash
-MDOCTOR_SKIP_PLATFORM_CHECK=true \
-MDOCTOR_REPO_URL="$PWD" \
-MDOCTOR_INSTALL_DIR="$(mktemp -d)/install" \
-MDOCTOR_BIN_DIR="$(mktemp -d)" \
-./install.sh
+./tests/run.sh tests/test_installer.bats
 ```
 
 Run tests in an Ubuntu container (useful for cross-platform validation):
