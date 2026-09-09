@@ -18,6 +18,8 @@ _MDOCTOR_COMMON_LOADED=true
 init_colors() {
   # Each tput is failure-proofed: without TERM (CI, minimal envs) tput
   # errors, and under `set -e` that would kill the caller silently.
+  # (Supersedes the Feb TERM-guard: per-command `|| true` also covers
+  # failing tput binaries, not just an unset TERM.)
   if command -v tput >/dev/null 2>&1; then
     RED="$(tput setaf 1 2>/dev/null || true)"
     GREEN="$(tput setaf 2 2>/dev/null || true)"
@@ -83,6 +85,27 @@ _run_exit_hooks() {
     "$hook" "$_rc" || true
   done
   return "$_rc"
+}
+
+########################################
+# VALUE HELPERS
+########################################
+
+# to_int VALUE
+# Normalizes potentially messy numeric command output into a safe integer.
+# Handles cases like "0\n0" from `grep -c ... || echo 0` patterns.
+to_int() {
+  local raw="${1:-0}"
+  local first
+
+  first="$(printf '%s\n' "$raw" | head -n1 | tr -cd '0-9')"
+  if [ -z "$first" ]; then
+    echo 0
+  else
+    # 10# forces base-10: a value like "008" must never reach (( ))
+    # with a leading zero (bash would read it as octal and fail).
+    printf '%d\n' "$((10#$first))"
+  fi
 }
 
 ########################################
