@@ -235,11 +235,15 @@ jobs:
       # skip (Bash < 4, not a uname/find probe) in this image, and the
       # summary line proves the harness ran to completion. The suite exit
       # code is still propagated last so real failures stay red.
+      # POSIX-sh form on purpose: this step may execute under a minimal
+      # shell in the bash:3.2 image, so no PIPESTATUS/pipefail — the log
+      # file carries the output and $? carries the suite status.
       - name: Run test suite under Bash 3.2 (output-asserted)
         run: |
-          set -o pipefail
-          timeout 300 bash ./tests/run.sh 2>&1 | tee /tmp/bats32.log
-          rc="${PIPESTATUS[0]}"
+          set +e
+          timeout 300 bash ./tests/run.sh > /tmp/bats32.log 2>&1
+          rc=$?
+          cat /tmp/bats32.log
           echo "suite exit: $rc"
           grep -qi "e2e test requires a full OS environment" /tmp/bats32.log || { echo "expected e2e capability-skip marker in output"; exit 1; }
           grep -q "Test summary" /tmp/bats32.log || { echo "expected test summary in output"; exit 1; }

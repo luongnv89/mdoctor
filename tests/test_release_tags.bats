@@ -15,7 +15,7 @@ setup_file() {
   export TEST_TMP KEYID GPG_OK
   FIXTURE_ROOT="$(fixture_root)"
   export FIXTURE_ROOT
-  TEST_TMP="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-release.$(fixture_run_id).XXXXXX")"
+  TEST_TMP="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-rel.$(fixture_run_id).XXXXXX")"
   fixture_trap_cleanup "$TEST_TMP"
   # --- Fixture remote: working tree (including uncommitted changes) + test
   # GPG key + signed tag. A plain `git clone` would miss uncommitted edits,
@@ -28,7 +28,10 @@ setup_file() {
   git -C "$TEST_TMP/remote" config user.email "test@example.com"
   git -C "$TEST_TMP/remote" add -A 2>/dev/null
   git -C "$TEST_TMP/remote" commit -qm "fixture" 2>/dev/null
-  export GNUPGHOME="$TEST_TMP/gnupg"
+  # Short homedir name on purpose: the agent socket lives at
+  # $GNUPGHOME/S.gpg-agent and macOS caps sockaddr_un at 104 bytes, so a
+  # deep fixture path would fail key generation (issue #73 follow-up).
+  export GNUPGHOME="$TEST_TMP/gpg"
   mkdir -p "$GNUPGHOME"
   chmod 700 "$GNUPGHOME"
   cat >"$TEST_TMP/batch" <<'EOF'
@@ -39,8 +42,8 @@ Name-Real: mdoctor test
 Name-Email: test@example.com
 Expire-Date: 0
 EOF
-  gpg --batch --gen-key "$TEST_TMP/batch" >/dev/null 2>&1
-  KEYID="$(gpg --list-keys --with-colons test@example.com | awk -F: '$1=="pub"{getline; print $10}' | head -n 1)"
+  gpg --batch --gen-key "$TEST_TMP/batch" >"$TEST_TMP/genkey.log" 2>&1
+  KEYID="$(gpg --list-keys --with-colons test@example.com 2>/dev/null | awk -F: '$1=="pub"{getline; print $10}' | head -n 1)"
   GPG_OK=true
   [ -n "$KEYID" ] || GPG_OK=false
   if [ "$GPG_OK" = true ]; then
@@ -101,10 +104,10 @@ setup() {
 }
 
 @test "unsigned enforcement fails closed without the key" {
-  mkdir -p "$TEST_TMP/gnupg-empty"
-  chmod 700 "$TEST_TMP/gnupg-empty"
+  mkdir -p "$TEST_TMP/gpg0"
+  chmod 700 "$TEST_TMP/gpg0"
   local rc=0
-  GNUPGHOME="$TEST_TMP/gnupg-empty" MDOCTOR_REQUIRE_TAG_SIGNATURE=true \
+  GNUPGHOME="$TEST_TMP/gpg0" MDOCTOR_REQUIRE_TAG_SIGNATURE=true \
     MDOCTOR_REPO_URL="$TEST_TMP/remote" MDOCTOR_INSTALL_DIR="$TEST_TMP/install2" \
     ./install.sh >"$TEST_TMP/enforce.out" 2>&1 || rc=$?
   [ "$rc" -ne 0 ] || fail "Expected REQUIRE_TAG_SIGNATURE to refuse without the key"
