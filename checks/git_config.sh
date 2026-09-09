@@ -59,8 +59,8 @@ check_git_config() {
 
       # Check permissions (should be 600 or 400)
       local perms
-      # Use stat -c on Linux (macOS -f is incompatible on Linux and doesn't error)
-      if uname -s 2>/dev/null | grep -q Darwin; then
+      # stat format differs per platform (macOS -f is meaningless on Linux)
+      if is_macos; then
         perms=$(stat -f "%Lp" "$f" 2>/dev/null || echo "")
       else
         perms=$(stat -c "%a" "$f" 2>/dev/null || echo "")
