@@ -17,6 +17,7 @@
 # hardening those sites; this test does not cover them.
 
 load 'helpers/assert'
+load 'helpers/fixture'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
@@ -26,8 +27,10 @@ source "$ROOT_DIR/lib/platform.sh"
 setup_file() {
   cd "$ROOT_DIR" || return 1
   export TMPHOME TRASH_DIR STUB_LOG
-  TMPHOME="${HOME}/.mdoctor-test-preflight.$$.$RANDOM"
-  mkdir -p "$TMPHOME"
+  FIXTURE_ROOT="$(fixture_root)"
+  export FIXTURE_ROOT
+  TMPHOME="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-preflight.$(fixture_run_id).XXXXXX")"
+  fixture_trap_cleanup "$TMPHOME"
   # Build a poisoned trash dir: contains a subdirectory with no read/exec
   # perms, which is exactly what `du -sk` chokes on (per-item permission
   # denied).

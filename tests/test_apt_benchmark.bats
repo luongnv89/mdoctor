@@ -13,6 +13,7 @@
 # Bash 3.2 compatible.
 
 load 'helpers/assert'
+load 'helpers/fixture'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
@@ -21,8 +22,10 @@ setup_file() {
   cd "$ROOT_DIR" || return 1
   export PATH="$ROOT_DIR/tests/helpers/bin:$PATH"
   export TMPHOME
-  TMPHOME="${HOME}/.mdoctor-test-aptbench.$$.$RANDOM"
-  mkdir -p "$TMPHOME"
+  FIXTURE_ROOT="$(fixture_root)"
+  export FIXTURE_ROOT
+  TMPHOME="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-aptbench.$(fixture_run_id).XXXXXX")"
+  fixture_trap_cleanup "$TMPHOME"
   mkdir -p "$TMPHOME/.config/mdoctor"
   printf '# empty\n' > "$TMPHOME/.config/mdoctor/cleanup_whitelist"
 }

@@ -3,6 +3,7 @@
 # are created private (0700 dirs, 0600 files).
 
 load 'helpers/assert'
+load 'helpers/fixture'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
@@ -19,8 +20,10 @@ file_mode() {
 setup_file() {
   cd "$ROOT_DIR" || return 1
   export TMPHOME CANARY
-  TMPHOME="${HOME}/.mdoctor-test-history.$$.$RANDOM"
-  mkdir -p "$TMPHOME"
+  FIXTURE_ROOT="$(fixture_root)"
+  export FIXTURE_ROOT
+  TMPHOME="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-history.$(fixture_run_id).XXXXXX")"
+  fixture_trap_cleanup "$TMPHOME"
   CANARY="$TMPHOME/mdoctor_canary_$$"
   rm -f "$CANARY"
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 
 load 'helpers/assert'
+load 'helpers/fixture'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
@@ -12,7 +13,10 @@ source "$ROOT_DIR/lib/safety.sh"
 setup_file() {
   cd "$ROOT_DIR" || return 1
   export TMPHOME CANARY
-  TMPHOME="${HOME}/.mdoctor-test-safety.$$.$RANDOM"
+  FIXTURE_ROOT="$(fixture_root)"
+  export FIXTURE_ROOT
+  TMPHOME="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-safety.$(fixture_run_id).XXXXXX")"
+  fixture_trap_cleanup "$TMPHOME"
   mkdir -p "$TMPHOME/.config/mdoctor"
   export HOME="$TMPHOME"
   export MDOCTOR_CLEANUP_WHITELIST_FILE="$TMPHOME/.config/mdoctor/cleanup_whitelist"

@@ -15,6 +15,7 @@
 # Bash 3.2 compatible: no associative arrays, no mapfile, no [[ =~ ]].
 
 load 'helpers/assert'
+load 'helpers/fixture'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
@@ -23,8 +24,10 @@ setup_file() {
   cd "$ROOT_DIR" || return 1
   export PATH="$ROOT_DIR/tests/helpers/bin:$PATH"
   export TMPHOME
-  TMPHOME="${HOME}/.mdoctor-test-browserdev.$$.$RANDOM"
-  mkdir -p "$TMPHOME"
+  FIXTURE_ROOT="$(fixture_root)"
+  export FIXTURE_ROOT
+  TMPHOME="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-browserdev.$(fixture_run_id).XXXXXX")"
+  fixture_trap_cleanup "$TMPHOME"
   mkdir -p "$TMPHOME/.config/mdoctor"
   printf '# empty whitelist for test\n' > "$TMPHOME/.config/mdoctor/cleanup_whitelist"
 }

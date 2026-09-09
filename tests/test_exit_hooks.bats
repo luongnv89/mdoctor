@@ -7,6 +7,7 @@
 # cleanup.sh's session-end trap, losing the operations-log record).
 
 load 'helpers/assert'
+load 'helpers/fixture'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
@@ -16,8 +17,10 @@ source "$ROOT_DIR/lib/platform.sh"
 setup_file() {
   cd "$ROOT_DIR" || return 1
   export TMPHOME
-  TMPHOME="${HOME}/.mdoctor-test-exit-hooks.$$.$RANDOM"
-  mkdir -p "$TMPHOME"
+  FIXTURE_ROOT="$(fixture_root)"
+  export FIXTURE_ROOT
+  TMPHOME="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-exit-hooks.$(fixture_run_id).XXXXXX")"
+  fixture_trap_cleanup "$TMPHOME"
 }
 
 teardown_file() {

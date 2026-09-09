@@ -4,6 +4,7 @@
 # fragments nor drag important_project into safe_remove.
 
 load 'helpers/assert'
+load 'helpers/fixture'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
@@ -17,7 +18,10 @@ source "$ROOT_DIR/lib/cleanup_scope.sh"
 setup_file() {
   cd "$ROOT_DIR" || return 1
   export TEST_TMP REMOVED WEIRD
-  TEST_TMP="$(mktemp -d)"
+  FIXTURE_ROOT="$(fixture_root)"
+  export FIXTURE_ROOT
+  TEST_TMP="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-nulscan.$(fixture_run_id).XXXXXX")"
+  fixture_trap_cleanup "$TEST_TMP"
   init_colors
   # Stub safe_remove: record every candidate NUL-delimited, delete nothing.
   REMOVED="$TEST_TMP/removed.log"

@@ -60,7 +60,7 @@ fi
 filtered=()
 for f in "${files[@]}"; do
   case "$f" in
-    ./scripts/check_bash32.sh|scripts/check_bash32.sh) continue ;;
+    ./scripts/check_bash32.sh|scripts/check_bash32.sh|*/scripts/check_bash32.sh) continue ;;
     *) filtered+=("$f") ;;
   esac
 done

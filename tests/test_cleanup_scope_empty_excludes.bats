@@ -6,6 +6,7 @@
 #
 
 load 'helpers/assert'
+load 'helpers/fixture'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
@@ -13,8 +14,10 @@ export ROOT_DIR
 setup_file() {
   cd "$ROOT_DIR" || return 1
   export TMPDIR_SCOPE SCOPE_FILE
-  TMPDIR_SCOPE="${ROOT_DIR}/.mdoctor-test-scope-empty.$$.$RANDOM"
-  mkdir -p "$TMPDIR_SCOPE"
+  FIXTURE_ROOT="$(fixture_root)"
+  export FIXTURE_ROOT
+  TMPDIR_SCOPE="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-scope-empty.$(fixture_run_id).XXXXXX")"
+  fixture_trap_cleanup "$TMPDIR_SCOPE"
   SCOPE_FILE="$TMPDIR_SCOPE/cleanup_scope.conf"
   cat >"$SCOPE_FILE" <<'EOF'
 # No active EXCLUDE_GLOB lines — only comments (default user config).

@@ -3,6 +3,7 @@
 # uninstall prompts (skippable) and reports retained config.
 
 load 'helpers/assert'
+load 'helpers/fixture'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
@@ -10,8 +11,10 @@ export ROOT_DIR
 setup_file() {
   cd "$ROOT_DIR" || return 1
   export TMPHOME
-  TMPHOME="${HOME}/.mdoctor-test-install.$$.$RANDOM"
-  mkdir -p "$TMPHOME"
+  FIXTURE_ROOT="$(fixture_root)"
+  export FIXTURE_ROOT
+  TMPHOME="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-install.$(fixture_run_id).XXXXXX")"
+  fixture_trap_cleanup "$TMPHOME"
   echo "keep" > "$TMPHOME/home-marker.txt"
 }
 

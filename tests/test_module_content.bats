@@ -20,6 +20,7 @@
 # Bash 3.2 compatible: no associative arrays, no mapfile, no [[ =~ ]].
 
 load 'helpers/assert'
+load 'helpers/fixture'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
@@ -162,7 +163,10 @@ _assert_module_content() {
 setup_file() {
   cd "$ROOT_DIR" || return 1
   export TEST_TMP
-  TEST_TMP="$(mktemp -d)"
+  FIXTURE_ROOT="$(fixture_root)"
+  export FIXTURE_ROOT
+  TEST_TMP="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-modcontent.$(fixture_run_id).XXXXXX")"
+  fixture_trap_cleanup "$TEST_TMP"
   mkdir -p "$TEST_TMP/farm" "$TEST_TMP/home/.config/mdoctor"
   printf '# empty whitelist for test\n' > "$TEST_TMP/home/.config/mdoctor/cleanup_whitelist"
   local _d _f _b _p _need

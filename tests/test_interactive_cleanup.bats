@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 
 load 'helpers/assert'
+load 'helpers/fixture'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
@@ -10,8 +11,10 @@ source "$ROOT_DIR/lib/platform.sh"
 setup_file() {
   cd "$ROOT_DIR" || return 1
   export TMPHOME TRASH_DIR
-  TMPHOME="${HOME}/.mdoctor-test-interactive.$$.$RANDOM"
-  mkdir -p "$TMPHOME"
+  FIXTURE_ROOT="$(fixture_root)"
+  export FIXTURE_ROOT
+  TMPHOME="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-interactive.$(fixture_run_id).XXXXXX")"
+  fixture_trap_cleanup "$TMPHOME"
   # Use platform-aware trash directory
   TRASH_DIR="$TMPHOME/$(basename "$(platform_trash_dir)")"
   if is_linux; then
