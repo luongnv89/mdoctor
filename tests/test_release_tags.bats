@@ -72,7 +72,7 @@ EOF
 
 teardown_file() {
   [ -n "${TEST_TMP:-}" ] && rm -rf "$TEST_TMP"
-  [ -n "${GPG_TMP:-}" ] && rm -rf "$GPG_TMP"
+  [ -n "${GPG_TMP:-}" ] && rm -rf "$GPG_TMP" "${GPG_TMP}-empty"
   return 0
 }
 
