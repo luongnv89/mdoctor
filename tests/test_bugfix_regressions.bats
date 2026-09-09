@@ -104,9 +104,11 @@ teardown() {
   # tracing variables (SHELLOPTS/PS4/BASH_ENV) that a `set -u` child
   # would trip over, failing this test for instrumentation reasons
   # instead of product reasons. Only the inputs under test cross over.
-  env -i PATH="/usr/bin:/bin" HOME="$HOME" ROOT_DIR="$ROOT_DIR" \
+  # "$BASH" (absolute) on purpose: the sanitized PATH cannot be relied
+  # on for locating bash itself (e.g. /usr/local/bin in slim images).
+  env -i PATH="/usr/local/bin:/usr/bin:/bin" HOME="$HOME" ROOT_DIR="$ROOT_DIR" \
     MDOCTOR_CLEANUP_WHITELIST_FILE="$MDOCTOR_CLEANUP_WHITELIST_FILE" \
-    bash -c '
+    "$BASH" -c '
       set -u
       source "$ROOT_DIR/lib/platform.sh"
       source "$ROOT_DIR/lib/safety.sh"
