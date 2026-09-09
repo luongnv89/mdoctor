@@ -202,6 +202,27 @@ _run_fail() {
   fi
 }
 
+@test "e2e: single-module JSON output parses as valid JSON" {
+  # Migrated from the retired test_e2e_safe_mode.sh (PR #7): single-module
+  # --json must be a parseable document with a populated checks array.
+  # NOTE: _run_ok echoes the output FILE path, not its content.
+  local out_file
+  out_file=$(_run_ok "check-system-json" ./mdoctor check -m system --json) || return 1
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$out_file" <<'PYEOF' || fail "single-module --json did not parse or checks array is empty"
+import json, sys
+with open(sys.argv[1]) as f:
+    doc = json.load(f)
+assert isinstance(doc["checks"], list) and len(doc["checks"]) > 0, "checks must be populated"
+PYEOF
+  elif command -v jq >/dev/null 2>&1; then
+    jq -e '.checks | type == "array" and length > 0' "$out_file" >/dev/null \
+      || fail "single-module --json invalid under jq"
+  else
+    skip "no JSON parser available (need python3 or jq)"
+  fi
+}
+
 @test "e2e: JSON output parses and matches the schema" {
   # The JSON document is piped through a real parser (issue #74,
   # F-TEST-011) — string-grep alone would stay green on malformed JSON.

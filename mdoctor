@@ -344,7 +344,9 @@ cmd_check() {
     export MDOCTOR_DEBUG
   fi
 
-  echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
+  if [ "$json_flag" = false ]; then
+    echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
+  fi
 
   if [ -n "$module" ]; then
     # Run a single check module — allowlisted before anything is sourced.
@@ -399,6 +401,12 @@ cmd_check() {
     _json_risk="$(get_module_risk "$module" check || true)"
     json_set_context "$module" "$_json_cat" "$_json_risk"
 
+    # In JSON mode, silence human-readable stdout while running checks.
+    if [ "$json_flag" = true ]; then
+      exec 3>&1
+      exec >/dev/null
+    fi
+
     # Map module name to function
     case "$module" in
       system)      check_system ;;
@@ -427,20 +435,15 @@ cmd_check() {
     # Stop spinner after single-module check
     progress_stop
 
-    # Show summary for single module
-    if ((${#ACTIONS[@]} > 0)); then
-      echo
-      echo "${BOLD}Actions:${RESET}"
-      local i=1
-      for action in "${ACTIONS[@]}"; do
-        echo "  ${i}. ${action}"
-        i=$((i + 1))
-      done
-    fi
-
-    # Single-module --json (issue #90): emit the same document shape as
-    # the full audit so the flag is never silently ignored here.
+    # Single-module --json: restore stdout, emit the same document shape
+    # as the full audit, and return before the human-readable summary so
+    # the payload parses as valid JSON on its own (issues #90, #183).
+    # Check records were accumulated in-memory by the status helpers while
+    # stdout was silenced; only the actions need adding here.
     if [ "$json_flag" = true ]; then
+      exec >&3
+      exec 3>&-
+
       local _json_action
       for _json_action in "${ACTIONS[@]}"; do
         json_add_action "$_json_action"
@@ -461,6 +464,18 @@ cmd_check() {
         _json_rating="Critical – fix issues ASAP"
       fi
       json_build_output "$_json_score" "$_json_rating" "$WARN_COUNT" "$FAIL_COUNT"
+      return 0
+    fi
+
+    # Show summary for single module
+    if ((${#ACTIONS[@]} > 0)); then
+      echo
+      echo "${BOLD}Actions:${RESET}"
+      local i=1
+      for action in "${ACTIONS[@]}"; do
+        echo "  ${i}. ${action}"
+        i=$((i + 1))
+      done
     fi
   else
     # Run full doctor
