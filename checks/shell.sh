@@ -115,7 +115,9 @@ check_one_shell_file() {
     if echo "$line" | grep -qE '^\s*(source|\.)\s+'; then
       local target expanded
 
-      target=$(echo "$line" | sed -E 's/^\s*(source|\.)\s+//; s/[;&|].*//')
+      # Portable whitespace class: BSD sed (macOS) does not match \s,
+      # which left the `source` keyword attached and warned on every line.
+      target=$(echo "$line" | sed -E 's/^[[:space:]]*(source|\.)[[:space:]]+//; s/[;&|].*//')
       target=$(echo "$target" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
       target=$(echo "$target" | sed -E 's/^["'\'']//; s/["'\'']$//')
 
