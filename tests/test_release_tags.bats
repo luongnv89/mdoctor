@@ -2,6 +2,7 @@
 # Task 4.1: install and self-update from signed release tags.
 
 load 'helpers/assert'
+load 'helpers/fixture'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
@@ -12,7 +13,10 @@ setup_file() {
     return 0
   fi
   export TEST_TMP KEYID GPG_OK
-  TEST_TMP="$(mktemp -d)"
+  FIXTURE_ROOT="$(fixture_root)"
+  export FIXTURE_ROOT
+  TEST_TMP="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-release.$(fixture_run_id).XXXXXX")"
+  fixture_trap_cleanup "$TEST_TMP"
   # --- Fixture remote: working tree (including uncommitted changes) + test
   # GPG key + signed tag. A plain `git clone` would miss uncommitted edits,
   # so the fixture is copied then committed fresh.

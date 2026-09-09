@@ -7,7 +7,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT_DIR"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# MDOCTOR_LINT_ROOT overrides the discovery root (tests point it at a
+# throwaway sandbox so the lint-discovery test never writes into the repo
+# working tree). Defaults to the repo root; every other gate behaves as
+# before when the variable is unset.
+LINT_ROOT="${MDOCTOR_LINT_ROOT:-$ROOT_DIR}"
+cd "$LINT_ROOT" || exit 1
 
 files=()
 while IFS= read -r f; do
@@ -52,5 +58,14 @@ shellcheck -S warning "${files[@]}"
 echo "ShellCheck lint passed."
 
 # Task 5.1 (W3): Bash 3.2 floor policy check over the same file list
-# (single discovery source — pass the list, don't re-discover).
-"$(dirname "$0")/check_bash32.sh" "${files[@]}"
+# (single discovery source — pass the list, don't re-discover). Absolute
+# paths when a lint-root override is active (check_bash32.sh re-roots
+# itself, so relative paths would resolve against the wrong tree).
+_abs_files=()
+for _f in "${files[@]}"; do
+  case "$_f" in
+    /*) _abs_files+=("$_f") ;;
+    *) _abs_files+=("$LINT_ROOT/${_f#./}") ;;
+  esac
+done
+"$SCRIPT_DIR/check_bash32.sh" "${_abs_files[@]}"

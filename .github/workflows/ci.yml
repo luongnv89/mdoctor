@@ -230,8 +230,20 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Run test suite under Bash 3.2
-        run: timeout 300 bash ./tests/run.sh
+      # Issue #73: the Bash 3.2 job asserts on output rather than exit
+      # status alone — the e2e lane must report its explicit capability
+      # skip (Bash < 4, not a uname/find probe) in this image, and the
+      # summary line proves the harness ran to completion. The suite exit
+      # code is still propagated last so real failures stay red.
+      - name: Run test suite under Bash 3.2 (output-asserted)
+        run: |
+          set -o pipefail
+          timeout 300 bash ./tests/run.sh 2>&1 | tee /tmp/bats32.log
+          rc="${PIPESTATUS[0]}"
+          echo "suite exit: $rc"
+          grep -qi "e2e test requires a full OS environment" /tmp/bats32.log || { echo "expected e2e capability-skip marker in output"; exit 1; }
+          grep -q "Test summary" /tmp/bats32.log || { echo "expected test summary in output"; exit 1; }
+          exit "$rc"
 
   coverage:
     # Task 6.1 (F-TEST-004 / M3): bash coverage with kcov on the Linux lane.

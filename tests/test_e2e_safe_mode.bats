@@ -6,6 +6,7 @@
 # Runs on macOS and Linux; long-running commands are guarded with timeouts.
 
 load 'helpers/assert'
+load 'helpers/fixture'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
@@ -26,14 +27,31 @@ _run_with_timeout() {
 
 setup_file() {
   cd "$ROOT_DIR" || return 1
-  export TEST_TMP TMPHOME TMPHOME2 E2E_ENV_OK _IS_MACOS
-  TEST_TMP="$(mktemp -d)"
-  # Skip in minimal environments (e.g. bash:3.2 Docker) that lack basic tools
-  if ! command -v uname >/dev/null 2>&1 || ! command -v find >/dev/null 2>&1; then
+  export TEST_TMP TMPHOME TMPHOME2 E2E_ENV_OK E2E_SKIP_REASON _IS_MACOS
+  FIXTURE_ROOT="$(fixture_root)"
+  export FIXTURE_ROOT
+  TEST_TMP="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-e2e.$(fixture_run_id).XXXXXX")"
+  fixture_trap_cleanup "$TEST_TMP"
+  # Explicit capability gate (issue #73): the e2e lane needs a full OS
+  # environment on Bash >= 4. A job-set MDOCTOR_E2E_SKIP flag forces the
+  # skip; otherwise the Bash major version decides — never a probe for
+  # utilities (uname/find) that minimal images like bash:3.2 also ship,
+  # which is why the old guard never fired there.
+  if [ -n "${MDOCTOR_E2E_SKIP:-}" ]; then
     E2E_ENV_OK=false
+    E2E_SKIP_REASON="MDOCTOR_E2E_SKIP is set"
     return 0
   fi
+  case "${BASH_VERSION:-}" in
+    4.*|5.*) ;;
+    *)
+      E2E_ENV_OK=false
+      E2E_SKIP_REASON="bash ${BASH_VERSION:-unknown} < 4"
+      return 0
+      ;;
+  esac
   E2E_ENV_OK=true
+  E2E_SKIP_REASON=""
   _IS_MACOS=false
   [ "$(uname -s)" = "Darwin" ] && _IS_MACOS=true
 
@@ -59,7 +77,7 @@ teardown_file() {
 
 setup() {
   if [ "${E2E_ENV_OK:-}" != true ]; then
-    skip "e2e test requires a full OS environment"
+    skip "e2e test requires a full OS environment (${E2E_SKIP_REASON:-missing capabilities})"
   fi
 }
 

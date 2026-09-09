@@ -27,8 +27,45 @@ FILE_TIMEOUT="${MDOCTOR_TEST_FILE_TIMEOUT:-600}"
 # set MDOCTOR_STUB_LOG to a file to assert on intercepted invocations.
 export PATH="$SCRIPT_DIR/helpers/bin:$PATH"
 
+# Shared home-scoped fixture root (issue #73): every test sandbox is a
+# `mktemp -d` under this root (see tests/helpers/fixture.bash) — never a
+# bare $HOME child, never the repo tree, never $TMPDIR. MDOCTOR_RUN_ID
+# gives this run a sweepable prefix; ad-hoc `bats` runs without run.sh
+# fall back to an adhoc-<pid> id inside the helper.
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/helpers/fixture.bash"
+MDOCTOR_FIXTURE_ROOT="${MDOCTOR_FIXTURE_ROOT:-${HOME}/.mdoctor-test-fixtures}"
+export MDOCTOR_FIXTURE_ROOT
+MDOCTOR_FIXTURE_RUN_ID="${MDOCTOR_FIXTURE_RUN_ID:-run-$$-$(date +%s)}"
+export MDOCTOR_FIXTURE_RUN_ID
+mkdir -p "$MDOCTOR_FIXTURE_ROOT" || exit 1
+# Startup sweep: remove stale fixture dirs from runs no trap could catch
+# (e.g. kill -9); the EXIT/INT/TERM traps below cover this run's own dirs.
+fixture_sweep_stale 1440 || true
+
+_mdoctor_run_cleanup() {
+  fixture_sweep_run || true
+  fixture_sweep_stale 1440 || true
+}
+_mdoctor_run_signal() {
+  # _MDOCTOR_CHILD is only set while a per-file bats run is in flight;
+  # killing it first lets the trap fire promptly (bash would otherwise
+  # keep waiting on the foreground child) and the child's own INT/TERM
+  # trap cleans its file sandbox before our sweep runs.
+  if [ -n "${_MDOCTOR_CHILD:-}" ]; then
+    kill -TERM "$_MDOCTOR_CHILD" 2>/dev/null || true
+  fi
+  _mdoctor_run_cleanup
+  exit "$1"
+}
+trap '_mdoctor_run_signal 130' INT
+trap '_mdoctor_run_signal 143' TERM
+# The EXIT trap is installed after RESULT_DIR exists (single EXIT
+# registration — a second `trap ... EXIT` would replace this chain).
+
 FILTER=""
 FILES=()
+_MDOCTOR_CHILD=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -f|--filter)
@@ -81,7 +118,7 @@ if [ "${#FILES[@]}" -eq 0 ]; then
 fi
 
 RESULT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/mdoctor-bats-results.XXXXXX")"
-trap 'rm -rf "$RESULT_DIR"' EXIT
+trap '_mdoctor_run_cleanup; rm -rf "$RESULT_DIR"' EXIT
 
 pass_count=0
 fail_count=0
@@ -112,11 +149,17 @@ for test_file in "${FILES[@]}"; do
   [ -t 1 ] || local_fmt=tap
   BATS_ARGS=(--formatter "$local_fmt" --report-formatter junit --output "$RESULT_DIR" --print-output-on-failure)
   [ -n "$FILTER" ] && BATS_ARGS+=(--filter "$FILTER")
+  # Background + wait (not a plain foreground exec) so a trapped INT/TERM
+  # interrupts this script immediately instead of after the child exits:
+  # the signal trap kills _MDOCTOR_CHILD, sweeps this run's fixture dirs
+  # and exits, leaving nothing behind (issue #73).
   if command -v timeout >/dev/null 2>&1; then
-    timeout "$FILE_TIMEOUT" "$BATS_BIN" "${BATS_ARGS[@]}" "$test_file" || rc=$?
+    timeout "$FILE_TIMEOUT" "$BATS_BIN" "${BATS_ARGS[@]}" "$test_file" & _MDOCTOR_CHILD=$!
   else
-    "$BATS_BIN" "${BATS_ARGS[@]}" "$test_file" || rc=$?
+    "$BATS_BIN" "${BATS_ARGS[@]}" "$test_file" & _MDOCTOR_CHILD=$!
   fi
+  wait "$_MDOCTOR_CHILD" || rc=$?
+  _MDOCTOR_CHILD=""
 
   if [ "$rc" -eq 0 ]; then
     pass_count=$((pass_count + 1))

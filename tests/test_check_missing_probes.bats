@@ -3,6 +3,7 @@
 # timeout is constructed per platform (macOS -W is ms, Linux -W is s).
 
 load 'helpers/assert'
+load 'helpers/fixture'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
@@ -21,7 +22,10 @@ _run_lim() {
 setup_file() {
   cd "$ROOT_DIR" || return 1
   export TEST_TMP
-  TEST_TMP="$(mktemp -d)"
+  FIXTURE_ROOT="$(fixture_root)"
+  export FIXTURE_ROOT
+  TEST_TMP="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-probes.$(fixture_run_id).XXXXXX")"
+  fixture_trap_cleanup "$TEST_TMP"
   # --- Unit: ping argv per platform (stub records, never executes) ---
   mkdir -p "$TEST_TMP/stubbin"
   cat >"$TEST_TMP/stubbin/ping" <<'EOF'

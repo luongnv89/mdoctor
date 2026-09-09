@@ -17,6 +17,7 @@
 # no dry-run support fails the suite.
 
 load 'helpers/assert'
+load 'helpers/fixture'
 load 'helpers/fixes_lane'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
@@ -35,14 +36,16 @@ fix_lane_stub_path
 setup_file() {
   cd "$ROOT_DIR" || return 1
   export TEST_TMP
-  # Under the repo checkout, not mktemp: on macOS TMPDIR is /var/folders/...
-  # (canonicalized by realpath to /private/var/folders/...), which
-  # is_protected_deletion_path blanket-protects — so a mktemp-based
-  # sandbox can never be cleaned by safe_remove there and the force-mode
-  # canaries would always survive. Matches the .mdoctor-test- idiom used
-  # by the other lanes.
-  TEST_TMP="${ROOT_DIR}/.mdoctor-test-fixes-lane.$$.$RANDOM"
-  mkdir -p "$TEST_TMP"
+  # Home-scoped fixture root (issue #73), not $TMPDIR: on macOS TMPDIR is
+  # /var/folders/... (canonicalized to /private/var/folders/...), which
+  # is_protected_deletion_path blanket-protects — so a TMPDIR sandbox
+  # could never be cleaned by safe_remove there and the force-mode
+  # canaries would always survive. The shared fixture root lives under
+  # $HOME, outside every protected prefix, so it stays cleanable.
+  FIXTURE_ROOT="$(fixture_root)"
+  export FIXTURE_ROOT
+  TEST_TMP="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-fixes-lane.$(fixture_run_id).XXXXXX")"
+  fixture_trap_cleanup "$TEST_TMP"
 }
 
 teardown_file() {

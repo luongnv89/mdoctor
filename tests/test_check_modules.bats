@@ -11,6 +11,7 @@
 # test_check_missing_probes.bats) instead of skipping.
 
 load 'helpers/assert'
+load 'helpers/fixture'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
@@ -57,7 +58,10 @@ assert_check_module_output() {
 setup_file() {
   cd "$ROOT_DIR" || return 1
   export TEST_TMP
-  TEST_TMP="$(mktemp -d)"
+  FIXTURE_ROOT="$(fixture_root)"
+  export FIXTURE_ROOT
+  TEST_TMP="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-checkmods.$(fixture_run_id).XXXXXX")"
+  fixture_trap_cleanup "$TEST_TMP"
   # --- Sparse PATH farm: everything the host offers except the probes
   # that can hang CI (ping/nslookup wait on an unreachable network; ss/ps
   # are excluded to exercise the guarded-skip paths deterministically) ---

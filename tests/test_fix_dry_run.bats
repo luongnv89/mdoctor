@@ -4,6 +4,7 @@
 # command in the operations log.
 
 load 'helpers/assert'
+load 'helpers/fixture'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
@@ -11,8 +12,10 @@ export ROOT_DIR
 setup_file() {
   cd "$ROOT_DIR" || return 1
   export TMPHOME STUB_LOG
-  TMPHOME="${HOME}/.mdoctor-test-fixdryrun.$$.$RANDOM"
-  mkdir -p "$TMPHOME"
+  FIXTURE_ROOT="$(fixture_root)"
+  export FIXTURE_ROOT
+  TMPHOME="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-fixdryrun.$(fixture_run_id).XXXXXX")"
+  fixture_trap_cleanup "$TMPHOME"
   export PATH="$ROOT_DIR/tests/helpers/bin:$PATH"
   STUB_LOG="$TMPHOME/stub.log"
   : >"$STUB_LOG"

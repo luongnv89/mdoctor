@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 
 load 'helpers/assert'
+load 'helpers/fixture'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
@@ -10,7 +11,10 @@ source "$ROOT_DIR/lib/platform.sh"
 setup_file() {
   cd "$ROOT_DIR" || return 1
   export TEST_TMP
-  TEST_TMP="$(mktemp -d)"
+  FIXTURE_ROOT="$(fixture_root)"
+  export FIXTURE_ROOT
+  TEST_TMP="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-metadata.$(fixture_run_id).XXXXXX")"
+  fixture_trap_cleanup "$TEST_TMP"
 }
 
 teardown_file() {
