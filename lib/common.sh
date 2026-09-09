@@ -45,10 +45,14 @@ init_colors() {
 ########################################
 # Bash traps replace rather than stack: every `trap ... EXIT` silently
 # discards the previously installed handler. So EXIT-time actions register
-# here and the single trap below runs them in order with the script's exit
+# here and the single runner trap runs them in order with the script's exit
 # status. Never install a bare `trap ... EXIT` anywhere else — use
 # register_exit_hook / unregister_exit_hook instead.
+# The runner trap is installed lazily by register_exit_hook, never at
+# source time: sourcing this library must not discard an EXIT handler the
+# host process installed earlier (e.g. a test harness's result reporter).
 _EXIT_HOOKS=""
+_EXIT_TRAP_INSTALLED=""
 
 register_exit_hook() {
   local hook="${1-}"
@@ -57,6 +61,10 @@ register_exit_hook() {
     *" ${hook} "*) return 0 ;;
   esac
   _EXIT_HOOKS="${_EXIT_HOOKS} ${hook}"
+  if [ -z "${_EXIT_TRAP_INSTALLED}" ]; then
+    trap _run_exit_hooks EXIT
+    _EXIT_TRAP_INSTALLED="true"
+  fi
 }
 
 unregister_exit_hook() {
@@ -76,8 +84,6 @@ _run_exit_hooks() {
   done
   return "$_rc"
 }
-
-trap _run_exit_hooks EXIT
 
 ########################################
 # SPINNER / PROGRESS BAR
