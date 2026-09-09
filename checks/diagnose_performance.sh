@@ -11,6 +11,20 @@
 # Diagnosis recommendations are printed by severity in the summary.
 # Keep the global ACTIONS list populated for compatibility with existing
 # check-module conventions while tracking explicit priority locally.
+#
+# Injectable metric sources (issue #74): every threshold probe below
+# honors a DIAG_* environment override so tests can feed fixed inputs and
+# assert both the healthy and the unhealthy branch deterministically,
+# independent of the host's live metrics. Each override is numeric and
+# applies after the live probe, just before the threshold comparison:
+#   DIAG_LOADAVG / DIAG_CORES .... load average and core count
+#   DIAG_MEM_PCT ................. memory usage percent
+#   DIAG_MEM_AVAIL_PCT ........... memory available percent (pressure, Linux)
+#   DIAG_MEM_PRESSURE_LEVEL ...... memory pressure level (macOS sysctl value)
+#   DIAG_DISK_PCT ................ root disk usage percent
+#   DIAG_SWAP_PCT ................ swap usage percent
+#   DIAG_LINUX_IOWAIT_PCT ........ sampled CPU iowait percent (pre-existing)
+#   DIAG_CPU_USER_PCT / DIAG_CPU_SYS_PCT .. user/kernel CPU time split
 add_diagnosis_action() {
   local severity="${1-}"
   local msg="${2-}"
@@ -23,8 +37,16 @@ add_diagnosis_action() {
 }
 
 get_linux_iowait_pct() {
+  # An explicit DIAG_LINUX_IOWAIT_PCT is a fixed test input and always
+  # wins. Live samples are cached in _DIAG_IOWAIT_CACHED (a separate
+  # variable) so resetting the cache never wipes a test override.
   if [ -n "${DIAG_LINUX_IOWAIT_PCT:-}" ]; then
     echo "$DIAG_LINUX_IOWAIT_PCT"
+    return 0
+  fi
+
+  if [ -n "${_DIAG_IOWAIT_CACHED:-}" ]; then
+    echo "$_DIAG_IOWAIT_CACHED"
     return 0
   fi
 
@@ -47,12 +69,12 @@ get_linux_iowait_pct() {
   iowait_delta=$((iowait2 - iowait1))
 
   if (( total_delta > 0 && iowait_delta >= 0 )); then
-    DIAG_LINUX_IOWAIT_PCT=$((iowait_delta * 100 / total_delta))
+    _DIAG_IOWAIT_CACHED=$((iowait_delta * 100 / total_delta))
   else
-    DIAG_LINUX_IOWAIT_PCT=0
+    _DIAG_IOWAIT_CACHED=0
   fi
 
-  echo "$DIAG_LINUX_IOWAIT_PCT"
+  echo "$_DIAG_IOWAIT_CACHED"
 }
 
 ########################################
@@ -74,6 +96,14 @@ check_load_average() {
   if [ -z "$load1" ] || [ -z "$cores" ]; then
     status_info "Load average: unable to determine"
     return 0
+  fi
+
+  # Fixed inputs for tests (see header comment).
+  if [ -n "${DIAG_LOADAVG:-}" ]; then
+    load1="$DIAG_LOADAVG"
+  fi
+  if [ -n "${DIAG_CORES:-}" ]; then
+    cores="$DIAG_CORES"
   fi
 
   # Convert to integers (load1 * 100)
@@ -196,6 +226,11 @@ check_memory_usage() {
     used_hr="${used_kb} KB"
   fi
 
+  # Fixed inputs for tests (see header comment).
+  if [ -n "${DIAG_MEM_PCT:-}" ]; then
+    pct="$DIAG_MEM_PCT"
+  fi
+
   if (( pct > 95 )); then
     status_fail "Memory: ${pct}% used (${used_hr}/${total_hr}) — OOM risk!"
     add_diagnosis_action "critical" "Memory usage is critical. Close applications immediately to avoid out-of-memory crashes."
@@ -216,6 +251,11 @@ check_memory_pressure() {
     local pressure
     pressure=$(sysctl -n kern.memorystatus_vm_pressure_level 2>/dev/null || echo "")
 
+    # Fixed inputs for tests (see header comment).
+    if [ -n "${DIAG_MEM_PRESSURE_LEVEL:-}" ]; then
+      pressure="$DIAG_MEM_PRESSURE_LEVEL"
+    fi
+
     case "$pressure" in
       1) status_ok "Memory pressure: normal" ;;
       2) status_warn "Memory pressure: elevated"
@@ -233,6 +273,10 @@ check_memory_pressure() {
 
       if [ -n "$mem_total_kb" ] && [ -n "$mem_avail_kb" ] && (( mem_total_kb > 0 )); then
         avail_pct=$(( mem_avail_kb * 100 / mem_total_kb ))
+        # Fixed inputs for tests (see header comment).
+        if [ -n "${DIAG_MEM_AVAIL_PCT:-}" ]; then
+          avail_pct="$DIAG_MEM_AVAIL_PCT"
+        fi
         if (( avail_pct < 5 )); then
           status_fail "Memory pressure: critical (${avail_pct}% available)"
           add_diagnosis_action "critical" "Memory pressure is critical. Close applications immediately."
@@ -283,6 +327,11 @@ check_swap_usage() {
     else
       pct=0
       swap_hr="0 KB"
+    fi
+
+    # Fixed inputs for tests (see header comment).
+    if [ -n "${DIAG_SWAP_PCT:-}" ]; then
+      pct="$DIAG_SWAP_PCT"
     fi
 
     if (( pct > 80 )); then
@@ -342,6 +391,11 @@ check_disk_hotspots() {
     [ -z "$root_disk_pct" ] && root_disk_pct=$(df -H / 2>/dev/null | awk 'NR==2 {gsub("%","",$5); print $5}')
   else
     root_disk_pct=$(df -H / 2>/dev/null | awk 'NR==2 {gsub("%","",$5); print $5}')
+  fi
+
+  # Fixed inputs for tests (see header comment).
+  if [ -n "${DIAG_DISK_PCT:-}" ]; then
+    root_disk_pct="$DIAG_DISK_PCT"
   fi
 
   if [ -n "$root_disk_pct" ]; then
@@ -541,6 +595,11 @@ check_swap_thrashing() {
     fi
   fi
 
+  # Fixed inputs for tests (see header comment).
+  if [ -n "${DIAG_SWAP_PCT:-}" ]; then
+    swap_pct="$DIAG_SWAP_PCT"
+  fi
+
   # Get iowait (sampled on Linux to reflect current pressure)
   if is_linux && [ -f /proc/stat ]; then
     iowait_pct=$(get_linux_iowait_pct)
@@ -628,6 +687,14 @@ check_cpu_user_sys() {
   user_pct=$((user * 100 / total))
   sys_pct=$((system * 100 / total))
 
+  # Fixed inputs for tests (see header comment).
+  if [ -n "${DIAG_CPU_USER_PCT:-}" ]; then
+    user_pct="$DIAG_CPU_USER_PCT"
+  fi
+  if [ -n "${DIAG_CPU_SYS_PCT:-}" ]; then
+    sys_pct="$DIAG_CPU_SYS_PCT"
+  fi
+
   if (( sys_pct > 40 )); then
     status_warn "CPU kernel-space usage: ${sys_pct}% (user=${user_pct}%)"
     add_diagnosis_action "warning" "High kernel-space CPU usage. Check for kernel modules, drivers, or system calls causing overhead."
@@ -648,7 +715,9 @@ check_diagnose_performance() {
   ACTIONS=()
   ACTIONS_CRITICAL=()
   ACTIONS_WARNING=()
-  DIAG_LINUX_IOWAIT_PCT=""
+  # Reset the live-sample cache only; an explicit DIAG_LINUX_IOWAIT_PCT
+  # test override is never cleared here (see get_linux_iowait_pct).
+  _DIAG_IOWAIT_CACHED=""
 
   # ── CPU Diagnostics ──
   section_title "CPU Diagnostics"
