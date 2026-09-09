@@ -196,6 +196,7 @@ status_ok() {
   progress_stop
   echo "  ${CHECK} ${GREEN}${msg}${RESET}"
   md_append "- ✅ ${msg}"
+  _json_record_status "ok" "$msg"
   progress_start "${_PROGRESS_LABEL:-}"
 }
 
@@ -205,6 +206,7 @@ status_warn() {
   progress_stop
   echo "  ${WARN} ${YELLOW}${msg}${RESET}"
   md_append "- ⚠️ ${msg}"
+  _json_record_status "warn" "$msg"
   progress_start "${_PROGRESS_LABEL:-}"
 }
 
@@ -214,6 +216,7 @@ status_fail() {
   progress_stop
   echo "  ${CROSS} ${RED}${msg}${RESET}"
   md_append "- ❌ ${msg}"
+  _json_record_status "fail" "$msg"
   progress_start "${_PROGRESS_LABEL:-}"
 }
 
@@ -222,7 +225,24 @@ status_info() {
   progress_stop
   echo "  ${INFO} ${msg}"
   md_append "- ℹ️ ${msg}"
+  _json_record_status "info" "$msg"
   progress_start "${_PROGRESS_LABEL:-}"
+}
+
+# _json_record_status STATUS MESSAGE — appends a check result to the JSON
+# accumulator behind `mdoctor check --json` (issue #90). Every status line
+# is recorded (ok/warn/fail/info): info lines are findings too, and
+# recording all four keeps the "checks" array populated for every module,
+# including info-only ones like `system`.
+# No-op unless JSON output is enabled AND lib/json.sh is loaded — this
+# library is also sourced by engines that never load it, so the recorder
+# resolves lazily instead of a hard call.
+_json_record_status() {
+  [ "${JSON_ENABLED:-false}" = true ] || return 0
+  if ! declare -f json_add_check >/dev/null 2>&1; then
+    return 0
+  fi
+  json_add_check "${_JSON_MODULE:-}" "${_JSON_CATEGORY:-}" "${_JSON_RISK:-}" "$1" "$2"
 }
 
 add_action() {

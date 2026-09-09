@@ -392,6 +392,13 @@ cmd_check() {
     # shellcheck source=/dev/null
     source "$check_file"
 
+    # JSON context for --json (issue #90): category/risk come from the
+    # registry so single-module output matches the full-audit schema.
+    local _json_cat _json_risk
+    _json_cat="$(get_module_category "$module" check || true)"
+    _json_risk="$(get_module_risk "$module" check || true)"
+    json_set_context "$module" "$_json_cat" "$_json_risk"
+
     # Map module name to function
     case "$module" in
       system)      check_system ;;
@@ -429,6 +436,31 @@ cmd_check() {
         echo "  ${i}. ${action}"
         i=$((i + 1))
       done
+    fi
+
+    # Single-module --json (issue #90): emit the same document shape as
+    # the full audit so the flag is never silently ignored here.
+    if [ "$json_flag" = true ]; then
+      local _json_action
+      for _json_action in "${ACTIONS[@]}"; do
+        json_add_action "$_json_action"
+      done
+      local _json_penalty _json_score _json_rating
+      _json_penalty=$(( WARN_COUNT * 4 + FAIL_COUNT * 8 ))
+      _json_score=$(( 100 - _json_penalty ))
+      if (( _json_score < 0 )); then
+        _json_score=0
+      fi
+      if (( _json_score >= 90 )); then
+        _json_rating="Excellent"
+      elif (( _json_score >= 75 )); then
+        _json_rating="Good"
+      elif (( _json_score >= 50 )); then
+        _json_rating="Needs attention"
+      else
+        _json_rating="Critical – fix issues ASAP"
+      fi
+      json_build_output "$_json_score" "$_json_rating" "$WARN_COUNT" "$FAIL_COUNT"
     fi
   else
     # Run full doctor

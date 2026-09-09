@@ -121,6 +121,17 @@ LOG_DESCS=()
 
 REPORT_MD=""
 
+# _set_check_context MODULE — point the JSON accumulator at the check
+# module about to run (issue #90). Category/risk are read back from the
+# registry so the "checks" entries can never drift from register_module.
+_set_check_context() {
+  local mod="$1"
+  local cat="" risk=""
+  cat="$(get_module_category "$mod" check || true)"
+  risk="$(get_module_risk "$mod" check || true)"
+  json_set_context "$mod" "$cat" "$risk"
+}
+
 ########################################
 # MAIN
 ########################################
@@ -141,42 +152,63 @@ main() {
   # Hardware checks
   if is_macos; then
     debug_log "doctor.sh phase=hardware checks=4"
+    _set_check_context battery
     check_battery
   else
     debug_log "doctor.sh phase=hardware checks=1"
   fi
+  _set_check_context hardware
   check_hardware
   if is_macos; then
+    _set_check_context bluetooth
     check_bluetooth
+    _set_check_context usb
     check_usb
   fi
 
   # System checks
   debug_log "doctor.sh phase=system checks=8"
+  _set_check_context system
   check_system
+  _set_check_context disk
   check_disk
+  _set_check_context updates
   check_updates_basic
+  _set_check_context security
   check_security
+  _set_check_context startup
   check_startup
+  _set_check_context network
   check_network
+  _set_check_context performance
   check_performance
+  _set_check_context storage
   check_storage
 
   # Software checks
   if is_macos; then
     debug_log "doctor.sh phase=software checks=9"
+    _set_check_context homebrew
     check_homebrew
   else
     debug_log "doctor.sh phase=software"
   fi
+  _set_check_context node
   check_node_npm
+  _set_check_context python
   check_python
+  _set_check_context devtools
   check_dev_tools
+  _set_check_context shell
   check_shell_configs
+  _set_check_context apps
   check_apps
+  _set_check_context git_config
   check_git_config
+  _set_check_context containers
   check_containers
   if is_linux; then
+    _set_check_context apt
     check_apt
   fi
 

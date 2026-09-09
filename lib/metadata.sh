@@ -74,6 +74,14 @@ get_module_risk() {
   fi
 }
 
+# get_module_category NAME TYPE → prints category
+get_module_category() {
+  local idx
+  if idx=$(get_module_index "$1" "${2:-}"); then
+    echo "${_MOD_CATS[$idx]}"
+  fi
+}
+
 # risk_badge RISK → prints colored badge string
 risk_badge() {
   local risk="$1"
