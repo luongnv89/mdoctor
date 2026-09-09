@@ -45,10 +45,14 @@ init_colors() {
 ########################################
 # Bash traps replace rather than stack: every `trap ... EXIT` silently
 # discards the previously installed handler. So EXIT-time actions register
-# here and the single trap below runs them in order with the script's exit
+# here and the single runner trap runs them in order with the script's exit
 # status. Never install a bare `trap ... EXIT` anywhere else — use
 # register_exit_hook / unregister_exit_hook instead.
+# The runner trap is installed lazily by register_exit_hook, never at
+# source time: sourcing this library must not discard an EXIT handler the
+# host process installed earlier (e.g. a test harness's result reporter).
 _EXIT_HOOKS=""
+_EXIT_TRAP_INSTALLED=""
 
 register_exit_hook() {
   local hook="${1-}"
@@ -57,6 +61,10 @@ register_exit_hook() {
     *" ${hook} "*) return 0 ;;
   esac
   _EXIT_HOOKS="${_EXIT_HOOKS} ${hook}"
+  if [ -z "${_EXIT_TRAP_INSTALLED}" ]; then
+    trap _run_exit_hooks EXIT
+    _EXIT_TRAP_INSTALLED="true"
+  fi
 }
 
 unregister_exit_hook() {
@@ -76,8 +84,6 @@ _run_exit_hooks() {
   done
   return "$_rc"
 }
-
-trap _run_exit_hooks EXIT
 
 ########################################
 # SPINNER / PROGRESS BAR
@@ -196,6 +202,7 @@ status_ok() {
   progress_stop
   echo "  ${CHECK} ${GREEN}${msg}${RESET}"
   md_append "- ✅ ${msg}"
+  _json_record_status "ok" "$msg"
   progress_start "${_PROGRESS_LABEL:-}"
 }
 
@@ -205,6 +212,7 @@ status_warn() {
   progress_stop
   echo "  ${WARN} ${YELLOW}${msg}${RESET}"
   md_append "- ⚠️ ${msg}"
+  _json_record_status "warn" "$msg"
   progress_start "${_PROGRESS_LABEL:-}"
 }
 
@@ -214,6 +222,7 @@ status_fail() {
   progress_stop
   echo "  ${CROSS} ${RED}${msg}${RESET}"
   md_append "- ❌ ${msg}"
+  _json_record_status "fail" "$msg"
   progress_start "${_PROGRESS_LABEL:-}"
 }
 
@@ -222,7 +231,24 @@ status_info() {
   progress_stop
   echo "  ${INFO} ${msg}"
   md_append "- ℹ️ ${msg}"
+  _json_record_status "info" "$msg"
   progress_start "${_PROGRESS_LABEL:-}"
+}
+
+# _json_record_status STATUS MESSAGE — appends a check result to the JSON
+# accumulator behind `mdoctor check --json` (issue #90). Every status line
+# is recorded (ok/warn/fail/info): info lines are findings too, and
+# recording all four keeps the "checks" array populated for every module,
+# including info-only ones like `system`.
+# No-op unless JSON output is enabled AND lib/json.sh is loaded — this
+# library is also sourced by engines that never load it, so the recorder
+# resolves lazily instead of a hard call.
+_json_record_status() {
+  [ "${JSON_ENABLED:-false}" = true ] || return 0
+  if ! declare -f json_add_check >/dev/null 2>&1; then
+    return 0
+  fi
+  json_add_check "${_JSON_MODULE:-}" "${_JSON_CATEGORY:-}" "${_JSON_RISK:-}" "$1" "$2"
 }
 
 add_action() {

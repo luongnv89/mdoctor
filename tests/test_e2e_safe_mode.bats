@@ -230,6 +230,7 @@ assert isinstance(doc["warnings"], int) and doc["warnings"] >= 0, "warnings must
 assert isinstance(doc["failures"], int) and doc["failures"] >= 0, "failures must be a non-negative int"
 assert isinstance(doc["actions"], list), "actions must be an array"
 assert isinstance(doc["checks"], list), "checks must be an array"
+assert len(doc["checks"]) > 0, "checks must be populated (issue #90: status helpers wire into the accumulator)"
 PYEOF
   elif command -v jq >/dev/null 2>&1; then
     jq -e '(.version | type == "string" and length > 0)
@@ -240,7 +241,7 @@ PYEOF
       and (.warnings | type == "number" and . >= 0)
       and (.failures | type == "number" and . >= 0)
       and (.actions | type == "array")
-      and (.checks | type == "array")
+      and (.checks | type == "array" and length > 0)
       and (.version == $MDOCTOR_EXPECT_VERSION)' \
       --arg MDOCTOR_EXPECT_VERSION "$expect_version" \
       "$TEST_TMP/e2e_json_doc.json" >/dev/null \
