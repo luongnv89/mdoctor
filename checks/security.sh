@@ -149,12 +149,16 @@ check_security() {
       fi
     fi
 
-    # Unattended upgrades
-    if dpkg -l unattended-upgrades 2>/dev/null | grep -q '^ii'; then
-      status_ok "Unattended upgrades: installed"
+    # Unattended upgrades (Debian-family only)
+    if is_debian; then
+      if dpkg -l unattended-upgrades 2>/dev/null | grep -q '^ii'; then
+        status_ok "Unattended upgrades: installed"
+      else
+        status_warn "Unattended upgrades: not installed"
+        add_action "Consider installing unattended-upgrades for automatic security updates."
+      fi
     else
-      status_info "Unattended upgrades: not installed"
-      add_action "Consider installing unattended-upgrades for automatic security updates."
+      status_info "Unattended upgrades: N/A on this distro."
     fi
   fi
 

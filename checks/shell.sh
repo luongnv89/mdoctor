@@ -4,6 +4,75 @@
 # Shell configuration file checks
 #
 
+# Expand $VAR and ${VAR} references using only values from the current
+# environment. Never executes command substitution ($(...), backticks),
+# process substitution (<(...)), or arithmetic expansion — identifier-shaped
+# $NAME / ${NAME} lookups are replaced via prefix/suffix surgery only, so
+# anything else (including malicious payloads in the audited rc file) stays
+# literal. Unset/unknown vars expand to empty, matching default shell
+# expansion. The loop is bounded (32 passes per form) so self-referential
+# values terminate. Bash 3.2 compatible: no associative arrays, no
+# case-modifying expansion, no read-into-array builtin.
+expand_source_target_vars() {
+  local input
+  local output
+  local raw
+  local varname
+  local varvalue
+  local prefix
+  local suffix
+  local count
+  input="${1-}"
+  output="$input"
+  if ! command -v printenv >/dev/null 2>&1; then
+    printf '%s' "$input"
+    return 0
+  fi
+  count=0
+  while echo "$output" | grep -qE '\$\{[A-Za-z_][A-Za-z0-9_]*\}'; do
+    count=$((count + 1))
+    if [ "$count" -gt 32 ]; then
+      break
+    fi
+    raw="$(echo "$output" | grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*\}' | head -n 1 || true)"
+    varname="$(echo "$raw" | sed -E 's/^\$\{//; s/\}$//' || true)"
+    case "$varname" in
+      ""|*[!A-Za-z0-9_]*)
+        break
+        ;;
+    esac
+    varvalue="$(printenv "$varname" 2>/dev/null || true)"
+    prefix="${output%%\${"$varname"\}*}"
+    suffix="${output#*\${"$varname"\}}"
+    if [ "$prefix" = "$output" ] && [ "$suffix" = "$output" ]; then
+      break
+    fi
+    output="${prefix}${varvalue}${suffix}"
+  done
+  count=0
+  while echo "$output" | grep -qE '\$[A-Za-z_][A-Za-z0-9_]*'; do
+    count=$((count + 1))
+    if [ "$count" -gt 32 ]; then
+      break
+    fi
+    raw="$(echo "$output" | grep -oE '\$[A-Za-z_][A-Za-z0-9_]*' | head -n 1 || true)"
+    varname="${raw#\$}"
+    case "$varname" in
+      ""|*[!A-Za-z0-9_]*)
+        break
+        ;;
+    esac
+    varvalue="$(printenv "$varname" 2>/dev/null || true)"
+    prefix="${output%%\$"$varname"*}"
+    suffix="${output#*\$"$varname"}"
+    if [ "$prefix" = "$output" ] && [ "$suffix" = "$output" ]; then
+      break
+    fi
+    output="${prefix}${varvalue}${suffix}"
+  done
+  printf '%s' "$output"
+}
+
 check_one_shell_file() {
   local name="${1-}"
   local shell_type="${2-}"
@@ -46,19 +115,27 @@ check_one_shell_file() {
     if echo "$line" | grep -qE '^\s*(source|\.)\s+'; then
       local target expanded
 
-      target=$(echo "$line" | sed -E 's/^\s*(source|\.)\s+//; s/[;&|].*//')
+      # Portable whitespace class: BSD sed (macOS) does not match \s,
+      # which left the `source` keyword attached and warned on every line.
+      target=$(echo "$line" | sed -E 's/^[[:space:]]*(source|\.)[[:space:]]+//; s/[;&|].*//')
       target=$(echo "$target" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
       target=$(echo "$target" | sed -E 's/^["'\'']//; s/["'\'']$//')
 
-      case "$target" in
+      # Expand shell variables first (e.g. $ZSH, $NVM_DIR, $HOME).
+      # SAFE: env-value substitution only — no eval, so command
+      # substitution in the audited file can never execute.
+      local expanded_raw
+      expanded_raw="$(expand_source_target_vars "$target")"
+
+      case "$expanded_raw" in
         /*)
-          expanded="$target"
+          expanded="$expanded_raw"
           ;;
         ~/*)
-          expanded="${HOME}${target#\~}"
+          expanded="${HOME}${expanded_raw#\~}"
           ;;
         *)
-          expanded="${HOME}/${target}"
+          expanded="${HOME}/${expanded_raw}"
           ;;
       esac
 

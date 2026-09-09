@@ -59,7 +59,12 @@ check_git_config() {
 
       # Check permissions (should be 600 or 400)
       local perms
-      perms=$(stat -f "%Lp" "$f" 2>/dev/null || stat -c "%a" "$f" 2>/dev/null || echo "")
+      # stat format differs per platform (macOS -f is meaningless on Linux)
+      if is_macos; then
+        perms=$(stat -f "%Lp" "$f" 2>/dev/null || echo "")
+      else
+        perms=$(stat -c "%a" "$f" 2>/dev/null || echo "")
+      fi
       if [ -n "$perms" ]; then
         if [ "$perms" = "600" ] || [ "$perms" = "400" ]; then
           status_ok "SSH key $(basename "$f"): permissions ${perms} (secure)"
