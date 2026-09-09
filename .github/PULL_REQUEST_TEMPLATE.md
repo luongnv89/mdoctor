@@ -21,6 +21,7 @@ Fixes #(issue number)
 - [ ] I have made corresponding changes to the documentation
 - [ ] My changes generate no new warnings
 - [ ] I have tested the affected `mdoctor` commands locally
+- [ ] For fix commits: each fix references its regression test (test name + file, e.g. `tests/test_bugfix_regressions.bats`)
 
 ## Testing
 

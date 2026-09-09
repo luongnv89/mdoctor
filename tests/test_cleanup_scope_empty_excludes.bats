@@ -48,12 +48,23 @@ teardown_file() {
   cat >"$SCOPE_FILE" <<EOF
 INCLUDE_PATH=${SEARCH_ROOT}
 EOF
+  # Force mode (not dry-run): the stale-node_modules removal half must
+  # actually execute — exporting DRY_RUN=true here used to skip every
+  # deletion, covering only the scan half of the fix (issue #72). The
+  # canary lives under the sandboxed HOME, and the safety policy allows
+  # "<project>/node_modules" targets there, so force execution is safe.
+  mkdir -p "$SEARCH_ROOT/oldproj/node_modules"
+  echo "stale" > "$SEARCH_ROOT/oldproj/node_modules/stale.js"
+  touch -d "40 days ago" "$SEARCH_ROOT/oldproj/node_modules" 2>/dev/null \
+    || touch -t 202001010000 "$SEARCH_ROOT/oldproj/node_modules"
   out2="$TMPDIR_SCOPE/dev_caches.out"
   (
     set -euo pipefail
     export HOME="$TMPDIR_SCOPE"
+    export MDOCTOR_CLEANUP_WHITELIST_FILE="$TMPDIR_SCOPE/.config/mdoctor/cleanup_whitelist"
     export MDOCTOR_CLEANUP_SCOPE_FILE="$SCOPE_FILE"
-    export DRY_RUN=true
+    export LOGFILE="$TMPDIR_SCOPE/mdoctor.log"
+    DRY_RUN=false
     export NODE_MODULES_DAYS=30
     # shellcheck source=/dev/null
     source "$ROOT_DIR/lib/platform.sh"
@@ -73,4 +84,6 @@ EOF
   ) >"$out2" 2>&1
   assert_not_contains "$out2" "unbound variable"
   assert_contains "$out2" "Scanning for stale node_modules"
+  # The removal half executed: the stale canary is gone.
+  assert_file_not_exists "$SEARCH_ROOT/oldproj/node_modules"
 }
