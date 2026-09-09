@@ -42,7 +42,11 @@ Name-Real: mdoctor test
 Name-Email: test@example.com
 Expire-Date: 0
 EOF
-  gpg --batch --gen-key "$TEST_TMP/batch" >"$TEST_TMP/genkey.log" 2>&1
+  if ! gpg --batch --gen-key "$TEST_TMP/batch" >"$TEST_TMP/genkey.log" 2>&1; then
+    echo "gpg --gen-key failed (gpg: $(gpg --version 2>/dev/null | head -n 1), homedir ${#GNUPGHOME} chars):"
+    cat "$TEST_TMP/genkey.log"
+    return 1
+  fi
   KEYID="$(gpg --list-keys --with-colons test@example.com 2>/dev/null | awk -F: '$1=="pub"{getline; print $10}' | head -n 1)"
   GPG_OK=true
   [ -n "$KEYID" ] || GPG_OK=false
