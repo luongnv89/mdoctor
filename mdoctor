@@ -77,6 +77,7 @@ source "${MDOCTOR_DIR}/lib/platform.sh"
 source "${MDOCTOR_DIR}/lib/metadata.sh"
 source "${MDOCTOR_DIR}/lib/registry.sh"
 source "${MDOCTOR_DIR}/lib/disk.sh"
+source "${MDOCTOR_DIR}/lib/perf_probes.sh"
 source "${MDOCTOR_DIR}/lib/preflight.sh"
 source "${MDOCTOR_DIR}/lib/help.sh"
 source "${MDOCTOR_DIR}/lib/clean_common.sh"
@@ -330,6 +331,7 @@ cmd_check() {
     source "${MDOCTOR_DIR}/lib/common.sh"
     source "${MDOCTOR_DIR}/lib/logging.sh"
     source "${MDOCTOR_DIR}/lib/disk.sh"
+    source "${MDOCTOR_DIR}/lib/perf_probes.sh"
     source "${MDOCTOR_DIR}/lib/json.sh"
     source "${MDOCTOR_DIR}/lib/metadata.sh"
 
@@ -782,6 +784,7 @@ cmd_diagnose() {
   source "${MDOCTOR_DIR}/lib/common.sh"
   source "${MDOCTOR_DIR}/lib/logging.sh"
   source "${MDOCTOR_DIR}/lib/disk.sh"
+  source "${MDOCTOR_DIR}/lib/perf_probes.sh"
   source "${MDOCTOR_DIR}/lib/metadata.sh"
 
   init_colors
