@@ -15,21 +15,29 @@ setup() {
 }
 
 @test "registry declared once: only lib/registry.sh defines register_all_modules" {
-  count=$(grep -rn "^register_all_modules()" --include='*.sh' --include='mdoctor' --include='doctor.sh' "$REPO_ROOT" | grep -v tests/ | wc -l | tr -d ' ')
+  # BusyBox-grep compatible (Bash 3.2 CI image has no grep --include).
+  count=$(find "$REPO_ROOT" -type f \( -name '*.sh' -o -name mdoctor -o -name doctor.sh \) | grep -v 'tests/' | xargs grep -l '^register_all_modules()' | wc -l | tr -d ' ')
   [ "$count" -eq 1 ]
   grep -q "lib/registry.sh" "${REPO_ROOT}/mdoctor"
 }
 
 @test "doctor.sh carries no register_module duplicate" {
-  count=$(grep -c '^  register_module\|^register_module' "${REPO_ROOT}/doctor.sh" || true)
+  count=$(grep -v '^#' "${REPO_ROOT}/doctor.sh" | grep -c 'register_module' || true)
   [ "$count" -eq 0 ]
 }
 
-@test "apt appears in help and both Available-modules errors (derived)" {
+@test "help and Available-modules errors are registry-derived (platform-filtered)" {
   run "$REPO_ROOT/mdoctor" help
-  [[ "$output" == *"apt [MED]"* ]]
+  if is_macos; then
+    [[ "$output" == *"xcode [MED]"* ]]
+    [[ "$output" != *"apt [MED]"* ]]
+  else
+    [[ "$output" == *"apt [MED]"* ]]
+  fi
   run "$REPO_ROOT/mdoctor" clean -m bogus_nope_xyz
-  [[ "$output" == *"apt"* ]]
+  local derived
+  derived=$(registry_available_text cleanup "Available modules")
+  [[ "$output" == *"$derived"* ]]
 }
 
 @test "throwaway registry entry propagates to names, help, errors and func lookup" {
