@@ -263,40 +263,44 @@ main() {
 	fi
 
 	header "Starting cleanup (DRY_RUN=${DRY_RUN}, platform=$(platform_name))"
+
+	# Per-module accumulator (Task 9.3): a failing module must not abort its
+	# siblings under `set -e`, but partial failures propagate in the exit code.
+	local _cleanup_rc=0
 	debug_log "cleanup.sh start dry_run=${DRY_RUN} days_old=${DAYS_OLD}"
 	log "$(disk_usage)"
 
 	# Core generic cleanups – safe-ish for any macOS user
 	step "Emptying Trash"
-	clean_trash
+	clean_trash || _cleanup_rc=$?
 
 	step "Cleaning user caches"
-	clean_user_caches
+	clean_user_caches || _cleanup_rc=$?
 
 	step "Cleaning old logs"
-	clean_logs
+	clean_logs || _cleanup_rc=$?
 
 	step "Scanning large files in Downloads"
-	clean_downloads_large_files
+	clean_downloads_large_files || _cleanup_rc=$?
 
 	# New cleanup modules
 	step "Cleaning crash reports"
-	clean_crash_reports
+	clean_crash_reports || _cleanup_rc=$?
 
 	if is_macos; then
 		step "Checking iOS backups"
-		clean_ios_backups
+		clean_ios_backups || _cleanup_rc=$?
 
 		step "Xcode cleanup"
-		clean_xcode
+		clean_xcode || _cleanup_rc=$?
 	fi
 
 	step "Developer caches cleanup"
-	clean_dev_caches
+	clean_dev_caches || _cleanup_rc=$?
 
 	if is_linux; then
 		step "APT cache cleanup"
-		clean_apt_cache
+		clean_apt_cache || _cleanup_rc=$?
 	fi
 
 	# OPTIONAL: Uncomment if you want these too (and bump PROGRESS_TOTAL)
@@ -322,7 +326,11 @@ main() {
 
 	freed_hr="$(human_readable_kb "$freed_kb")"
 
-	log "Cleanup finished."
+	if [ "$_cleanup_rc" -ne 0 ]; then
+		log "Cleanup finished with errors from one or more modules (code ${_cleanup_rc}: $(safety_error_name "$_cleanup_rc"))."
+	else
+		log "Cleanup finished."
+	fi
 	log "$(disk_usage)"
 
 	if [ "$_dry_rc" -ne 1 ]; then
@@ -331,7 +339,8 @@ main() {
 		log "Estimated space freed: ${freed_hr}."
 	fi
 
-	debug_log "cleanup.sh end dry_run=${DRY_RUN} estimated_freed=${freed_hr}"
+	debug_log "cleanup.sh end dry_run=${DRY_RUN} estimated_freed=${freed_hr} rc=${_cleanup_rc}"
+	return "$_cleanup_rc"
 }
 
 op_session_start "clean:full"

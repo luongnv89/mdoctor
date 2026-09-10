@@ -332,7 +332,8 @@ cmd_check() {
       exec >/dev/null
     fi
 
-    # Map module name to function
+    # Map module name to function (exit code captured like cmd_fix).
+    local _check_rc=0
     case "$module" in
       system)      check_system ;;
       disk)        check_disk ;;
@@ -356,6 +357,7 @@ cmd_check() {
       storage)     check_storage ;;
       apt)         check_apt ;;
     esac
+    _check_rc=$?
 
     # Stop spinner after single-module check
     progress_stop
@@ -389,7 +391,7 @@ cmd_check() {
         _json_rating="Critical – fix issues ASAP"
       fi
       json_build_output "$_json_score" "$_json_rating" "$WARN_COUNT" "$FAIL_COUNT"
-      return 0
+      return "$_check_rc"
     fi
 
     # Show summary for single module
@@ -402,13 +404,16 @@ cmd_check() {
         i=$((i + 1))
       done
     fi
+    return "$_check_rc"
   else
-    # Run full doctor
+    # Run full doctor, propagating its exit code like cmd_fix does.
+    local _doctor_rc=0
     if [ "$json_flag" = true ]; then
-      JSON_ENABLED=true MDOCTOR_VERSION="${MDOCTOR_VERSION}" MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/doctor.sh"
+      JSON_ENABLED=true MDOCTOR_VERSION="${MDOCTOR_VERSION}" MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/doctor.sh" || _doctor_rc=$?
     else
-      MDOCTOR_VERSION="${MDOCTOR_VERSION}" MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/doctor.sh"
+      MDOCTOR_VERSION="${MDOCTOR_VERSION}" MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/doctor.sh" || _doctor_rc=$?
     fi
+    return "$_doctor_rc"
   fi
 }
 

@@ -15,12 +15,16 @@ if [ "${_MDOCTOR_CONTEXT_READY:-false}" != true ]; then
   return 1 2>/dev/null || exit 1
 fi
 clean_trash() {
+  local rc=0
   local trash_dir
   trash_dir="$(platform_trash_dir)"
   header "Emptying Trash (${trash_dir})"
   if [ -d "$trash_dir" ]; then
-    safe_remove_children "$trash_dir" || true
+    safe_remove_children "$trash_dir" || rc=$?
   else
     log "Trash folder not found."
   fi
+  rc="$(handle_cleanup_rc "$rc")"
+  [ "$rc" -eq 0 ] || log "Module 'trash' finished with $(safety_error_name "$rc"): $(safety_error_hint "$rc" 'trash')"
+  return "$rc"
 }

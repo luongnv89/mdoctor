@@ -15,6 +15,7 @@ if [ "${_MDOCTOR_CONTEXT_READY:-false}" != true ]; then
   return 1 2>/dev/null || exit 1
 fi
 clean_dev_stuff() {
+  local rc=0
   header "Developer / power-user cleanup (Homebrew, language caches, Docker)"
 
   # Homebrew
@@ -29,33 +30,33 @@ clean_dev_stuff() {
   # Common language/tool caches (pip, npm, yarn, pnpm)
   # Cross-platform paths
   if [ -d "${HOME}/.cache/pip" ]; then
-    safe_remove_children "${HOME}/.cache/pip" || true
+    safe_remove_children "${HOME}/.cache/pip" || rc=$?
   fi
   if [ -d "${HOME}/.npm" ]; then
-    safe_remove_children "${HOME}/.npm" || true
+    safe_remove_children "${HOME}/.npm" || rc=$?
   fi
 
   # macOS-specific paths
   if is_macos; then
     if [ -d "${HOME}/Library/Caches/pip" ]; then
-      safe_remove_children "${HOME}/Library/Caches/pip" || true
+      safe_remove_children "${HOME}/Library/Caches/pip" || rc=$?
     fi
     if [ -d "${HOME}/Library/Caches/npm" ]; then
-      safe_remove_children "${HOME}/Library/Caches/npm" || true
+      safe_remove_children "${HOME}/Library/Caches/npm" || rc=$?
     fi
     if [ -d "${HOME}/Library/Caches/Yarn" ]; then
-      safe_remove_children "${HOME}/Library/Caches/Yarn" || true
+      safe_remove_children "${HOME}/Library/Caches/Yarn" || rc=$?
     fi
     if [ -d "${HOME}/Library/pnpm/store" ]; then
-      safe_remove_children "${HOME}/Library/pnpm/store" || true
+      safe_remove_children "${HOME}/Library/pnpm/store" || rc=$?
     fi
   else
     # Linux XDG paths
     if [ -d "${HOME}/.cache/yarn" ]; then
-      safe_remove_children "${HOME}/.cache/yarn" || true
+      safe_remove_children "${HOME}/.cache/yarn" || rc=$?
     fi
     if [ -d "${HOME}/.local/share/pnpm/store" ]; then
-      safe_remove_children "${HOME}/.local/share/pnpm/store" || true
+      safe_remove_children "${HOME}/.local/share/pnpm/store" || rc=$?
     fi
   fi
 
@@ -65,7 +66,7 @@ clean_dev_stuff() {
   if command -v docker >/dev/null 2>&1; then
     if [ "${MDOCTOR_ALLOW_DOCKER_PRUNE:-false}" = true ]; then
       log "Docker detected – pruning unused data (MDOCTOR_ALLOW_DOCKER_PRUNE=true)."
-      run_cmd_args docker system prune -af --volumes || true
+      run_cmd_args docker system prune -af --volumes || rc=$?
     else
       log "Docker detected – skipping prune (named volumes are user data, not caches). Set MDOCTOR_ALLOW_DOCKER_PRUNE=true to opt in."
     fi
@@ -74,4 +75,7 @@ clean_dev_stuff() {
   fi
 
   # Note: Xcode cleanup moved to cleanups/xcode.sh (dedicated module)
+  rc="$(handle_cleanup_rc "$rc")"
+  [ "$rc" -eq 0 ] || log "Module 'dev' finished with $(safety_error_name "$rc"): $(safety_error_hint "$rc" 'dev')"
+  return "$rc"
 }

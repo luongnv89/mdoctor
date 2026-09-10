@@ -15,14 +15,18 @@ if [ "${_MDOCTOR_CONTEXT_READY:-false}" != true ]; then
   return 1 2>/dev/null || exit 1
 fi
 clean_downloads_large_files() {
+  local rc=0
   local days="${DAYS_OLD:-7}"
   header "Listing large files in Downloads (>500MB, older than ${days} days)"
   if [ -d "${HOME}/Downloads" ]; then
     # Only list by default; you can uncomment the delete line if you want.
-    run_cmd_args find "${HOME}/Downloads" -type f -size +500M -mtime "+${days}" -print
+    run_cmd_args find "${HOME}/Downloads" -type f -size +500M -mtime "+${days}" -print || rc=$?
     # To actually delete matching files in future, use:
     # safe_find_delete "${HOME}/Downloads" -type f -size +500M -mtime "+${days}"
   else
     log "No ~/Downloads directory found."
   fi
+  rc="$(handle_cleanup_rc "$rc")"
+  [ "$rc" -eq 0 ] || log "Module 'downloads' finished with $(safety_error_name "$rc"): $(safety_error_hint "$rc" 'downloads')"
+  return "$rc"
 }

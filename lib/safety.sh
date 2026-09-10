@@ -53,6 +53,27 @@ safety_error_name() {
   esac
 }
 
+# handle_cleanup_rc RC — Task 9.3 case distinguishing expected skips from
+# real failures. Prints the mapped code (always returns 0, so callers under
+# `set -e` can write rc="$(handle_cleanup_rc "$rc")"). In dry-run nothing
+# is attempted, so every policy block maps to 0 (reported where it happens);
+# in force mode failures propagate unchanged.
+handle_cleanup_rc() {
+  local rc="${1:-0}"
+  if [ "$rc" -eq 0 ]; then
+    echo 0
+    return 0
+  fi
+  local _dry_rc=0
+  is_dry_run || _dry_rc=$?
+  if [ "$_dry_rc" -ne 1 ]; then
+    echo 0
+    return 0
+  fi
+  echo "$rc"
+  return 0
+}
+
 safety_error_hint() {
   local code="${1:-0}"
   local path="${2:-target}"

@@ -15,6 +15,7 @@ source "$ROOT_DIR/lib/platform.sh"
 source "$ROOT_DIR/lib/common.sh"
 source "$ROOT_DIR/lib/logging.sh"
 source "$ROOT_DIR/lib/disk.sh"
+source "$ROOT_DIR/lib/safety.sh"
 source "$ROOT_DIR/lib/cleanup_scope.sh"
 
 setup_file() {

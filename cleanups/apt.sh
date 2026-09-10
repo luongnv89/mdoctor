@@ -17,6 +17,7 @@ if [ "${_MDOCTOR_CONTEXT_READY:-false}" != true ]; then
   return 1 2>/dev/null || exit 1
 fi
 clean_apt_cache() {
+  local rc=0
   header "APT cache cleanup"
 
   if ! command -v apt-get >/dev/null 2>&1; then
@@ -26,12 +27,15 @@ clean_apt_cache() {
 
   # Clean downloaded .deb files
   log "Cleaning APT package cache..."
-  run_cmd_args sudo apt-get clean
+  run_cmd_args sudo apt-get clean || rc=$?
 
   # Remove old partial downloads
-  run_cmd_args sudo apt-get autoclean
+  run_cmd_args sudo apt-get autoclean || rc=$?
 
   # Remove auto-installed packages no longer needed
   log "Removing unused auto-installed packages..."
-  run_cmd_args sudo apt-get autoremove -y
+  run_cmd_args sudo apt-get autoremove -y || rc=$?
+  rc="$(handle_cleanup_rc "$rc")"
+  [ "$rc" -eq 0 ] || log "Module 'apt' finished with $(safety_error_name "$rc"): $(safety_error_hint "$rc" 'apt')"
+  return "$rc"
 }

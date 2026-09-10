@@ -15,12 +15,16 @@ if [ "${_MDOCTOR_CONTEXT_READY:-false}" != true ]; then
   return 1 2>/dev/null || exit 1
 fi
 clean_user_caches() {
+  local rc=0
   local cache_dir
   cache_dir="$(platform_cache_dir)"
   header "Cleaning user caches (${cache_dir})"
   if [ -d "$cache_dir" ]; then
-    safe_remove_children "$cache_dir" || true
+    safe_remove_children "$cache_dir" || rc=$?
   else
     log "No cache directory found at ${cache_dir}."
   fi
+  rc="$(handle_cleanup_rc "$rc")"
+  [ "$rc" -eq 0 ] || log "Module 'caches' finished with $(safety_error_name "$rc"): $(safety_error_hint "$rc" 'caches')"
+  return "$rc"
 }
