@@ -4,6 +4,11 @@
 # Disk-related utilities
 #
 
+# Named size/timeout values (Task 8.7); guarded so isolated sourcing works.
+_MDOCTOR_DISK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
+source "${_MDOCTOR_DISK_DIR}/constants.sh"
+unset _MDOCTOR_DISK_DIR
+
 # On macOS APFS, df / reports the read-only system snapshot which shows
 # very little usage. The real user data lives on /System/Volumes/Data.
 _disk_root() {
@@ -46,10 +51,10 @@ human_readable_kb() {
 # of it; no file re-inlines the GB/MB/KB ladder.
 format_size_kb() {
   local kb="${1:-0}"
-  if (( kb >= 1048576 )); then
-    awk -v kb="$kb" 'BEGIN {printf "%.2f GB", kb/1048576}'
-  elif (( kb >= 1024 )); then
-    awk -v kb="$kb" 'BEGIN {printf "%.2f MB", kb/1024}'
+  if (( kb >= MDOCTOR_KB_PER_GB )); then
+    awk -v kb="$kb" -v pergb="$MDOCTOR_KB_PER_GB" 'BEGIN {printf "%.2f GB", kb/pergb}'
+  elif (( kb >= MDOCTOR_KB_PER_MB )); then
+    awk -v kb="$kb" -v permb="$MDOCTOR_KB_PER_MB" 'BEGIN {printf "%.2f MB", kb/permb}'
   else
     printf "%d KB" "$kb"
   fi
@@ -58,7 +63,7 @@ format_size_kb() {
 # du_size_kb PATH — the single hardened du probe (Task 8.2).
 # Never propagates a non-zero du status (permission-denied subdirectories
 # must not abort callers running under `set -e` / `pipefail`); always prints
-# a numeric KB value (0 on failure). Wraps the probe in `timeout 30` where
+# a numeric KB value (0 on failure). Wraps the probe in a timeout where
 # available (GNU-only; macOS runs it directly). Every du call site routes
 # through this.
 du_size_kb() {
@@ -72,7 +77,7 @@ du_size_kb() {
   # path itself may contain newlines (Task 3.6) — only the first line
   # carries the size.
   if command -v timeout >/dev/null 2>&1; then
-    kb=$({ timeout 30 du -sk "$path" 2>/dev/null || true; } | awk 'NR==1{print $1+0}')
+    kb=$({ timeout "$MDOCTOR_DU_TIMEOUT_S" du -sk "$path" 2>/dev/null || true; } | awk 'NR==1{print $1+0}')
   else
     kb=$({ du -sk "$path" 2>/dev/null || true; } | awk 'NR==1{print $1+0}')
   fi

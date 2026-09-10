@@ -10,6 +10,7 @@ if ! declare -f is_dry_run >/dev/null 2>&1; then
   _MDOCTOR_SAFETY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
   # shellcheck source=/dev/null
   source "${_MDOCTOR_SAFETY_DIR}/common.sh"
+  source "${_MDOCTOR_SAFETY_DIR}/constants.sh"
   unset _MDOCTOR_SAFETY_DIR
 fi
 
@@ -46,13 +47,14 @@ _safety_log() {
 
 safety_error_name() {
   local code="${1:-0}"
+  # Driven by the named error constants above (Task 8.7), never bare numbers.
   case "$code" in
-    21) echo "INVALID_TARGET" ;;
-    22) echo "PROTECTED_TARGET" ;;
-    23) echo "SYMLINK_BLOCKED" ;;
-    24) echo "PERMISSION_DENIED" ;;
-    25) echo "SIP_OR_READONLY" ;;
-    26) echo "RUNTIME_FAILURE" ;;
+    "$MDOCTOR_SAFE_ERR_INVALID_TARGET") echo "INVALID_TARGET" ;;
+    "$MDOCTOR_SAFE_ERR_PROTECTED_TARGET") echo "PROTECTED_TARGET" ;;
+    "$MDOCTOR_SAFE_ERR_SYMLINK_BLOCKED") echo "SYMLINK_BLOCKED" ;;
+    "$MDOCTOR_SAFE_ERR_PERMISSION_DENIED") echo "PERMISSION_DENIED" ;;
+    "$MDOCTOR_SAFE_ERR_SIP_READONLY") echo "SIP_OR_READONLY" ;;
+    "$MDOCTOR_SAFE_ERR_RUNTIME_FAILURE") echo "RUNTIME_FAILURE" ;;
     *)  echo "UNKNOWN" ;;
   esac
 }
@@ -62,22 +64,22 @@ safety_error_hint() {
   local path="${2:-target}"
 
   case "$code" in
-    21)
+    "$MDOCTOR_SAFE_ERR_INVALID_TARGET")
       echo "Use an absolute, non-traversal path. Re-check computed target: ${path}"
       ;;
-    22)
+    "$MDOCTOR_SAFE_ERR_PROTECTED_TARGET")
       echo "Target is protected by safety policy. Choose a narrower cache/temp path instead: ${path}"
       ;;
-    23)
+    "$MDOCTOR_SAFE_ERR_SYMLINK_BLOCKED")
       echo "Symlink deletion is blocked by default. Use explicit symlink-allow flow only when audited: ${path}"
       ;;
-    24)
+    "$MDOCTOR_SAFE_ERR_PERMISSION_DENIED")
       echo "Permission denied. Check ownership/permissions, Full Disk Access, or sudo policy for: ${path}"
       ;;
-    25)
+    "$MDOCTOR_SAFE_ERR_SIP_READONLY")
       echo "Likely SIP/read-only restriction. Avoid protected/system paths or run from writable scope: ${path}"
       ;;
-    26)
+    "$MDOCTOR_SAFE_ERR_RUNTIME_FAILURE")
       echo "Runtime failure. Inspect previous error details and retry with a narrower path: ${path}"
       ;;
     *)

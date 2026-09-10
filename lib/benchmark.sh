@@ -5,6 +5,11 @@
 # Risk: SAFE (uses temp files, no system modification)
 #
 
+# Benchmark sizes (Task 8.7); guarded so isolated sourcing works.
+_MDOCTOR_BENCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
+source "${_MDOCTOR_BENCH_DIR}/constants.sh"
+unset _MDOCTOR_BENCH_DIR
+
 # _bench_time → high-resolution timestamp in seconds (uses Perl's Time::HiRes)
 _bench_time() {
   perl -MTime::HiRes=time -e 'printf "%.6f\n", time()' 2>/dev/null || date +%s
@@ -43,7 +48,7 @@ run_benchmark() {
   local bs
   # macOS dd uses lowercase 'm' for megabytes; Linux uses uppercase 'M'
   if is_macos 2>/dev/null; then bs="1m"; else bs="1M"; fi
-  local count=256  # 256 MB
+  local count="$MDOCTOR_BENCH_DISK_MB"  # block count IS the MiB size (bs=1M); the MiB value below derives from it
 
   # Write test
   local w_start w_end w_elapsed w_speed
@@ -52,7 +57,7 @@ run_benchmark() {
   sync
   w_end=$(_bench_time)
   w_elapsed=$(_bench_elapsed "$w_start" "$w_end")
-  w_speed=$(awk -v sz=256 -v t="$w_elapsed" 'BEGIN {if(t>0) printf "%.1f", sz/t; else print "N/A"}')
+  w_speed=$(awk -v sz="$count" -v t="$w_elapsed" 'BEGIN {if(t>0) printf "%.1f", sz/t; else print "N/A"}')
 
   # Read test (clear disk cache first if possible)
   local r_start r_end r_elapsed r_speed
@@ -63,12 +68,12 @@ run_benchmark() {
   dd if="$disk_file" of=/dev/null bs="$bs" 2>/dev/null
   r_end=$(_bench_time)
   r_elapsed=$(_bench_elapsed "$r_start" "$r_end")
-  r_speed=$(awk -v sz=256 -v t="$r_elapsed" 'BEGIN {if(t>0) printf "%.1f", sz/t; else print "N/A"}')
+  r_speed=$(awk -v sz="$count" -v t="$r_elapsed" 'BEGIN {if(t>0) printf "%.1f", sz/t; else print "N/A"}')
 
   rm -f "$disk_file"
 
-  printf "  %-20s %s\n" "Write (256 MB):" "${w_speed} MB/s (${w_elapsed}s)"
-  printf "  %-20s %s\n" "Read (256 MB):" "${r_speed} MB/s (${r_elapsed}s)"
+  printf "  %-20s %s\n" "Write (${MDOCTOR_BENCH_DISK_MB} MB):" "${w_speed} MB/s (${w_elapsed}s)"
+  printf "  %-20s %s\n" "Read (${MDOCTOR_BENCH_DISK_MB} MB):" "${r_speed} MB/s (${r_elapsed}s)"
   echo
 
   ########################################
@@ -119,8 +124,8 @@ run_benchmark() {
   echo "  ┌──────────────────────┬──────────────────┐"
   printf "  │ %-20s │ %-16s │\n" "Test" "Result"
   echo "  ├──────────────────────┼──────────────────┤"
-  printf "  │ %-20s │ %13s MB/s │\n" "Disk Write (256MB)" "$w_speed"
-  printf "  │ %-20s │ %13s MB/s │\n" "Disk Read (256MB)" "$r_speed"
+  printf "  │ %-20s │ %13s MB/s │\n" "Disk Write (${MDOCTOR_BENCH_DISK_MB}MB)" "$w_speed"
+  printf "  │ %-20s │ %13s MB/s │\n" "Disk Read (${MDOCTOR_BENCH_DISK_MB}MB)" "$r_speed"
   printf "  │ %-20s │ %15s ms │\n" "DNS Resolution" "$dns_ms"
   printf "  │ %-20s │ %16ss │\n" "CPU gzip (10MB)" "$c_elapsed"
   echo "  └──────────────────────┴──────────────────┘"

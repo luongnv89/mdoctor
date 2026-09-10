@@ -67,6 +67,8 @@ resolve_script_dir() {
 
 MDOCTOR_DIR="$(resolve_script_dir)"
 
+# Named constants first (Task 8.7): pure assignments, no dependencies.
+source "${MDOCTOR_DIR}/lib/constants.sh"
 # Source platform detection early (before any platform-conditional logic)
 source "${MDOCTOR_DIR}/lib/platform.sh"
 source "${MDOCTOR_DIR}/lib/metadata.sh"
