@@ -76,23 +76,18 @@ run_single_cleanup_module() {
   source "${MDOCTOR_DIR}/lib/cleanup_scope.sh"
 
   # Initialize progress globals for spinner
-  # shellcheck disable=SC2034
-  STEP_CURRENT=0
-  # shellcheck disable=SC2034
-  STEP_TOTAL=1
+  export STEP_CURRENT=0
+  export STEP_TOTAL=1
   init_colors
   debug_log "cmd_clean module=${selected_module} force=${selected_force} debug=${MDOCTOR_DEBUG}"
 
   # Set globals (used by sourced cleanup modules via run_cmd_args)
-  # shellcheck disable=SC2034
-  DRY_RUN=true
+  export DRY_RUN=true
   LOGFILE="$(platform_log_dir)/mdoctor_cleanup.log"
-  # shellcheck disable=SC2034
-  DAYS_OLD="${DAYS_OLD_OVERRIDE:-7}"
+  export DAYS_OLD="${DAYS_OLD_OVERRIDE:-7}"
 
   if [ "$selected_force" = true ]; then
-    # shellcheck disable=SC2034
-    DRY_RUN=false
+    export DRY_RUN=false
     cmd_clean_preflight_summary_module "$selected_module" "${DAYS_OLD}"
     # Confirmation gate (Task 0.5): y/N prompt, or refusal on a
     # non-tty unless MDOCTOR_ASSUME_YES=true.
@@ -113,8 +108,7 @@ run_single_cleanup_module() {
   op_session_start "clean:module:${selected_module}"
 
   # Start spinner for single cleanup module
-  # shellcheck disable=SC2034
-  STEP_CURRENT=1
+  export STEP_CURRENT=1
   progress_start "Cleaning ${selected_module}..."
 
   local module_rc=0

@@ -58,3 +58,20 @@ mdoctor_context_init
   done)
   [ -z "$missing" ]
 }
+
+@test "no SC2034 suppression survives anywhere in shell sources" {
+  hits=$(find "$ROOT_DIR" -type f \( -name '*.sh' -o -name mdoctor -o -name cleanup.sh -o -name doctor.sh \) -not -path "$ROOT_DIR/tests/*" | xargs grep -l 'shellcheck disable=SC2034' 2>/dev/null || true)
+  [ -z "$hits" ]
+}
+
+@test "each module directory names its required inputs" {
+  for d in checks cleanups fixes; do
+    sample=$(find "$ROOT_DIR/$d" -name '*.sh' | head -1)
+    grep -q "Required ${d} inputs:" "$sample" || fail "$d header missing"
+  done
+  unlabeled=$(find "$ROOT_DIR/checks" "$ROOT_DIR/cleanups" "$ROOT_DIR/fixes" -name '*.sh' | while read -r f; do
+    d=$(basename "$(dirname "$f")")
+    grep -q "Required ${d} inputs:" "$f" || echo "$f"
+  done)
+  [ -z "$unlabeled" ]
+}

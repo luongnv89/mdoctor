@@ -34,28 +34,23 @@ _MDOCTOR_CONTEXT_LOADED=true
 # mdoctor_context_init — declare the contract with defaults. Safe to call
 # more than once; marks _MDOCTOR_CONTEXT_READY=true last.
 mdoctor_context_init() {
-  # shellcheck disable=SC2034
-  DRY_RUN=true
-  # shellcheck disable=SC2034
-  DAYS_OLD="${DAYS_OLD_OVERRIDE:-7}"
-  # shellcheck disable=SC2034
-  LOGFILE="${LOGFILE:-}"
-  # shellcheck disable=SC2034
-  STEP_CURRENT=0
-  # shellcheck disable=SC2034
-  STEP_TOTAL=1
-  # shellcheck disable=SC2034
-  MDOCTOR_DEBUG="${MDOCTOR_DEBUG:-false}"
-  # shellcheck disable=SC2034
+  # Scalars are exported: every module in checks/, cleanups/ and fixes/
+  # consumes them cross-file, which is exactly what the export declares.
+  export DRY_RUN=true
+  export DAYS_OLD="${DAYS_OLD_OVERRIDE:-7}"
+  export LOGFILE="${LOGFILE:-}"
+  export STEP_CURRENT=0
+  export STEP_TOTAL=1
+  export MDOCTOR_DEBUG="${MDOCTOR_DEBUG:-false}"
+  export WARN_COUNT=0
+  export FAIL_COUNT=0
   ACTIONS=()
-  # shellcheck disable=SC2034
-  WARN_COUNT=0
-  # shellcheck disable=SC2034
-  FAIL_COUNT=0
-  # shellcheck disable=SC2034
   LOG_PATHS=()
-  # shellcheck disable=SC2034
   LOG_DESCS=()
+  # Arrays cannot be meaningfully exported; reference them so the
+  # declaration site is warning-clean without suppressions. The
+  # ${arr[@]+"${arr[@]}"} form is the Bash 3.2-safe empty-array expansion.
+  : "${ACTIONS[@]+"${ACTIONS[@]}"}" "${LOG_PATHS[@]+"${LOG_PATHS[@]}"}" "${LOG_DESCS[@]+"${LOG_DESCS[@]}"}"
 
   _MDOCTOR_CONTEXT_READY=true
   export _MDOCTOR_CONTEXT_READY

@@ -95,17 +95,15 @@ else
 fi
 
 # Alias for progress bar functions (they use STEP_CURRENT/STEP_TOTAL)
-# shellcheck disable=SC2034
-STEP_CURRENT=0
-# shellcheck disable=SC2034
-STEP_TOTAL=$PROGRESS_TOTAL
+# Aliases consumed by the shared spinner (lib/common.sh).
+export STEP_CURRENT=0
+export STEP_TOTAL=$PROGRESS_TOTAL
 
 step() {
 	progress_stop
 
 	PROGRESS_CURRENT=$((PROGRESS_CURRENT + 1))
-	# shellcheck disable=SC2034
-	STEP_CURRENT=$PROGRESS_CURRENT
+	export STEP_CURRENT=$PROGRESS_CURRENT
 	local label="$1"
 	echo
 	echo "➤ [${PROGRESS_CURRENT}/${PROGRESS_TOTAL}] ${label}"
