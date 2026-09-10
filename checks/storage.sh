@@ -14,6 +14,12 @@
 
 # _scan_dir_for_hogs dir depth limit
 # Returns top N largest subdirs (size in KB + path), sorted descending.
+# Echoes nothing on failure and returns a size-probe code
+# ($MDOCTOR_SIZE_ERR_NOT_DIR when dir is missing; a per-subdir du failure
+# skips that entry instead of printing 0 and propagates du_size_kb's
+# code); 0 only when every printed line is a genuine measurement.
+# Callers capture the status and report "could not determine" instead of
+# treating empty output as clean.
 
 # Module context contract (Task 9.1): the 11 globals this module reads are
 # declared by mdoctor_context_init in lib/context.sh. Fail loudly when a
@@ -28,43 +34,112 @@ _scan_dir_for_hogs() {
   local dir="$1"
   local limit="${2:-5}"
 
-  [ -d "$dir" ] || return 0
+  if [ ! -d "$dir" ]; then
+    return "$MDOCTOR_SIZE_ERR_NOT_DIR"
+  fi
 
-  local sub
+  local sub=""
+  local sub_sz=""
+  local sub_rc=0
+  local hog_rc=0
   for sub in "$dir"/*/; do
     [ -e "$sub" ] || continue
-    printf '%s\t%s\n' "$(du_size_kb "$sub")" "$sub"
+    sub_rc=0
+    sub_sz=$(du_size_kb "$sub") || sub_rc=$?
+    if [ "$sub_rc" -ne 0 ]; then
+      if [ "$hog_rc" -eq 0 ]; then
+        hog_rc="$sub_rc"
+      fi
+      continue
+    fi
+    printf '%s\t%s\n' "$sub_sz" "$sub"
   done | sort -rn | head -n "$limit"
+  return "$hog_rc"
 }
 
 # _dir_size_kb dir
 # Returns size in KB for a single directory via the shared hardened probe.
+# Propagates du_size_kb's error channel (0 only for a genuine
+# measurement); callers capture the status and report "could not
+# determine" instead of treating 0 as empty.
 _dir_size_kb() {
   du_size_kb "$1"
 }
 
 # _find_and_sum pattern dirs...
 # Finds all matching dirs and sums their sizes (KB). Timeout 30s per search dir.
+# Echoes "TOTAL COUNT" (always numeric) and returns 0 only for a genuine
+# measurement: NOT_DIR when no search dir was usable, TIMEOUT when a
+# bounded find hit MDOCTOR_FIND_TIMEOUT_S, DENIED when a find failed.
+# Missing search dirs are skipped (best-effort roots); per-match du races
+# contribute 0.
 _find_and_sum() {
   local pattern="$1"
   shift
 
   local total=0
   local count=0
-  local dir
+  local find_rc=0
+  local sum_rc=0
+  local saw_dir=false
+  local dir=""
+  local match=""
+  local sz=""
+  local sz_rc=0
+  local matches_file=""
 
   for dir in "$@"; do
-    [ -d "$dir" ] || continue
-    while IFS= read -r match; do
-      local sz
-      sz=$(du_size_kb "$match")
-      sz="${sz:-0}"
-      total=$((total + sz))
+    if [ ! -d "$dir" ]; then
+      continue
+    fi
+    saw_dir=true
+    matches_file="$(mktemp "${TMPDIR:-/tmp}/mdoctor-find-sum.XXXXXX" 2>/dev/null)" || matches_file=""
+    if [ -z "$matches_file" ]; then
+      if [ "$sum_rc" -eq 0 ]; then
+        sum_rc=1
+      fi
+      continue
+    fi
+    find_rc=0
+    if command -v timeout >/dev/null 2>&1; then
+      timeout "$MDOCTOR_FIND_TIMEOUT_S" find "$dir" -maxdepth 5 -type d -name "$pattern" -print0 >"$matches_file" 2>/dev/null || find_rc=$?
+    else
+      find "$dir" -maxdepth 5 -type d -name "$pattern" -print0 >"$matches_file" 2>/dev/null || find_rc=$?
+    fi
+    if [ "$find_rc" -eq 124 ]; then
+      rm -f "$matches_file"
+      matches_file=""
+      echo "${total} ${count}"
+      return "$MDOCTOR_SIZE_ERR_TIMEOUT"
+    fi
+    if [ "$find_rc" -ne 0 ]; then
+      rm -f "$matches_file"
+      matches_file=""
+      if [ "$sum_rc" -eq 0 ]; then
+        sum_rc="$MDOCTOR_SIZE_ERR_DENIED"
+      fi
+      continue
+    fi
+    while IFS= read -r -d '' match; do
+      sz_rc=0
+      sz=$(du_size_kb "$match") || sz_rc=$?
+      if [ "$sz_rc" -ne 0 ]; then
+        sz="0"
+      fi
+      total=$((total + ${sz:-0}))
       count=$((count + 1))
-    done < <(timeout "$MDOCTOR_FIND_TIMEOUT_S" find "$dir" -maxdepth 5 -type d -name "$pattern" 2>/dev/null)
+    done <"$matches_file"
+    rm -f "$matches_file"
+    matches_file=""
   done
 
+  if [ "$saw_dir" != true ]; then
+    echo "${total} ${count}"
+    return "$MDOCTOR_SIZE_ERR_NOT_DIR"
+  fi
+
   echo "${total} ${count}"
+  return "$sum_rc"
 }
 
 ########################################
@@ -107,22 +182,35 @@ _storage_scan_appdata() {
     for cat in "Application Support" "Caches" "Containers" "Group Containers"; do
       local cat_dir="${HOME}/Library/${cat}"
       [ -d "$cat_dir" ] || continue
-      local cat_size_kb
-      cat_size_kb=$(_dir_size_kb "$cat_dir")
+      local cat_size_kb=""
+      local cat_rc=0
+      cat_size_kb=$(_dir_size_kb "$cat_dir") || cat_rc=$?
+      if [ "$cat_rc" -ne 0 ]; then
+        # shellcheck disable=SC2088
+        status_warn "~/Library/${cat}: could not determine size"
+        continue
+      fi
       # shellcheck disable=SC2088
       if _storage_report "~/Library/${cat}" "$cat_size_kb"; then
-        while IFS=$'\t' read -r sz path; do
-          [ -z "$sz" ] && continue
-          local sub_name
-          sub_name=$(basename "$path")
-          local sub_hr
-          sub_hr=$(kb_to_human "$sz")
-          if (( sz >= MDOCTOR_REPORT_WARN_KB )); then
-            status_warn "  └─ ${sub_name}: ${sub_hr}"
-          elif (( sz >= MDOCTOR_REPORT_MIN_KB )); then
-            status_info "  └─ ${sub_name}: ${sub_hr}"
-          fi
-        done < <(_scan_dir_for_hogs "$cat_dir" 3)
+        local hog_out=""
+        local hog_rc=0
+        hog_out=$(_scan_dir_for_hogs "$cat_dir" 3) || hog_rc=$?
+        if [ "$hog_rc" -ne 0 ]; then
+          status_warn "  └─ could not determine largest subdirectories of ~/Library/${cat}"
+        else
+          while IFS=$'\t' read -r sz path; do
+            [ -z "$sz" ] && continue
+            local sub_name
+            sub_name=$(basename "$path")
+            local sub_hr
+            sub_hr=$(kb_to_human "$sz")
+            if (( sz >= MDOCTOR_REPORT_WARN_KB )); then
+              status_warn "  └─ ${sub_name}: ${sub_hr}"
+            elif (( sz >= MDOCTOR_REPORT_MIN_KB )); then
+              status_info "  └─ ${sub_name}: ${sub_hr}"
+            fi
+          done <<< "$hog_out"
+        fi
       fi
     done
   else
@@ -131,7 +219,14 @@ _storage_scan_appdata() {
     for xdg_dir in "${HOME}/.cache" "${HOME}/.local/share" "${HOME}/.config"; do
       [ -d "$xdg_dir" ] || continue
       local label="${xdg_dir/#$HOME/~}"
-      _storage_report "$label" "$(_dir_size_kb "$xdg_dir")" || true
+      local xdg_kb=""
+      local xdg_rc=0
+      xdg_kb=$(_dir_size_kb "$xdg_dir") || xdg_rc=$?
+      if [ "$xdg_rc" -ne 0 ]; then
+        status_warn "${label}: could not determine size"
+      else
+        _storage_report "$label" "$xdg_kb" || true
+      fi
     done
   fi
 }
@@ -143,6 +238,10 @@ _storage_scan_applications() {
   local app_total=0
   while IFS=$'\t' read -r sz path; do
     [ -z "$sz" ] && continue
+    if [ "$sz" = "FAILED" ]; then
+      status_warn "  $(basename "$path"): could not determine size"
+      continue
+    fi
     local app_hr
     app_hr=$(kb_to_human "$sz")
     local app_name
@@ -158,7 +257,8 @@ _storage_scan_applications() {
   done < <(
     for _app in /Applications/*.app/; do
       [ -e "$_app" ] || continue
-      printf '%s\t%s\n' "$(du_size_kb "$_app")" "$_app"
+      _app_sz=$(du_size_kb "$_app") || { printf 'FAILED\t%s\n' "$_app"; continue; }
+      printf '%s\t%s\n' "$_app_sz" "$_app"
     done | sort -rn | head -n 5)
   STORAGE_TOTAL_KB=$((STORAGE_TOTAL_KB + app_total))
 }
@@ -175,7 +275,14 @@ _storage_scan_devtools() {
   for dev_dir in "${dev_dirs[@]}"; do
     [ -d "$dev_dir" ] || continue
     local label="${dev_dir/#$HOME/~}"
-    _storage_report "$label" "$(_dir_size_kb "$dev_dir")" || true
+    local dev_kb=""
+    local dev_rc=0
+    dev_kb=$(_dir_size_kb "$dev_dir") || dev_rc=$?
+    if [ "$dev_rc" -ne 0 ]; then
+      status_warn "${label}: could not determine size"
+    else
+      _storage_report "$label" "$dev_kb" || true
+    fi
   done
 }
 
@@ -184,8 +291,16 @@ _storage_scan_cloud() {
   is_macos || return 0
   local cloud_dir="${HOME}/Library/CloudStorage"
   [ -d "$cloud_dir" ] || return 0
-  # shellcheck disable=SC2088
-  _storage_report "~/Library/CloudStorage" "$(_dir_size_kb "$cloud_dir")" || true
+  local cloud_kb=""
+  local cloud_rc=0
+  cloud_kb=$(_dir_size_kb "$cloud_dir") || cloud_rc=$?
+  if [ "$cloud_rc" -ne 0 ]; then
+    # shellcheck disable=SC2088
+    status_warn "~/Library/CloudStorage: could not determine size"
+  else
+    # shellcheck disable=SC2088
+    _storage_report "~/Library/CloudStorage" "$cloud_kb" || true
+  fi
 }
 
 # _storage_scan_nodedeps SEARCH_DIRS... — Category 5: node_modules sweep.
@@ -193,8 +308,13 @@ _storage_scan_nodedeps() {
   status_info "Scanning for node_modules (this may take a moment)..."
   (( $# > 0 )) || return 0
 
-  local nm_result nm_total_kb nm_count
-  nm_result=$(_find_and_sum "node_modules" "$@")
+  local nm_result="" nm_total_kb="" nm_count=""
+  local nm_rc=0
+  nm_result=$(_find_and_sum "node_modules" "$@") || nm_rc=$?
+  if [ "$nm_rc" -ne 0 ]; then
+    status_warn "node_modules: could not determine size"
+    return 0
+  fi
   nm_total_kb=$(echo "$nm_result" | awk '{print $1}')
   nm_count=$(echo "$nm_result" | awk '{print $2}')
   (( nm_total_kb > 0 )) || return 0
@@ -223,7 +343,14 @@ _storage_scan_static_caches() {
     local cpath="${entry#*|}"
     [ -d "$cpath" ] || continue
     local cpath_label="${cpath/#$HOME/~}"
-    _storage_report "${clabel} (${cpath_label})" "$(_dir_size_kb "$cpath")" || true
+    local cache_kb=""
+    local cache_rc=0
+    cache_kb=$(_dir_size_kb "$cpath") || cache_rc=$?
+    if [ "$cache_rc" -ne 0 ]; then
+      status_warn "${clabel} (${cpath_label}): could not determine size"
+    else
+      _storage_report "${clabel} (${cpath_label})" "$cache_kb" || true
+    fi
   done <<< "$entries"
 }
 
@@ -235,8 +362,13 @@ _storage_scan_devcaches() {
   if (( $# > 0 )); then
     local venv_name
     for venv_name in "venv" ".venv"; do
-      local venv_result venv_kb venv_cnt
-      venv_result=$(_find_and_sum "$venv_name" "$@")
+      local venv_result="" venv_kb="" venv_cnt=""
+      local venv_rc=0
+      venv_result=$(_find_and_sum "$venv_name" "$@") || venv_rc=$?
+      if [ "$venv_rc" -ne 0 ]; then
+        status_warn "Python ${venv_name}/: could not determine size"
+        continue
+      fi
       venv_kb=$(echo "$venv_result" | awk '{print $1}')
       venv_cnt=$(echo "$venv_result" | awk '{print $2}')
       _storage_report "Python ${venv_name}/ (${venv_cnt} found)" "$venv_kb" || true
@@ -247,7 +379,14 @@ _storage_scan_devcaches() {
   for conda_base in "${HOME}/miniconda3/envs" "${HOME}/anaconda3/envs"; do
     [ -d "$conda_base" ] || continue
     local conda_label="${conda_base/#$HOME/~}"
-    _storage_report "$conda_label" "$(_dir_size_kb "$conda_base")" || true
+    local conda_kb=""
+    local conda_rc=0
+    conda_kb=$(_dir_size_kb "$conda_base") || conda_rc=$?
+    if [ "$conda_rc" -ne 0 ]; then
+      status_warn "${conda_label}: could not determine size"
+    else
+      _storage_report "$conda_label" "$conda_kb" || true
+    fi
   done
 
   _storage_scan_static_caches

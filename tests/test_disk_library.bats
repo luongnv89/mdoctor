@@ -1,9 +1,12 @@
 #!/usr/bin/env bats
 #
-# Regression test for Task 8.2 (#76):
-#   one size-formatter ladder, one hardened du probe, one timestamp function.
+# Regression test for Task 8.2 (#76) and Task 9.4 (#85):
+#   one size-formatter ladder, one hardened du probe with a real error
+#   channel, one timestamp function.
 # - format_size_kb is the single ladder; kb_to_human/human_readable_kb agree
-# - du_size_kb always prints a number and exits 0 (even on unreadable paths)
+# - du_size_kb echoes a numeric KB value but returns 0 only for a genuine
+#   measurement: distinct $MDOCTOR_SIZE_ERR_* codes for not-a-directory,
+#   timeout and permission-denied (dir_size_kb shares the channel)
 # - no `du -sk` call site survives outside lib/disk.sh
 # - no awk GB/MB formatter ladder survives outside lib/disk.sh
 # - timestamp and oplog_timestamp agree (one implementation)
@@ -48,17 +51,104 @@ teardown_file() {
   [ "$(human_readable_kb -2048)" = "$(format_size_kb 2048)" ]
 }
 
-@test "du_size_kb always prints a number and exits 0" {
+@test "du_size_kb echoes a number; 0 only for a genuine measurement" {
   source "$ROOT_DIR/lib/constants.sh"
   source "$ROOT_DIR/lib/platform.sh"
   source "$ROOT_DIR/lib/disk.sh"
-  out=$(du_size_kb "$POISONED/sub"); rc=$?
+  # Genuine measurements (readable dir and file) exit 0 ...
+  mkdir -p "$BATS_TEST_TMPDIR/genuine"
+  echo "data" > "$BATS_TEST_TMPDIR/genuine/file.txt"
+  out=$(du_size_kb "$BATS_TEST_TMPDIR/genuine"); rc=$?
   [ "$rc" -eq 0 ]
   [[ "$out" =~ ^[0-9]+$ ]]
-  [ "$(du_size_kb /nonexistent-path-xyz)" = "0" ]
-  out=$(du_size_kb "$POISONED/sub/file.txt"); rc=$?
+  out=$(du_size_kb "$BATS_TEST_TMPDIR/genuine/file.txt"); rc=$?
   [ "$rc" -eq 0 ]
   [[ "$out" =~ ^[0-9]+$ ]]
+  # ... the probe always echoes a number (even for the chmod-000
+  # fixture, whose status is environment-dependent), ...
+  [[ "$(du_size_kb "$POISONED")" =~ ^[0-9]+$ ]]
+  [[ "$(du_size_kb "$POISONED/sub/file.txt")" =~ ^[0-9]+$ ]]
+  # ... while a missing path still echoes 0 but reports NOT_DIR, so
+  # callers can tell failure from a genuinely empty directory.
+  rc=0
+  out=$(du_size_kb /nonexistent-path-xyz) || rc=$?
+  [ "$out" = "0" ]
+  [ "$rc" -eq "$MDOCTOR_SIZE_ERR_NOT_DIR" ]
+}
+
+@test "dir-size probe reports four outcomes with distinct codes" {
+  source "$ROOT_DIR/lib/constants.sh"
+  source "$ROOT_DIR/lib/platform.sh"
+  source "$ROOT_DIR/lib/disk.sh"
+  # The three failure codes are distinct from each other and from 0.
+  [ "$MDOCTOR_SIZE_ERR_NOT_DIR" -ne 0 ]
+  [ "$MDOCTOR_SIZE_ERR_TIMEOUT" -ne 0 ]
+  [ "$MDOCTOR_SIZE_ERR_DENIED" -ne 0 ]
+  [ "$MDOCTOR_SIZE_ERR_NOT_DIR" -ne "$MDOCTOR_SIZE_ERR_TIMEOUT" ]
+  [ "$MDOCTOR_SIZE_ERR_NOT_DIR" -ne "$MDOCTOR_SIZE_ERR_DENIED" ]
+  [ "$MDOCTOR_SIZE_ERR_TIMEOUT" -ne "$MDOCTOR_SIZE_ERR_DENIED" ]
+
+  probe_dir="$BATS_TEST_TMPDIR/probe"
+  mkdir -p "$probe_dir/sub"
+  echo "data" > "$probe_dir/sub/file.txt"
+
+  # 1. Genuine measurement exits 0 ...
+  out=$(du_size_kb "$probe_dir"); rc=$?
+  [ "$rc" -eq 0 ]
+  [[ "$out" =~ ^[0-9]+$ ]]
+
+  # ... and so does a genuinely empty directory: 0 with status 0 is
+  # data, 0 with a non-zero status is "could not determine".
+  mkdir -p "$probe_dir/empty"
+  out=$(du_size_kb "$probe_dir/empty"); rc=$?
+  [ "$rc" -eq 0 ]
+  [ "$out" = "0" ]
+
+  # 2. Not a directory.
+  rc=0
+  out=$(du_size_kb "$BATS_TEST_TMPDIR/does-not-exist") || rc=$?
+  [ "$out" = "0" ]
+  [ "$rc" -eq "$MDOCTOR_SIZE_ERR_NOT_DIR" ]
+
+  # 3. Permission denied, via a stubbed du (deterministic as any user).
+  stubbin="$BATS_TEST_TMPDIR/stubbin"
+  mkdir -p "$stubbin"
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'echo "du: cannot access $2: Permission denied" >&2\n'
+    printf 'exit 1\n'
+  } > "$stubbin/du"
+  chmod +x "$stubbin/du"
+  old_path="$PATH"
+  PATH="$stubbin:$PATH"
+  hash -r
+  rc=0
+  out=$(du_size_kb "$probe_dir") || rc=$?
+  PATH="$old_path"
+  hash -r
+  [ "$out" = "0" ]
+  [ "$rc" -eq "$MDOCTOR_SIZE_ERR_DENIED" ]
+
+  # 4. Timed out, via a stubbed timeout (124 is timeout's real status).
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'exit 124\n'
+  } > "$stubbin/timeout"
+  chmod +x "$stubbin/timeout"
+  PATH="$stubbin:$PATH"
+  hash -r
+  rc=0
+  out=$(du_size_kb "$probe_dir") || rc=$?
+  PATH="$old_path"
+  hash -r
+  [ "$out" = "0" ]
+  [ "$rc" -eq "$MDOCTOR_SIZE_ERR_TIMEOUT" ]
+
+  # The documented alias shares the channel.
+  rc=0
+  out=$(dir_size_kb "$BATS_TEST_TMPDIR/does-not-exist") || rc=$?
+  [ "$out" = "0" ]
+  [ "$rc" -eq "$MDOCTOR_SIZE_ERR_NOT_DIR" ]
 }
 
 @test "no du call site survives outside lib/disk.sh" {
@@ -92,6 +182,10 @@ teardown_file() {
   chmod 000 "$TMPHOME/.local/share/Trash/files/poisoned"
   out=$(printf 'n\n' | "$ROOT_DIR/mdoctor" clean -m trash --force 2>&1 || true)
   [[ "$out" == *"Pre-flight Safety Summary"* ]]
-  [[ "$out" == *"(~"* ]]
+  # Readable trash prints an estimate (~X); an unreadable one honestly
+  # reports "could not determine" instead of fabricating 0 (Task 9.4).
+  if [[ "$out" != *"(~"* && "$out" != *"could not determine"* ]]; then
+    fail "expected an estimate or a could-not-determine note: $out"
+  fi
   chmod -R u+rwx "$TMPHOME/.local/share/Trash" 2>/dev/null || true
 }

@@ -153,6 +153,17 @@ Rules for authors:
 - `cmd_check` captures each check module's exit code and `cmd_fix` captures
   each fix target's, and both return it — the same capture on both paths.
 
+Measurement helpers (`du_size_kb` / `dir_size_kb` in `lib/disk.sh`,
+`preflight_*` in `lib/preflight.sh`, `_dir_size_kb` / `_find_and_sum` /
+`_scan_dir_for_hogs` in `checks/storage.sh`) echo data, so they carry a
+separate error channel (Task 9.4): `0` only for a genuine measurement,
+`31` (`MDOCTOR_SIZE_ERR_NOT_DIR`) for a missing target, `32`
+(`MDOCTOR_SIZE_ERR_TIMEOUT`) for a timed-out probe, `33`
+(`MDOCTOR_SIZE_ERR_DENIED`) for permission denied. The echo is still
+always numeric (`0` on failure, so bare arithmetic stays safe) — callers
+capture the status (`out=$(du_size_kb "$p") || rc=$?`) and report "could
+not determine" instead of treating `0` as "nothing to report".
+
 ## Commit Conventions
 
 We use [Conventional Commits](https://www.conventionalcommits.org/):

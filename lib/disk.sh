@@ -60,26 +60,69 @@ format_size_kb() {
   fi
 }
 
-# du_size_kb PATH — the single hardened du probe (Task 8.2).
-# Never propagates a non-zero du status (permission-denied subdirectories
-# must not abort callers running under `set -e` / `pipefail`); always prints
-# a numeric KB value (0 on failure). Wraps the probe in a timeout where
-# available (GNU-only; macOS runs it directly). Every du call site routes
-# through this.
+# du_size_kb PATH — the single hardened du probe (Task 8.2), with a real
+# error channel (Task 9.4).
+# Echoes the size in KB (0 on failure, so bare arithmetic on the output
+# stays safe) and returns 0 only for a genuine measurement:
+#   $MDOCTOR_SIZE_ERR_NOT_DIR  path is missing (or vanished mid-probe)
+#   $MDOCTOR_SIZE_ERR_TIMEOUT  the probe hit MDOCTOR_DU_TIMEOUT_S (rc 124)
+#   $MDOCTOR_SIZE_ERR_DENIED   du failed with no usable size and reported
+#                              a permission problem
+#   du's own status            any other du failure with no usable size
+# A partial read (a numeric size line plus unreadable-subdirectory noise)
+# is still a genuine measurement: the size is echoed and 0 is returned, so
+# pre-flight estimates under `set -e` never abort on a poisoned subdir.
+# Callers that must tell failure from empty capture the status
+# (out=$(du_size_kb "$p") || rc=$?) and report "could not determine"
+# instead of treating 0 as "nothing to report".
 du_size_kb() {
   local path="${1-}"
   if [ -z "$path" ] || [ ! -e "$path" ]; then
     echo 0
+    return "$MDOCTOR_SIZE_ERR_NOT_DIR"
+  fi
+  local out=""
+  local du_rc=0
+  if command -v timeout >/dev/null 2>&1; then
+    out=$(timeout "$MDOCTOR_DU_TIMEOUT_S" du -sk "$path" 2>&1) || du_rc=$?
+  else
+    out=$(du -sk "$path" 2>&1) || du_rc=$?
+  fi
+  if [ "$du_rc" -eq 124 ]; then
+    echo 0
+    return "$MDOCTOR_SIZE_ERR_TIMEOUT"
+  fi
+  # Last numeric-leading line wins: du prints "SIZE<TAB>path" on stdout
+  # and "du: ..." diagnostics on stderr (combined above); only size lines
+  # lead with a number, so diagnostics can never parse as a size.
+  local kb=""
+  kb=$(printf '%s\n' "$out" | awk '$1 ~ /^[0-9]+$/ {kb=$1} END {print kb+0}')
+  if [ -n "$kb" ] && [ "$kb" != "0" ]; then
+    echo "$kb"
     return 0
   fi
-  local kb=""
-  # NR==1 + numeric coercion: du prints the path after the size, and the
-  # path itself may contain newlines (Task 3.6) — only the first line
-  # carries the size.
-  if command -v timeout >/dev/null 2>&1; then
-    kb=$({ timeout "$MDOCTOR_DU_TIMEOUT_S" du -sk "$path" 2>/dev/null || true; } | awk 'NR==1{print $1+0}')
-  else
-    kb=$({ du -sk "$path" 2>/dev/null || true; } | awk 'NR==1{print $1+0}')
+  if [ "$du_rc" -ne 0 ]; then
+    case "$out" in
+      *"Permission denied"*|*"Operation not permitted"*)
+        echo 0
+        return "$MDOCTOR_SIZE_ERR_DENIED"
+        ;;
+      *"No such file"*)
+        echo 0
+        return "$MDOCTOR_SIZE_ERR_NOT_DIR"
+        ;;
+      *)
+        echo 0
+        return "$du_rc"
+        ;;
+    esac
   fi
-  echo "${kb:-0}"
+  echo 0
+  return 0
+}
+
+# dir_size_kb PATH — the documented probe name (Task 9.4 verify command);
+# identical output and error channel to du_size_kb.
+dir_size_kb() {
+  du_size_kb "$@"
 }

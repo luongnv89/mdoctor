@@ -45,6 +45,23 @@ export MDOCTOR_FIND_TIMEOUT_S=30
 export MDOCTOR_DEV_FIND_TIMEOUT_S=60
 
 ########################################
+# SIZE-PROBE ERROR CHANNEL (Task 9.4)
+########################################
+#
+# Echo-returning measurement helpers (lib/disk.sh, lib/preflight.sh,
+# checks/storage.sh) return 0 only for a genuine measurement. Each failure
+# mode has a distinct non-zero code so callers can tell "could not
+# determine" apart from a genuine 0 — the same named-constants discipline
+# as the safety taxonomy in lib/safety.sh (never bare numbers).
+
+# Target is missing, empty, or not a measurable directory.
+export MDOCTOR_SIZE_ERR_NOT_DIR=31
+# The measurement was killed by its timeout (timeout exit status 124).
+export MDOCTOR_SIZE_ERR_TIMEOUT=32
+# The target (or its contents) could not be read: permission denied.
+export MDOCTOR_SIZE_ERR_DENIED=33
+
+########################################
 # DIAGNOSE THRESHOLDS (env-overridable)
 ########################################
 #

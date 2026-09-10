@@ -136,9 +136,14 @@ cmd_clean_preflight_summary_module() {
     local label="$1"
     local path="$2"
     local sz=0
-    sz=$(preflight_path_kb "$path")
-    total_kb=$((total_kb + sz))
-    printf "  - %-30s %s (~%s)\n" "$label" "$path" "$(human_readable_kb "$sz")"
+    local sz_rc=0
+    sz=$(preflight_path_kb "$path") || sz_rc=$?
+    if [ "$sz_rc" -ne 0 ]; then
+      printf "  - %-30s %s (could not determine size)\n" "$label" "$path"
+    else
+      total_kb=$((total_kb + sz))
+      printf "  - %-30s %s (~%s)\n" "$label" "$path" "$(human_readable_kb "$sz")"
+    fi
   }
 
   case "$module" in
@@ -152,15 +157,25 @@ cmd_clean_preflight_summary_module() {
       local log_dir
       log_dir="$(platform_user_log_dir)"
       local logs_kb=0
-      logs_kb=$(preflight_find_kb "$log_dir" -type f -mtime "+${days}")
-      total_kb=$((total_kb + logs_kb))
-      printf "  - %-30s %s (~%s)\n" "Old logs (>${days}d)" "$log_dir" "$(human_readable_kb "$logs_kb")"
+      local logs_rc=0
+      logs_kb=$(preflight_find_kb "$log_dir" -type f -mtime "+${days}") || logs_rc=$?
+      if [ "$logs_rc" -ne 0 ]; then
+        printf "  - %-30s %s (could not determine size)\n" "Old logs (>${days}d)" "$log_dir"
+      else
+        total_kb=$((total_kb + logs_kb))
+        printf "  - %-30s %s (~%s)\n" "Old logs (>${days}d)" "$log_dir" "$(human_readable_kb "$logs_kb")"
+      fi
       ;;
     downloads)
       local dl_kb=0
-      dl_kb=$(preflight_find_kb "${HOME}/Downloads" -type f -size +500M -mtime "+${days}")
-      total_kb=$((total_kb + dl_kb))
-      printf "  - %-30s %s (~%s)\n" "Large downloads (>${days}d)" "${HOME}/Downloads" "$(human_readable_kb "$dl_kb")"
+      local dl_rc=0
+      dl_kb=$(preflight_find_kb "${HOME}/Downloads" -type f -size +500M -mtime "+${days}") || dl_rc=$?
+      if [ "$dl_rc" -ne 0 ]; then
+        printf "  - %-30s %s (could not determine size)\n" "Large downloads (>${days}d)" "${HOME}/Downloads"
+      else
+        total_kb=$((total_kb + dl_kb))
+        printf "  - %-30s %s (~%s)\n" "Large downloads (>${days}d)" "${HOME}/Downloads" "$(human_readable_kb "$dl_kb")"
+      fi
       ;;
     browser)
       if is_macos; then
@@ -187,24 +202,40 @@ cmd_clean_preflight_summary_module() {
       ;;
     crash_reports)
       local crash_dir crash_kb
+      local crash_rc=0
       while IFS= read -r crash_dir; do
-        crash_kb=$(preflight_find_kb "$crash_dir" -type f -mtime "+${days}")
-        total_kb=$((total_kb + crash_kb))
-        printf "  - %-30s %s (~%s)\n" "Crash reports" "$crash_dir" "$(human_readable_kb "$crash_kb")"
+        crash_rc=0
+        crash_kb=$(preflight_find_kb "$crash_dir" -type f -mtime "+${days}") || crash_rc=$?
+        if [ "$crash_rc" -ne 0 ]; then
+          printf "  - %-30s %s (could not determine size)\n" "Crash reports" "$crash_dir"
+        else
+          total_kb=$((total_kb + crash_kb))
+          printf "  - %-30s %s (~%s)\n" "Crash reports" "$crash_dir" "$(human_readable_kb "$crash_kb")"
+        fi
       done < <(platform_crash_dirs)
       ;;
     ios_backups)
       local ios_kb=0
-      ios_kb=$(preflight_find_kb "${HOME}/Library/Application Support/MobileSync/Backup" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
-      total_kb=$((total_kb + ios_kb))
-      printf "  - %-30s %s (~%s)\n" "iOS backups (>${days}d)" "${HOME}/Library/Application Support/MobileSync/Backup" "$(human_readable_kb "$ios_kb")"
+      local ios_rc=0
+      ios_kb=$(preflight_find_kb "${HOME}/Library/Application Support/MobileSync/Backup" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}") || ios_rc=$?
+      if [ "$ios_rc" -ne 0 ]; then
+        printf "  - %-30s %s (could not determine size)\n" "iOS backups (>${days}d)" "${HOME}/Library/Application Support/MobileSync/Backup"
+      else
+        total_kb=$((total_kb + ios_kb))
+        printf "  - %-30s %s (~%s)\n" "iOS backups (>${days}d)" "${HOME}/Library/Application Support/MobileSync/Backup" "$(human_readable_kb "$ios_kb")"
+      fi
       ;;
     xcode)
       add_path "Xcode DerivedData" "${HOME}/Library/Developer/Xcode/DerivedData"
       local arc_kb=0
-      arc_kb=$(preflight_find_kb "${HOME}/Library/Developer/Xcode/Archives" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
-      total_kb=$((total_kb + arc_kb))
-      printf "  - %-30s %s (~%s)\n" "Xcode Archives (>${days}d)" "${HOME}/Library/Developer/Xcode/Archives" "$(human_readable_kb "$arc_kb")"
+      local arc_rc=0
+      arc_kb=$(preflight_find_kb "${HOME}/Library/Developer/Xcode/Archives" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}") || arc_rc=$?
+      if [ "$arc_rc" -ne 0 ]; then
+        printf "  - %-30s %s (could not determine size)\n" "Xcode Archives (>${days}d)" "${HOME}/Library/Developer/Xcode/Archives"
+      else
+        total_kb=$((total_kb + arc_kb))
+        printf "  - %-30s %s (~%s)\n" "Xcode Archives (>${days}d)" "${HOME}/Library/Developer/Xcode/Archives" "$(human_readable_kb "$arc_kb")"
+      fi
       add_path "CoreSimulator caches" "${HOME}/Library/Developer/CoreSimulator/Caches"
       echo "  - xcrun simctl delete unavailable (size estimate: n/a)"
       ;;

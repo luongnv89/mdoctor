@@ -152,6 +152,7 @@ cleanup_force_preflight_summary() {
 	echo "Touched targets:"
 
 	local path sz
+	local path_rc=0
 
 	# Common cross-platform dev cache paths
 	for path in \
@@ -163,9 +164,14 @@ cleanup_force_preflight_summary() {
 		"${HOME}/.gradle/caches" \
 		"${HOME}/go/pkg/mod/cache" \
 		"${HOME}/.cargo/registry/cache"; do
-		sz=$(preflight_path_kb "$path")
-		total_kb=$((total_kb + sz))
-		printf "  - %-45s (~%s)\n" "$path" "$(human_readable_kb "$sz")"
+		path_rc=0
+		sz=$(preflight_path_kb "$path") || path_rc=$?
+		if [ "$path_rc" -ne 0 ]; then
+			printf "  - %-45s (could not determine size)\n" "$path"
+		else
+			total_kb=$((total_kb + sz))
+			printf "  - %-45s (~%s)\n" "$path" "$(human_readable_kb "$sz")"
+		fi
 	done
 
 	# macOS-only paths
@@ -173,45 +179,91 @@ cleanup_force_preflight_summary() {
 		for path in \
 			"${HOME}/Library/Developer/Xcode/DerivedData" \
 			"${HOME}/Library/Developer/CoreSimulator/Caches"; do
-			sz=$(preflight_path_kb "$path")
-			total_kb=$((total_kb + sz))
-			printf "  - %-45s (~%s)\n" "$path" "$(human_readable_kb "$sz")"
+			path_rc=0
+			sz=$(preflight_path_kb "$path") || path_rc=$?
+			if [ "$path_rc" -ne 0 ]; then
+				printf "  - %-45s (could not determine size)\n" "$path"
+			else
+				total_kb=$((total_kb + sz))
+				printf "  - %-45s (~%s)\n" "$path" "$(human_readable_kb "$sz")"
+			fi
 		done
 	fi
 
 	local logs_kb dl_kb
+	local logs_rc=0 dl_rc=0
 	local log_dir
 	log_dir="$(platform_user_log_dir)"
-	logs_kb=$(preflight_find_kb "$log_dir" -type f -mtime "+${days}")
-	dl_kb=$(preflight_find_kb "${HOME}/Downloads" -type f -size +500M -mtime "+${days}")
-	total_kb=$((total_kb + logs_kb + dl_kb))
+	logs_kb=$(preflight_find_kb "$log_dir" -type f -mtime "+${days}") || logs_rc=$?
+	dl_kb=$(preflight_find_kb "${HOME}/Downloads" -type f -size +500M -mtime "+${days}") || dl_rc=$?
+	if [ "$logs_rc" -ne 0 ]; then
+		logs_kb=0
+	else
+		total_kb=$((total_kb + logs_kb))
+	fi
+	if [ "$dl_rc" -ne 0 ]; then
+		dl_kb=0
+	else
+		total_kb=$((total_kb + dl_kb))
+	fi
 
-	printf "  - %-45s (~%s)\n" "${log_dir} (files older than ${days}d)" "$(human_readable_kb "$logs_kb")"
-	printf "  - %-45s (~%s)\n" "${HOME}/Downloads (>500MB, older than ${days}d)" "$(human_readable_kb "$dl_kb")"
+	if [ "$logs_rc" -ne 0 ]; then
+		printf "  - %-45s (could not determine size)\n" "${log_dir} (files older than ${days}d)"
+	else
+		printf "  - %-45s (~%s)\n" "${log_dir} (files older than ${days}d)" "$(human_readable_kb "$logs_kb")"
+	fi
+	if [ "$dl_rc" -ne 0 ]; then
+		printf "  - %-45s (could not determine size)\n" "${HOME}/Downloads (>500MB, older than ${days}d)"
+	else
+		printf "  - %-45s (~%s)\n" "${HOME}/Downloads (>500MB, older than ${days}d)" "$(human_readable_kb "$dl_kb")"
+	fi
 
 	# Platform-specific crash dirs
 	local crash_dir crash_kb
+	local crash_rc=0
 	while IFS= read -r crash_dir; do
-		crash_kb=$(preflight_find_kb "$crash_dir" -type f -mtime "+${days}")
-		total_kb=$((total_kb + crash_kb))
-		printf "  - %-45s (~%s)\n" "$crash_dir" "$(human_readable_kb "$crash_kb")"
+		crash_rc=0
+		crash_kb=$(preflight_find_kb "$crash_dir" -type f -mtime "+${days}") || crash_rc=$?
+		if [ "$crash_rc" -ne 0 ]; then
+			printf "  - %-45s (could not determine size)\n" "$crash_dir"
+		else
+			total_kb=$((total_kb + crash_kb))
+			printf "  - %-45s (~%s)\n" "$crash_dir" "$(human_readable_kb "$crash_kb")"
+		fi
 	done < <(platform_crash_dirs)
 
 	if is_macos; then
 		local ios_kb archives_kb
-		ios_kb=$(preflight_find_kb "${HOME}/Library/Application Support/MobileSync/Backup" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
-		archives_kb=$(preflight_find_kb "${HOME}/Library/Developer/Xcode/Archives" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
-		total_kb=$((total_kb + ios_kb + archives_kb))
-		printf "  - %-45s (~%s)\n" "${HOME}/Library/Application Support/MobileSync/Backup (> ${days}d)" "$(human_readable_kb "$ios_kb")"
-		printf "  - %-45s (~%s)\n" "${HOME}/Library/Developer/Xcode/Archives (> ${days}d)" "$(human_readable_kb "$archives_kb")"
+		local ios_rc=0 archives_rc=0
+		ios_kb=$(preflight_find_kb "${HOME}/Library/Application Support/MobileSync/Backup" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}") || ios_rc=$?
+		archives_kb=$(preflight_find_kb "${HOME}/Library/Developer/Xcode/Archives" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}") || archives_rc=$?
+		if [ "$ios_rc" -ne 0 ]; then
+			ios_kb=0
+			printf "  - %-45s (could not determine size)\n" "${HOME}/Library/Application Support/MobileSync/Backup (> ${days}d)"
+		else
+			total_kb=$((total_kb + ios_kb))
+			printf "  - %-45s (~%s)\n" "${HOME}/Library/Application Support/MobileSync/Backup (> ${days}d)" "$(human_readable_kb "$ios_kb")"
+		fi
+		if [ "$archives_rc" -ne 0 ]; then
+			archives_kb=0
+			printf "  - %-45s (could not determine size)\n" "${HOME}/Library/Developer/Xcode/Archives (> ${days}d)"
+		else
+			total_kb=$((total_kb + archives_kb))
+			printf "  - %-45s (~%s)\n" "${HOME}/Library/Developer/Xcode/Archives (> ${days}d)" "$(human_readable_kb "$archives_kb")"
+		fi
 		echo "  - xcrun simctl delete unavailable (size estimate: n/a)"
 	fi
 
 	if is_linux; then
 		local apt_kb
-		apt_kb=$(preflight_path_kb "/var/cache/apt/archives")
-		total_kb=$((total_kb + apt_kb))
-		printf "  - %-45s (~%s)\n" "/var/cache/apt/archives" "$(human_readable_kb "$apt_kb")"
+		local apt_rc=0
+		apt_kb=$(preflight_path_kb "/var/cache/apt/archives") || apt_rc=$?
+		if [ "$apt_rc" -ne 0 ]; then
+			printf "  - %-45s (could not determine size)\n" "/var/cache/apt/archives"
+		else
+			total_kb=$((total_kb + apt_kb))
+			printf "  - %-45s (~%s)\n" "/var/cache/apt/archives" "$(human_readable_kb "$apt_kb")"
+		fi
 	fi
 
 	echo "  - docker system prune -af --volumes (size estimate: n/a) — ONLY with MDOCTOR_ALLOW_DOCKER_PRUNE=true; --volumes deletes named volumes (database data, not just caches)"
