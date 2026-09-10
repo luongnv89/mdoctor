@@ -82,6 +82,14 @@ get_module_category() {
   fi
 }
 
+# get_module_desc NAME TYPE → prints human-readable description
+get_module_desc() {
+  local idx
+  if idx=$(get_module_index "$1" "${2:-}"); then
+    echo "${_MOD_DESCS[$idx]}"
+  fi
+}
+
 # risk_badge RISK → prints colored badge string
 risk_badge() {
   local risk="$1"

@@ -69,6 +69,8 @@ MDOCTOR_DIR="$(resolve_script_dir)"
 
 # Source platform detection early (before any platform-conditional logic)
 source "${MDOCTOR_DIR}/lib/platform.sh"
+source "${MDOCTOR_DIR}/lib/metadata.sh"
+source "${MDOCTOR_DIR}/lib/registry.sh"
 
 # Runtime diagnostics flag (can be enabled per-command via --debug)
 MDOCTOR_DEBUG="${MDOCTOR_DEBUG:-false}"
@@ -316,15 +318,10 @@ cmd_check() {
         echo "  -h, --help            Show this help"
         echo
         echo "Check modules (all [SAFE] read-only):"
-        if is_macos; then
-          echo "  Hardware:  battery, hardware, bluetooth, usb"
-          echo "  System:    system, disk, updates, security, startup, network, performance, storage"
-          echo "  Software:  homebrew, node, python, devtools, shell, apps, git_config, containers"
-        else
-          echo "  Hardware:  hardware"
-          echo "  System:    system, disk, updates, security, startup, network, performance, storage"
-          echo "  Software:  node, python, devtools, shell, apps, git_config, containers, apt"
-        fi
+        source "${MDOCTOR_DIR}/lib/metadata.sh"
+        source "${MDOCTOR_DIR}/lib/registry.sh"
+        register_all_modules
+        registry_check_names_plain check
         return 0
         ;;
       *)
@@ -351,6 +348,7 @@ cmd_check() {
   if [ -n "$module" ]; then
     # Run a single check module — allowlisted before anything is sourced.
     source "${MDOCTOR_DIR}/lib/metadata.sh"
+    source "${MDOCTOR_DIR}/lib/registry.sh"
     register_all_modules
     if ! is_valid_check_module "$module"; then
       error "Unknown check module: ${module}"
@@ -552,38 +550,25 @@ cmd_clean() {
 
   echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
 
-  local -a cleanup_modules=(trash caches logs downloads browser dev crash_reports dev_caches)
-  if is_macos; then
-    cleanup_modules+=(ios_backups xcode)
-  fi
-  if is_linux; then
-    cleanup_modules+=(apt)
-  fi
+  register_all_modules
+  local _cleanup_names
+  _cleanup_names="$(registry_names cleanup)"
+  local -a cleanup_modules=()
+  local _cm
+  for _cm in $_cleanup_names; do
+    cleanup_modules+=("$_cm")
+  done
 
   is_valid_cleanup_module() {
-    local needle="$1"
-    local item
-    for item in "${cleanup_modules[@]}"; do
-      [ "$item" = "$needle" ] && return 0
-    done
-    return 1
+    local needle="${1-}"
+    case "$needle" in
+      ""|*/*|*..*|-*) return 1 ;;
+    esac
+    get_module_index "$needle" cleanup >/dev/null 2>&1
   }
 
   cleanup_module_description() {
-    case "$1" in
-      trash)         echo "Empty Trash" ;;
-      caches)        echo "User cache directories" ;;
-      logs)          echo "Old log files" ;;
-      downloads)     echo "Large files in Downloads" ;;
-      browser)       echo "Browser cache cleanup" ;;
-      dev)           echo "Developer tool caches" ;;
-      crash_reports) echo "Old crash/diagnostic reports" ;;
-      ios_backups)   echo "Old iOS backups" ;;
-      xcode)         echo "Xcode DerivedData, archives, simulators" ;;
-      dev_caches)    echo "Dependency/package manager caches" ;;
-      apt)           echo "APT package cache cleanup" ;;
-      *)             echo "" ;;
-    esac
+    get_module_desc "$1" cleanup 2>/dev/null || true
   }
 
   run_single_cleanup_module() {
@@ -593,8 +578,7 @@ cmd_clean() {
     local clean_file="${MDOCTOR_DIR}/cleanups/${selected_module}.sh"
     if [ ! -f "$clean_file" ]; then
       error "Unknown cleanup module: ${selected_module}"
-      echo "Available modules: trash, caches, logs, downloads, browser, dev,"
-      echo "  crash_reports, ios_backups, xcode, dev_caches"
+      registry_available_text cleanup "Available modules"
       return 1
     fi
 
@@ -649,19 +633,32 @@ cmd_clean() {
 
     local module_rc=0
 
-    case "$selected_module" in
-      trash)          clean_trash || module_rc=$? ;;
-      caches)         clean_user_caches || module_rc=$? ;;
-      logs)           clean_logs || module_rc=$? ;;
-      downloads)      clean_downloads_large_files || module_rc=$? ;;
-      browser)        clean_browser_caches || module_rc=$? ;;
-      dev)            clean_dev_stuff || module_rc=$? ;;
-      crash_reports)  clean_crash_reports || module_rc=$? ;;
-      ios_backups)    clean_ios_backups || module_rc=$? ;;
-      xcode)          clean_xcode || module_rc=$? ;;
-      dev_caches)     clean_dev_caches || module_rc=$? ;;
-      apt)            clean_apt_cache || module_rc=$? ;;
-    esac
+    # Registry-driven dispatch (Task 8.1): the function name comes from the
+    # single registry declaration, so adding a module to the registry is
+    # enough to make it runnable here.
+    local _dispatch_func
+    _dispatch_func="$(get_module_func "$selected_module" cleanup 2>/dev/null || true)"
+    if [ -n "$_dispatch_func" ] && declare -f "$_dispatch_func" >/dev/null 2>&1; then
+      "$_dispatch_func" || module_rc=$?
+    else
+      case "$selected_module" in
+        trash)          clean_trash || module_rc=$? ;;
+        caches)         clean_user_caches || module_rc=$? ;;
+        logs)           clean_logs || module_rc=$? ;;
+        downloads)      clean_downloads_large_files || module_rc=$? ;;
+        browser)        clean_browser_caches || module_rc=$? ;;
+        dev)            clean_dev_stuff || module_rc=$? ;;
+        crash_reports)  clean_crash_reports || module_rc=$? ;;
+        ios_backups)    clean_ios_backups || module_rc=$? ;;
+        xcode)          clean_xcode || module_rc=$? ;;
+        dev_caches)     clean_dev_caches || module_rc=$? ;;
+        apt)            clean_apt_cache || module_rc=$? ;;
+        *)
+          error "Unknown cleanup module: ${selected_module}"
+          return 1
+          ;;
+      esac
+    fi
 
     progress_stop
 
@@ -746,8 +743,7 @@ cmd_clean() {
   if [ -n "$module" ]; then
     if ! is_valid_cleanup_module "$module"; then
       error "Unknown cleanup module: ${module}"
-      echo "Available modules: trash, caches, logs, downloads, browser, dev,"
-      echo "  crash_reports, ios_backups, xcode, dev_caches"
+      registry_available_text cleanup "Available modules"
       return 1
     fi
     run_single_cleanup_module "$module" "$force"
@@ -1045,88 +1041,14 @@ cmd_info() {
 # COMMAND: list
 ########################################
 
-# Module registration (Task 3.3: shared by cmd_list and the single-module
-# check path, which validates names against this same registry).
-register_all_modules() {
-  # Idempotent: several commands may run per process.
-  if [ "${_MDOCTOR_MODULES_REGISTERED:-false}" = true ]; then
-    return 0
-  fi
-  # Register all modules for listing (platform-filtered)
-  # Check modules — Hardware
-  if is_macos; then
-    register_module check battery    Hardware SAFE check_battery     "Battery health, cycle count, capacity"
-  fi
-  register_module check hardware   Hardware SAFE check_hardware    "CPU, RAM, model, thermals"
-  if is_macos; then
-    register_module check bluetooth  Hardware SAFE check_bluetooth   "Bluetooth power state & devices"
-    register_module check usb        Hardware SAFE check_usb         "Connected USB devices"
-  fi
-  # Check modules — System
-  register_module check system      System SAFE check_system        "OS version, memory, load average"
-  register_module check disk        System SAFE check_disk          "Disk usage & health"
-  register_module check updates     System SAFE check_updates_basic "System updates"
-  register_module check security    System SAFE check_security      "Firewall, encryption, security settings"
-  register_module check startup     System SAFE check_startup       "Startup services & agents"
-  register_module check network     System SAFE check_network       "Connectivity, DNS, Wi-Fi signal"
-  register_module check performance System SAFE check_performance   "Memory pressure, CPU, processes"
-  register_module check storage     System SAFE check_storage       "Large files & app storage analysis"
-  # Diagnose modules
-  register_module diagnose diagnose System HIGH check_diagnose_performance "Active performance diagnosis with bottleneck detection"
-  # Check modules — Software
-  if is_macos; then
-    register_module check homebrew   Software SAFE check_homebrew    "Homebrew installation & packages"
-  fi
-  register_module check node       Software SAFE check_node_npm    "Node.js & npm"
-  register_module check python     Software SAFE check_python      "Python & pip"
-  register_module check devtools   Software SAFE check_dev_tools   "Developer tools, Git, Docker"
-  register_module check shell      Software SAFE check_shell_configs "Shell config syntax"
-  register_module check apps       Software SAFE check_apps        "Crash reports, application health"
-  register_module check git_config Software SAFE check_git_config  "Git & SSH configuration"
-  register_module check containers Software SAFE check_containers  "Docker & container health"
-  if is_linux; then
-    register_module check apt      Software SAFE check_apt         "APT package manager health"
-  fi
+# Module registration lives in lib/registry.sh (Task 8.1, single source of truth).
+# register_all_modules() is sourced from there at top level; the declaration
+# below was the second copy and has been removed so the registry exists once.
 
-  # Cleanup modules
-  register_module cleanup trash         System   MED clean_trash               "Empty Trash"
-  register_module cleanup caches        System   LOW clean_user_caches         "User cache directories"
-  register_module cleanup logs          System   MED clean_logs                "Old log files"
-  register_module cleanup downloads     System   LOW clean_downloads_large_files "Large files in Downloads"
-  register_module cleanup crash_reports System   MED clean_crash_reports       "Old crash/diagnostic reports"
-  if is_macos; then
-    register_module cleanup ios_backups   System   HIGH clean_ios_backups         "Old iOS device backups"
-  fi
-  register_module cleanup browser       Software LOW clean_browser_caches      "Browser cache cleanup"
-  register_module cleanup dev           Software MED clean_dev_stuff           "Developer tool caches"
-  if is_macos; then
-    register_module cleanup xcode         Software MED clean_xcode              "Xcode DerivedData, archives, simulators"
-  fi
-  register_module cleanup dev_caches    Software MED clean_dev_caches         "Developer dependency & package caches"
-  if is_linux; then
-    register_module cleanup apt          System   MED clean_apt_cache          "APT package cache cleanup"
-  fi
-
-  # Fix modules
-  register_module fix dns         System   LOW  fix_dns         "Flush DNS cache"
-  if is_macos; then
-    register_module fix disk        System   LOW  fix_disk        "Free disk space"
-    register_module fix homebrew    Software LOW  fix_homebrew    "Update, upgrade, cleanup Homebrew"
-    register_module fix permissions System   MED  fix_permissions "Reset file permissions"
-    register_module fix spotlight   System   MED  fix_spotlight   "Rebuild Spotlight index"
-    register_module fix bluetooth   Hardware LOW  fix_bluetooth   "Reset Bluetooth module"
-    register_module fix audio       System   LOW  fix_audio       "Restart Core Audio daemon"
-    register_module fix wifi        System   LOW  fix_wifi        "Renew DHCP, flush DNS, cycle Wi-Fi"
-    register_module fix timemachine System   MED  fix_timemachine "Verify Time Machine backups"
-  fi
-  if is_linux; then
-    register_module fix apt        System   LOW  fix_apt         "Fix APT packages (update, upgrade, autoremove)"
-  fi
-  _MDOCTOR_MODULES_REGISTERED=true
-}
 
 cmd_list() {
   source "${MDOCTOR_DIR}/lib/metadata.sh"
+  source "${MDOCTOR_DIR}/lib/registry.sh"
 
   register_all_modules
 
@@ -1538,32 +1460,14 @@ cmd_help() {
   printf "  ${GREEN}%-12s${RESET} %s\n" "help"      "Show this help message"
   echo
   echo "${BOLD}Check Modules${RESET} (all [SAFE] read-only):"
-  if is_macos; then
-    echo "  Hardware:  battery, hardware, bluetooth, usb"
-    echo "  System:    system, disk, updates, security, startup, network, performance, storage"
-    echo "  Software:  homebrew, node, python, devtools, shell, apps, git_config, containers"
-  else
-    echo "  Hardware:  hardware"
-    echo "  System:    system, disk, updates, security, startup, network, performance, storage"
-    echo "  Software:  node, python, devtools, shell, apps, git_config, containers, apt"
-  fi
+  register_all_modules
+  registry_check_names_plain check
   echo
   echo "${BOLD}Cleanup Modules${RESET} (risk-rated by blast radius):"
-  if is_macos; then
-    echo "  System:    trash [MED], caches [LOW], logs [MED], downloads [LOW], crash_reports [MED], ios_backups [HIGH]"
-    echo "  Software:  browser [LOW], dev [MED], xcode [MED], dev_caches [MED]"
-  else
-    echo "  System:    trash [MED], caches [LOW], logs [MED], downloads [LOW], crash_reports [MED], apt [MED]"
-    echo "  Software:  browser [LOW], dev [MED], dev_caches [MED]"
-  fi
+  registry_help_group cleanup
   echo
   echo "${BOLD}Fix Targets${RESET}:"
-  if is_macos; then
-    echo "  [LOW]  homebrew, dns, disk, bluetooth, audio, wifi"
-    echo "  [MED]  permissions, spotlight, timemachine"
-  else
-    echo "  [LOW]  dns, apt"
-  fi
+  registry_help_group fix
   echo
   echo "${BOLD}Examples:${RESET}"
   echo "  mdoctor check                    # Full health audit (21 checks)"
