@@ -26,7 +26,7 @@ clean_downloads_large_files() {
   else
     log "No ~/Downloads directory found."
   fi
-  handle_cleanup_rc "$rc" || rc=$?
+  rc="$(handle_cleanup_rc "$rc")"
   [ "$rc" -eq 0 ] || log "Module 'downloads' finished with $(safety_error_name "$rc"): $(safety_error_hint "$rc" 'downloads')"
   return "$rc"
 }

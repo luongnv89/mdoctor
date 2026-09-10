@@ -60,7 +60,7 @@ clean_xcode() {
       safe_remove_children "${sim_caches}" || rc=$?
     fi
   fi
-  handle_cleanup_rc "$rc" || rc=$?
+  rc="$(handle_cleanup_rc "$rc")"
   [ "$rc" -eq 0 ] || log "Module 'xcode' finished with $(safety_error_name "$rc"): $(safety_error_hint "$rc" 'xcode')"
   return "$rc"
 }

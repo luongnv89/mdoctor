@@ -187,7 +187,7 @@ clean_dev_caches() {
 
   # Unset the helper function to avoid polluting the namespace
   unset -f _clean_cache
-  handle_cleanup_rc "$rc" || rc=$?
+  rc="$(handle_cleanup_rc "$rc")"
   [ "$rc" -eq 0 ] || log "Module 'dev_caches' finished with $(safety_error_name "$rc"): $(safety_error_hint "$rc" 'dev_caches')"
   return "$rc"
 }

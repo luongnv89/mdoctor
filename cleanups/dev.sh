@@ -75,7 +75,7 @@ clean_dev_stuff() {
   fi
 
   # Note: Xcode cleanup moved to cleanups/xcode.sh (dedicated module)
-  handle_cleanup_rc "$rc" || rc=$?
+  rc="$(handle_cleanup_rc "$rc")"
   [ "$rc" -eq 0 ] || log "Module 'dev' finished with $(safety_error_name "$rc"): $(safety_error_hint "$rc" 'dev')"
   return "$rc"
 }
