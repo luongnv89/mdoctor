@@ -47,6 +47,7 @@ teardown_file() {
 }
 
 @test "du_size_kb always prints a number and exits 0" {
+  source "$ROOT_DIR/lib/constants.sh"
   source "$ROOT_DIR/lib/platform.sh"
   source "$ROOT_DIR/lib/disk.sh"
   out=$(du_size_kb "$POISONED/sub"); rc=$?

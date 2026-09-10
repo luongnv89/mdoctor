@@ -111,7 +111,7 @@ check_load_average() {
   threshold=$((cores * 100))
   ratio_pct=$(awk -v l="$load1" -v c="$cores" 'BEGIN {printf "%.0f", (l/c)*100}')
 
-  if (( load_int > threshold * 2 )); then
+  if (( load_int > threshold * MDOCTOR_DIAG_LOAD_OVER_MULT )); then
     status_fail "Load average (${load1}) is >2x core count (${cores}) [${ratio_pct}% ratio]"
     add_diagnosis_action "critical" "System is severely overloaded. Run 'top' or 'htop' to identify runaway processes."
   elif (( load_int > threshold )); then
@@ -158,11 +158,11 @@ check_top_cpu_consumers() {
     if [ -n "$pct" ]; then
       local pct_int
       pct_int=$(awk -v p="$pct" 'BEGIN {printf "%d", p}')
-      if (( pct_int > 80 )); then
+      if (( pct_int > MDOCTOR_DIAG_CPU_HIGH )); then
         status_fail "PID ${pid}: ${pct}% — ${name} (critical consumer)"
         add_diagnosis_action "critical" "Process '${name}' (PID ${pid}) is consuming ${pct}% CPU. Investigate or terminate with 'kill ${pid}'."
         high_count=$((high_count + 1))
-      elif (( pct_int > 50 )); then
+      elif (( pct_int > MDOCTOR_DIAG_CPU_MED )); then
         status_warn "PID ${pid}: ${pct}% — ${name} (high consumer)"
         add_diagnosis_action "warning" "Process '${name}' (PID ${pid}) is consuming ${pct}% CPU. Consider monitoring or limiting its resource usage."
       fi
@@ -184,16 +184,16 @@ check_memory_usage() {
   if is_macos; then
     # macOS: use sysctl for physical memory stats
     local page_size active_pages wired_pages total_bytes
-    page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096)
+    page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo "$MDOCTOR_PAGE_SIZE_FALLBACK")
     active_pages=$(vm_stat 2>/dev/null | awk '/Pages active/ {gsub("\\.","",$3); print $3+0}')
     wired_pages=$(vm_stat 2>/dev/null | awk '/Pages wired down/ {gsub("\\.","",$4); print $4+0}')
 
     total_bytes=$(sysctl -n hw.memsize 2>/dev/null || true)
     local active_kb wired_kb
-    active_kb=$(( ${active_pages:-0} * page_size / 1024 ))
-    wired_kb=$(( ${wired_pages:-0} * page_size / 1024 ))
+    active_kb=$(( ${active_pages:-0} * page_size / MDOCTOR_BYTES_PER_KB ))
+    wired_kb=$(( ${wired_pages:-0} * page_size / MDOCTOR_BYTES_PER_KB ))
     local used_kb=$((active_kb + wired_kb))
-    total_kb=$(( ${total_bytes:-0} / 1024 ))
+    total_kb=$(( ${total_bytes:-0} / MDOCTOR_BYTES_PER_KB ))
 
     if (( total_kb > 0 )); then
       pct=$((used_kb * 100 / total_kb))
@@ -223,10 +223,10 @@ check_memory_usage() {
     pct="$DIAG_MEM_PCT"
   fi
 
-  if (( pct > 95 )); then
+  if (( pct > MDOCTOR_DIAG_MEM_CRIT )); then
     status_fail "Memory: ${pct}% used (${used_hr}/${total_hr}) — OOM risk!"
     add_diagnosis_action "critical" "Memory usage is critical. Close applications immediately to avoid out-of-memory crashes."
-  elif (( pct > 85 )); then
+  elif (( pct > MDOCTOR_DIAG_MEM_WARN )); then
     status_warn "Memory: ${pct}% used (${used_hr}/${total_hr}) — high usage"
     add_diagnosis_action "warning" "Memory usage is high. Review memory consumers with 'top' or 'Activity Monitor'."
   else
@@ -269,10 +269,10 @@ check_memory_pressure() {
         if [ -n "${DIAG_MEM_AVAIL_PCT:-}" ]; then
           avail_pct="$DIAG_MEM_AVAIL_PCT"
         fi
-        if (( avail_pct < 5 )); then
+        if (( avail_pct < MDOCTOR_DIAG_MEM_FREE_CRIT )); then
           status_fail "Memory pressure: critical (${avail_pct}% available)"
           add_diagnosis_action "critical" "Memory pressure is critical. Close applications immediately."
-        elif (( avail_pct < 15 )); then
+        elif (( avail_pct < MDOCTOR_DIAG_MEM_FREE_WARN )); then
           status_warn "Memory pressure: elevated (${avail_pct}% available)"
           add_diagnosis_action "warning" "Memory pressure is elevated. Close unused applications to free RAM."
         else
@@ -326,10 +326,10 @@ check_swap_usage() {
       pct="$DIAG_SWAP_PCT"
     fi
 
-    if (( pct > 80 )); then
+    if (( pct > MDOCTOR_DIAG_SWAP_HIGH )); then
       status_fail "Swap: ${pct}% used (${swap_hr}/${swap_total} KB) — critical"
       add_diagnosis_action "critical" "Swap usage is critical. System is relying heavily on swap. Consider adding more RAM or reducing workload."
-    elif (( pct > 50 )); then
+    elif (( pct > MDOCTOR_DIAG_SWAP_MED )); then
       status_warn "Swap: ${pct}% used (${swap_hr}/${swap_total} KB)"
       add_diagnosis_action "warning" "Swap usage is high. Consider closing memory-intensive applications."
     else
@@ -360,10 +360,10 @@ check_disk_iowait() {
     return 0
   fi
 
-  if (( iowait_pct > 30 )); then
+  if (( iowait_pct > MDOCTOR_DIAG_IOWAIT_HIGH )); then
     status_fail "Disk I/O wait: ${iowait_pct}% — severe bottleneck"
     add_diagnosis_action "critical" "Disk I/O is a critical bottleneck. Check for heavy disk operations with 'iotop' or 'sudo iotop -o'."
-  elif (( iowait_pct > 15 )); then
+  elif (( iowait_pct > MDOCTOR_DIAG_IOWAIT_MED )); then
     status_warn "Disk I/O wait: ${iowait_pct}% — elevated"
     add_diagnosis_action "warning" "Disk I/O wait is elevated. Identify slow disk operations and consider SSD upgrade if on HDD."
   else
@@ -391,10 +391,10 @@ check_disk_hotspots() {
   fi
 
   if [ -n "$root_disk_pct" ]; then
-    if (( root_disk_pct > 95 )); then
+    if (( root_disk_pct > MDOCTOR_DIAG_DISK_CRIT )); then
       status_fail "Root disk usage: ${root_disk_pct}% — critical!"
       add_diagnosis_action "critical" "Root disk is nearly full. Remove unnecessary files immediately with 'mdoctor clean'."
-    elif (( root_disk_pct > 85 )); then
+    elif (( root_disk_pct > MDOCTOR_DIAG_DISK_WARN )); then
       status_warn "Root disk usage: ${root_disk_pct}% — high"
       add_diagnosis_action "warning" "Root disk is nearly full. Consider cleanup with 'mdoctor clean' to reclaim space."
     else
@@ -410,7 +410,7 @@ check_disk_hotspots() {
   for dir in "${fast_dirs[@]}"; do
     [ ! -d "$dir" ] && continue
     dir_size=$(du_size_kb "$dir")
-    if [ -n "$dir_size" ] && (( dir_size > 1048576 )); then
+    if [ -n "$dir_size" ] && (( dir_size > MDOCTOR_DIAG_DIR_WARN_KB )); then
       dir_hr=$(kb_to_human "$dir_size")
       large_dirs="${large_dirs}  ${dir}: ${dir_hr}\n"
     fi
@@ -508,10 +508,10 @@ check_fd_limits() {
     fd_open_pct=0
   fi
 
-  if (( fd_open_pct > 80 )); then
+  if (( fd_open_pct > MDOCTOR_DIAG_FD_HIGH )); then
     status_fail "File descriptors: ${open_fds}/${fd_limit} used (${fd_open_pct}%)"
     add_diagnosis_action "critical" "File descriptor limit is nearly reached. Increase with 'ulimit -n <new_limit>' or adjust /etc/security/limits.conf."
-  elif (( fd_open_pct > 50 )); then
+  elif (( fd_open_pct > MDOCTOR_DIAG_FD_MED )); then
     status_warn "File descriptors: ${open_fds}/${fd_limit} used (${fd_open_pct}%)"
     add_diagnosis_action "warning" "File descriptor usage is moderate. Monitor for potential limits on busy servers."
   else
@@ -546,10 +546,10 @@ check_open_connections() {
     fi
   fi
 
-  if (( conn_count > 5000 )); then
+  if (( conn_count > MDOCTOR_DIAG_CONN_HIGH )); then
     status_fail "Open connections: ${conn_count} ESTABLISHED (LISTEN: ${conn_detail}) — critical"
     add_diagnosis_action "critical" "Unusually high number of open connections. Investigate with 'netstat -ant' or 'ss -tunap'."
-  elif (( conn_count > 1000 )); then
+  elif (( conn_count > MDOCTOR_DIAG_CONN_MED )); then
     status_warn "Open connections: ${conn_count} ESTABLISHED (LISTEN: ${conn_detail})"
     add_diagnosis_action "warning" "High number of open connections. Monitor for potential connection leaks."
   else
@@ -599,16 +599,16 @@ check_swap_thrashing() {
     # macOS proxy: high memory pressure + swap activity = likely thrashing
     local pressure
     pressure=$(sysctl -n kern.memorystatus_vm_pressure_level 2>/dev/null || echo 1)
-    if [ "$pressure" = "4" ] && (( swap_pct > 20 )); then
-      iowait_pct=30  # Artificially high to trigger thrashing warning
+    if [ "$pressure" = "4" ] && (( swap_pct > MDOCTOR_DIAG_PRESSURE_SWAP )); then
+      iowait_pct=$MDOCTOR_DIAG_IOWAIT_HIGH  # Artificially high to trigger thrashing warning
     fi
   fi
 
-  if (( swap_pct > 50 && iowait_pct > 10 )); then
+  if (( swap_pct > MDOCTOR_DIAG_THRASH_SWAP && iowait_pct > MDOCTOR_DIAG_THRASH_IO )); then
     status_fail "SWAP THRASHING DETECTED: swap=${swap_pct}% iowait=${iowait_pct}%"
     add_diagnosis_action "critical" "System is thrashing between RAM and swap. This causes severe performance degradation. Free RAM immediately by closing applications or adding more memory."
     return 0
-  elif (( swap_pct > 30 || iowait_pct > 20 )); then
+  elif (( swap_pct > MDOCTOR_DIAG_HEAVY_SWAP || iowait_pct > MDOCTOR_DIAG_HEAVY_IO )); then
     status_warn "Potential swap pressure: swap=${swap_pct}% iowait=${iowait_pct}%"
     add_diagnosis_action "warning" "System approaching swap thrashing conditions. Monitor memory usage and consider freeing RAM."
   fi
@@ -644,10 +644,10 @@ check_cpu_io_contention() {
   threshold=$((cores * 100))
 
   # High load + high iowait = CPU waiting on I/O
-  if (( load_int > threshold && iowait_pct > 15 )); then
+  if (( load_int > threshold && iowait_pct > MDOCTOR_DIAG_LOAD_IO )); then
     status_fail "CPU+I/O contention: load=${load1} (${cores} cores), iowait=${iowait_pct}%"
     add_diagnosis_action "critical" "System is CPU-bound AND I/O-bound. The bottleneck is likely disk performance. Consider SSD upgrade or reducing I/O workload."
-  elif (( iowait_pct > 20 )); then
+  elif (( iowait_pct > MDOCTOR_DIAG_IO_ALONE )); then
     status_warn "I/O contention detected: iowait=${iowait_pct}%"
     add_diagnosis_action "warning" "Disk I/O is causing contention. Review disk operations with 'iotop'."
   fi
@@ -687,7 +687,7 @@ check_cpu_user_sys() {
     sys_pct="$DIAG_CPU_SYS_PCT"
   fi
 
-  if (( sys_pct > 40 )); then
+  if (( sys_pct > MDOCTOR_DIAG_SYS_HIGH )); then
     status_warn "CPU kernel-space usage: ${sys_pct}% (user=${user_pct}%)"
     add_diagnosis_action "warning" "High kernel-space CPU usage. Check for kernel modules, drivers, or system calls causing overhead."
   else

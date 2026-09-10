@@ -51,7 +51,7 @@ _find_and_sum() {
       sz="${sz:-0}"
       total=$((total + sz))
       count=$((count + 1))
-    done < <(timeout 30 find "$dir" -maxdepth 5 -type d -name "$pattern" 2>/dev/null)
+    done < <(timeout "$MDOCTOR_FIND_TIMEOUT_S" find "$dir" -maxdepth 5 -type d -name "$pattern" 2>/dev/null)
   done
 
   echo "${total} ${count}"
@@ -72,8 +72,8 @@ STORAGE_FOUND_ANY=false
 _storage_report() {
   local label="$1"
   local kb="${2:-0}"
-  local min_kb="${3:-102400}"
-  local warn_kb="${4:-1048576}"
+  local min_kb="${3:-$MDOCTOR_REPORT_MIN_KB}"
+  local warn_kb="${4:-$MDOCTOR_REPORT_WARN_KB}"
 
   (( kb > min_kb )) || return 1
 
@@ -107,9 +107,9 @@ _storage_scan_appdata() {
           sub_name=$(basename "$path")
           local sub_hr
           sub_hr=$(kb_to_human "$sz")
-          if (( sz >= 1048576 )); then
+          if (( sz >= MDOCTOR_REPORT_WARN_KB )); then
             status_warn "  └─ ${sub_name}: ${sub_hr}"
-          elif (( sz >= 102400 )); then
+          elif (( sz >= MDOCTOR_REPORT_MIN_KB )); then
             status_info "  └─ ${sub_name}: ${sub_hr}"
           fi
         done < <(_scan_dir_for_hogs "$cat_dir" 3)
@@ -138,7 +138,7 @@ _storage_scan_applications() {
     local app_name
     app_name=$(basename "$path")
     app_total=$((app_total + sz))
-    if (( sz >= 1048576 )); then
+    if (( sz >= MDOCTOR_REPORT_WARN_KB )); then
       status_warn "  ${app_name}: ${app_hr}"
       STORAGE_FOUND_ANY=true
     elif (( sz >= 524288 )); then
@@ -276,7 +276,7 @@ check_storage() {
   if [ "$STORAGE_FOUND_ANY" = true ]; then
     local grand_hr
     grand_hr=$(kb_to_human "$STORAGE_TOTAL_KB")
-    if (( STORAGE_TOTAL_KB >= 10485760 )); then  # > 10 GB
+    if (( STORAGE_TOTAL_KB >= MDOCTOR_KB_10GB )); then  # > 10 GB
       status_warn "Total scanned storage: ${grand_hr}"
       add_action "Large storage usage detected (${grand_hr}). Run 'mdoctor clean -m dev_caches' to clean developer caches, or 'mdoctor clean' for full cleanup."
     elif (( STORAGE_TOTAL_KB >= 5242880 )); then  # > 5 GB

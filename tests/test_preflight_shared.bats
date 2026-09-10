@@ -26,6 +26,7 @@ export ROOT_DIR
   export HOME="$BATS_TEST_TMPDIR/home"
   mkdir -p "$HOME/.local/share/Trash/files" "$HOME/.cache"
   echo hello > "$HOME/.local/share/Trash/files/f.txt"
+  source "$ROOT_DIR/lib/constants.sh"
   source "$ROOT_DIR/lib/platform.sh"
   source "$ROOT_DIR/lib/disk.sh"
   source "$ROOT_DIR/lib/preflight.sh"

@@ -122,7 +122,7 @@ clean_dev_caches() {
       # find directly instead of silently scanning nothing.
       local find_cmd=(find)
       if command -v timeout >/dev/null 2>&1; then
-        find_cmd=(timeout 60 find)
+        find_cmd=(timeout "$MDOCTOR_DEV_FIND_TIMEOUT_S" find)
       fi
       while IFS= read -r -d '' nm_dir; do
         [ -z "$nm_dir" ] && continue

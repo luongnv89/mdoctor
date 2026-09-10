@@ -21,6 +21,7 @@ setup() {
   export BOLD RESET
   export HOME="$BATS_TEST_TMPDIR/home"
   mkdir -p "$HOME"
+  source "$ROOT_DIR/lib/constants.sh"
   source "$ROOT_DIR/lib/platform.sh"
   source "$ROOT_DIR/lib/metadata.sh"
   source "$ROOT_DIR/lib/registry.sh"

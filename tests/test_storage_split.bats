@@ -22,6 +22,7 @@ setup() {
   ACTIONS=()
   WARN_COUNT=0; FAIL_COUNT=0
   export WARN_COUNT FAIL_COUNT
+  source "$ROOT_DIR/lib/constants.sh"
   source "$ROOT_DIR/lib/platform.sh"
   source "$ROOT_DIR/lib/common.sh"
   source "$ROOT_DIR/lib/logging.sh"
