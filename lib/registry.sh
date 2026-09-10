@@ -178,3 +178,31 @@ registry_check_names_plain() {
     fi
   done
 }
+
+# registry_count TYPE — number of registered modules of one type on the
+# running platform. Every user-facing count derives from this (Task 8.4).
+registry_count() {
+  local type="$1"
+  local i=0
+  local n=0
+  while (( i < _MOD_COUNT )); do
+    if [ "${_MOD_TYPES[$i]}" = "$type" ]; then
+      n=$((n + 1))
+    fi
+    i=$((i + 1))
+  done
+  echo "$n"
+}
+
+# registry_target_lines TYPE — "  name [RISK]  description" per module.
+registry_target_lines() {
+  local type="$1"
+  local i=0
+  while (( i < _MOD_COUNT )); do
+    if [ "${_MOD_TYPES[$i]}" = "$type" ]; then
+      printf '  %-14s [%s]  %s\n' \
+        "${_MOD_NAMES[$i]}" "${_MOD_RISKS[$i]}" "${_MOD_DESCS[$i]}"
+    fi
+    i=$((i + 1))
+  done
+}
