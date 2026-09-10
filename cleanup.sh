@@ -23,6 +23,7 @@ source "${SCRIPT_DIR}/lib/platform.sh"
 source "${SCRIPT_DIR}/lib/common.sh"
 source "${SCRIPT_DIR}/lib/logging.sh"
 source "${SCRIPT_DIR}/lib/disk.sh"
+source "${SCRIPT_DIR}/lib/preflight.sh"
 source "${SCRIPT_DIR}/lib/safety.sh"
 source "${SCRIPT_DIR}/lib/cleanup_scope.sh"
 
@@ -134,31 +135,6 @@ _finish_cleanup_session() {
 # record. register_exit_hook stacks instead of replacing.
 register_exit_hook _finish_cleanup_session
 
-cleanup_preflight_path_kb() {
-  du_size_kb "${1-}"
-}
-
-cleanup_preflight_find_kb() {
-	local base="${1-}"
-	shift || true
-
-	if [ -z "$base" ] || [ ! -d "$base" ]; then
-		echo 0
-		return 0
-	fi
-
-	local total=0
-	local p=""
-	while IFS= read -r -d '' p; do
-		local sz=""
-		# Routed through the single hardened probe (Task 8.2): never
-		# propagates a non-zero pipeline status under pipefail/set -e.
-		sz=$(du_size_kb "$p")
-		total=$((total + ${sz:-0}))
-	done < <(find "$base" "$@" -print0 2>/dev/null)
-
-	echo "$total"
-}
 
 cleanup_force_preflight_summary() {
 	local days="${DAYS_OLD:-7}"
@@ -186,7 +162,7 @@ cleanup_force_preflight_summary() {
 		"${HOME}/.gradle/caches" \
 		"${HOME}/go/pkg/mod/cache" \
 		"${HOME}/.cargo/registry/cache"; do
-		sz=$(cleanup_preflight_path_kb "$path")
+		sz=$(preflight_path_kb "$path")
 		total_kb=$((total_kb + sz))
 		printf "  - %-45s (~%s)\n" "$path" "$(human_readable_kb "$sz")"
 	done
@@ -196,7 +172,7 @@ cleanup_force_preflight_summary() {
 		for path in \
 			"${HOME}/Library/Developer/Xcode/DerivedData" \
 			"${HOME}/Library/Developer/CoreSimulator/Caches"; do
-			sz=$(cleanup_preflight_path_kb "$path")
+			sz=$(preflight_path_kb "$path")
 			total_kb=$((total_kb + sz))
 			printf "  - %-45s (~%s)\n" "$path" "$(human_readable_kb "$sz")"
 		done
@@ -205,8 +181,8 @@ cleanup_force_preflight_summary() {
 	local logs_kb dl_kb
 	local log_dir
 	log_dir="$(platform_user_log_dir)"
-	logs_kb=$(cleanup_preflight_find_kb "$log_dir" -type f -mtime "+${days}")
-	dl_kb=$(cleanup_preflight_find_kb "${HOME}/Downloads" -type f -size +500M -mtime "+${days}")
+	logs_kb=$(preflight_find_kb "$log_dir" -type f -mtime "+${days}")
+	dl_kb=$(preflight_find_kb "${HOME}/Downloads" -type f -size +500M -mtime "+${days}")
 	total_kb=$((total_kb + logs_kb + dl_kb))
 
 	printf "  - %-45s (~%s)\n" "${log_dir} (files older than ${days}d)" "$(human_readable_kb "$logs_kb")"
@@ -215,15 +191,15 @@ cleanup_force_preflight_summary() {
 	# Platform-specific crash dirs
 	local crash_dir crash_kb
 	while IFS= read -r crash_dir; do
-		crash_kb=$(cleanup_preflight_find_kb "$crash_dir" -type f -mtime "+${days}")
+		crash_kb=$(preflight_find_kb "$crash_dir" -type f -mtime "+${days}")
 		total_kb=$((total_kb + crash_kb))
 		printf "  - %-45s (~%s)\n" "$crash_dir" "$(human_readable_kb "$crash_kb")"
 	done < <(platform_crash_dirs)
 
 	if is_macos; then
 		local ios_kb archives_kb
-		ios_kb=$(cleanup_preflight_find_kb "${HOME}/Library/Application Support/MobileSync/Backup" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
-		archives_kb=$(cleanup_preflight_find_kb "${HOME}/Library/Developer/Xcode/Archives" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
+		ios_kb=$(preflight_find_kb "${HOME}/Library/Application Support/MobileSync/Backup" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
+		archives_kb=$(preflight_find_kb "${HOME}/Library/Developer/Xcode/Archives" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
 		total_kb=$((total_kb + ios_kb + archives_kb))
 		printf "  - %-45s (~%s)\n" "${HOME}/Library/Application Support/MobileSync/Backup (> ${days}d)" "$(human_readable_kb "$ios_kb")"
 		printf "  - %-45s (~%s)\n" "${HOME}/Library/Developer/Xcode/Archives (> ${days}d)" "$(human_readable_kb "$archives_kb")"
@@ -232,7 +208,7 @@ cleanup_force_preflight_summary() {
 
 	if is_linux; then
 		local apt_kb
-		apt_kb=$(cleanup_preflight_path_kb "/var/cache/apt/archives")
+		apt_kb=$(preflight_path_kb "/var/cache/apt/archives")
 		total_kb=$((total_kb + apt_kb))
 		printf "  - %-45s (~%s)\n" "/var/cache/apt/archives" "$(human_readable_kb "$apt_kb")"
 	fi
