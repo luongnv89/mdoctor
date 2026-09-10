@@ -23,6 +23,7 @@ source "${SCRIPT_DIR}/lib/logging.sh"
 source "${SCRIPT_DIR}/lib/disk.sh"
 source "${SCRIPT_DIR}/lib/json.sh"
 source "${SCRIPT_DIR}/lib/metadata.sh"
+source "${SCRIPT_DIR}/lib/registry.sh"
 source "${SCRIPT_DIR}/lib/history.sh"
 
 # Source check modules — Hardware
@@ -61,43 +62,14 @@ if is_linux; then
 fi
 
 ########################################
+#######################################
 # MODULE REGISTRATION
 ########################################
 
-# Hardware checks
-if is_macos; then
-  register_module check battery   Hardware SAFE check_battery     "Battery health, cycle count, capacity"
-fi
-register_module check hardware  Hardware SAFE check_hardware    "CPU, RAM, model, thermals"
-if is_macos; then
-  register_module check bluetooth Hardware SAFE check_bluetooth   "Bluetooth power state & devices"
-  register_module check usb       Hardware SAFE check_usb         "Connected USB devices"
-fi
+# Single source of truth (Task 8.1): the check registry lives in
+# lib/registry.sh. doctor.sh reads the count from it — no local duplicate.
+register_all_modules
 
-# System checks
-register_module check system      System SAFE check_system        "OS version, memory, load average"
-register_module check disk        System SAFE check_disk          "Disk usage & health"
-register_module check updates     System SAFE check_updates_basic "System updates"
-register_module check security    System SAFE check_security      "Firewall, encryption, security settings"
-register_module check startup     System SAFE check_startup       "Startup services & agents"
-register_module check network     System SAFE check_network       "Connectivity, DNS, Wi-Fi signal"
-register_module check performance System SAFE check_performance   "Memory pressure, CPU, processes"
-register_module check storage     System SAFE check_storage       "Large files & app storage analysis"
-
-# Software checks
-if is_macos; then
-  register_module check homebrew   Software SAFE check_homebrew    "Homebrew installation & packages"
-fi
-register_module check node       Software SAFE check_node_npm    "Node.js & npm"
-register_module check python     Software SAFE check_python      "Python & pip"
-register_module check devtools   Software SAFE check_dev_tools   "Developer tools, Git, Docker"
-register_module check shell      Software SAFE check_shell_configs "Shell config syntax"
-register_module check apps       Software SAFE check_apps        "Crash reports, application health"
-register_module check git_config Software SAFE check_git_config  "Git & SSH configuration"
-register_module check containers Software SAFE check_containers  "Docker & container health"
-if is_linux; then
-  register_module check apt      Software SAFE check_apt         "APT package manager health"
-fi
 
 ########################################
 # GLOBAL STATE
@@ -106,7 +78,7 @@ fi
 # shellcheck disable=SC2034
 STEP_CURRENT=0
 # shellcheck disable=SC2034
-STEP_TOTAL="${_MOD_COUNT:-21}"  # dynamically set from registered module count
+STEP_TOTAL="$_MOD_COUNT"  # derived from the shared registry (Task 8.1)
 
 ACTIONS=()
 # shellcheck disable=SC2034
