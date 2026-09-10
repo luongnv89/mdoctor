@@ -87,7 +87,7 @@ oplog_enabled() {
 }
 
 oplog_timestamp() {
-  date "+%Y-%m-%d %H:%M:%S"
+  timestamp
 }
 
 oplog_ensure_file() {

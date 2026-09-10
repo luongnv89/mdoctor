@@ -26,7 +26,7 @@ clean_ios_backups() {
 
     # Get backup size
     local size_kb
-    size_kb=$(du -sk "$d" 2>/dev/null | awk '{print $1}')
+    size_kb=$(du_size_kb "$d")
     total_size_kb=$((total_size_kb + size_kb))
 
     # Get modification time
@@ -34,13 +34,7 @@ clean_ios_backups() {
     mod_date=$(stat -f "%Sm" -t "%Y-%m-%d" "$d" 2>/dev/null || echo "unknown")
 
     local size_hr
-    if (( size_kb >= 1048576 )); then
-      size_hr=$(awk -v kb="$size_kb" 'BEGIN {printf "%.2f GB", kb/1048576}')
-    elif (( size_kb >= 1024 )); then
-      size_hr=$(awk -v kb="$size_kb" 'BEGIN {printf "%.1f MB", kb/1024}')
-    else
-      size_hr="${size_kb} KB"
-    fi
+    size_hr=$(human_readable_kb "$size_kb")
 
     local backup_name
     backup_name=$(basename "$d")
@@ -53,13 +47,7 @@ clean_ios_backups() {
   fi
 
   local total_hr
-  if (( total_size_kb >= 1048576 )); then
-    total_hr=$(awk -v kb="$total_size_kb" 'BEGIN {printf "%.2f GB", kb/1048576}')
-  elif (( total_size_kb >= 1024 )); then
-    total_hr=$(awk -v kb="$total_size_kb" 'BEGIN {printf "%.1f MB", kb/1024}')
-  else
-    total_hr="${total_size_kb} KB"
-  fi
+  total_hr=$(human_readable_kb "$total_size_kb")
 
   log "Found ${found} backup(s) totaling ${total_hr}."
 

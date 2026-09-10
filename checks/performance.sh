@@ -103,13 +103,7 @@ check_performance() {
       rss_kb=$(echo "$line" | awk '{print $2}')
       name=$(echo "$line" | awk '{$1=""; $2=""; print}' | sed 's/^ *//')
       if [ -n "$name" ] && [ -n "$rss_kb" ] && (( rss_kb > 0 )); then
-        if (( rss_kb >= 1048576 )); then
-          mem_hr=$(awk -v kb="$rss_kb" 'BEGIN {printf "%.1f GB", kb/1048576}')
-        elif (( rss_kb >= 1024 )); then
-          mem_hr=$(awk -v kb="$rss_kb" 'BEGIN {printf "%.0f MB", kb/1024}')
-        else
-          mem_hr="${rss_kb} KB"
-        fi
+        mem_hr=$(human_readable_kb "$rss_kb")
         status_info "  PID ${pid}: ${mem_hr} — ${name}"
       fi
     done <<< "$top_mem"

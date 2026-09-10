@@ -50,7 +50,7 @@ check_apt() {
 
   # APT cache size
   local cache_size cache_size_raw
-  cache_size_raw=$(du -sk /var/cache/apt/archives 2>/dev/null | awk '{print $1}' || true)
+  cache_size_raw=$(du_size_kb /var/cache/apt/archives)
   cache_size=$(to_int "$cache_size_raw")
   if (( cache_size > 524288 )); then  # > 512 MB
     local cache_hr

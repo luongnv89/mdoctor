@@ -27,13 +27,13 @@ check_hardware() {
     logical_cores=$(sysctl -n hw.logicalcpu 2>/dev/null || echo "?")
     status_info "Cores: ${physical_cores} physical, ${logical_cores} logical"
 
-    # Total RAM
-    local total_mem total_gb
+    # Total RAM via the single shared ladder (Task 8.2).
+    local total_mem mem_hr
     total_mem=$(sysctl -n hw.memsize 2>/dev/null || true)
     total_mem="${total_mem:-0}"
     if (( total_mem > 0 )); then
-      total_gb=$(awk -v m="$total_mem" 'BEGIN {printf "%.0f", m/1073741824}')
-      status_info "Memory: ${total_gb} GB"
+      mem_hr=$(human_readable_kb "$(( total_mem / 1024 ))")
+      status_info "Memory: ${mem_hr}"
     fi
 
     # Thermal throttling level
@@ -70,12 +70,11 @@ check_hardware() {
     [ "$physical_cores" = "0" ] && physical_cores="$logical_cores"
     status_info "Cores: ${physical_cores} physical, ${logical_cores} logical"
 
-    local total_mem_kb total_gb
+    local total_mem_kb
     total_mem_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || true)
     total_mem_kb="${total_mem_kb:-0}"
     if (( total_mem_kb > 0 )); then
-      total_gb=$(awk -v kb="$total_mem_kb" 'BEGIN {printf "%.0f", kb/1048576}')
-      status_info "Memory: ${total_gb} GB"
+      status_info "Memory: $(human_readable_kb "$total_mem_kb")"
     fi
 
     # Thermal zones

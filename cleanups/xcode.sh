@@ -13,16 +13,10 @@ clean_xcode() {
   local derived_data="${HOME}/Library/Developer/Xcode/DerivedData"
   if [ -d "$derived_data" ]; then
     local dd_size
-    dd_size=$(du -sk "$derived_data" 2>/dev/null | awk '{print $1}')
+    dd_size=$(du_size_kb "$derived_data")
     if (( dd_size > 0 )); then
       local dd_hr
-      if (( dd_size >= 1048576 )); then
-        dd_hr=$(awk -v kb="$dd_size" 'BEGIN {printf "%.2f GB", kb/1048576}')
-      elif (( dd_size >= 1024 )); then
-        dd_hr=$(awk -v kb="$dd_size" 'BEGIN {printf "%.1f MB", kb/1024}')
-      else
-        dd_hr="${dd_size} KB"
-      fi
+      dd_hr=$(human_readable_kb "$dd_size")
       log "Xcode DerivedData: ${dd_hr}"
       safe_remove_children "${derived_data}" || true
     fi
@@ -47,16 +41,10 @@ clean_xcode() {
   local sim_caches="${HOME}/Library/Developer/CoreSimulator/Caches"
   if [ -d "$sim_caches" ]; then
     local sc_size
-    sc_size=$(du -sk "$sim_caches" 2>/dev/null | awk '{print $1}')
+    sc_size=$(du_size_kb "$sim_caches")
     if (( sc_size > 1024 )); then
       local sc_hr
-      if (( sc_size >= 1048576 )); then
-        sc_hr=$(awk -v kb="$sc_size" 'BEGIN {printf "%.2f GB", kb/1048576}')
-      elif (( sc_size >= 1024 )); then
-        sc_hr=$(awk -v kb="$sc_size" 'BEGIN {printf "%.1f MB", kb/1024}')
-      else
-        sc_hr="${sc_size} KB"
-      fi
+      sc_hr=$(human_readable_kb "$sc_size")
       log "Simulator caches: ${sc_hr}"
       safe_remove_children "${sim_caches}" || true
     fi
