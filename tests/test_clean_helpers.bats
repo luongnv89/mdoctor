@@ -39,7 +39,13 @@ setup() {
 
 @test "is_valid_cleanup_module checks membership in the passed list" {
   is_valid_cleanup_module "$LIST" trash
-  is_valid_cleanup_module "$LIST" apt
+  if is_macos; then
+    is_valid_cleanup_module "$LIST" xcode
+    run is_valid_cleanup_module "$LIST" apt
+    [ "$status" -ne 0 ]
+  else
+    is_valid_cleanup_module "$LIST" apt
+  fi
   run is_valid_cleanup_module "$LIST" bogus_nope
   [ "$status" -ne 0 ]
   run is_valid_cleanup_module "$LIST" "../../tmp/x"
@@ -56,7 +62,11 @@ setup() {
 @test "select_interactive_modules picks from the passed list" {
   out=$(printf 'all\n' | select_interactive_modules "$LIST" 2>/dev/null)
   [[ "$out" == *"trash"* ]]
-  [[ "$out" == *"apt"* ]]
+  if is_macos; then
+    [[ "$out" == *"xcode"* ]]
+  else
+    [[ "$out" == *"apt"* ]]
+  fi
   printf '\n' | select_interactive_modules "$LIST" >/dev/null 2>&1 || rc=$?
   [ "${rc:-0}" -eq 1 ]
   printf '999\n' | select_interactive_modules "$LIST" >/dev/null 2>&1 || rc=$?
