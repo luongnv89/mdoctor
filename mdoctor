@@ -73,6 +73,7 @@ source "${MDOCTOR_DIR}/lib/metadata.sh"
 source "${MDOCTOR_DIR}/lib/registry.sh"
 source "${MDOCTOR_DIR}/lib/disk.sh"
 source "${MDOCTOR_DIR}/lib/preflight.sh"
+source "${MDOCTOR_DIR}/lib/help.sh"
 
 # Runtime diagnostics flag (can be enabled per-command via --debug)
 MDOCTOR_DEBUG="${MDOCTOR_DEBUG:-false}"
@@ -248,7 +249,10 @@ is_valid_check_module() {
 cmd_check() {
   local module=""
   local json_flag=false
-  local debug_flag=false
+
+  # Shared common-flag parser (Task 8.4): --debug/--help handled once.
+  parse_common_args usage_check "$@" || return 0
+  set -- ${_COMMON_REST[@]+"${_COMMON_REST[@]}"}
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -260,28 +264,6 @@ cmd_check() {
         json_flag=true
         shift
         ;;
-      --debug)
-        debug_flag=true
-        shift
-        ;;
-      --help|-h)
-        echo "Usage: mdoctor check [options]"
-        echo
-        echo "Run system health audit (read-only, changes nothing)."
-        echo
-        echo "Options:"
-        echo "  -m, --module <name>   Run only a specific check module"
-        echo "  --json                Output results as JSON"
-        echo "  --debug               Enable structured debug diagnostics"
-        echo "  -h, --help            Show this help"
-        echo
-        echo "Check modules (all [SAFE] read-only):"
-        source "${MDOCTOR_DIR}/lib/metadata.sh"
-        source "${MDOCTOR_DIR}/lib/registry.sh"
-        register_all_modules
-        registry_check_names_plain check
-        return 0
-        ;;
       *)
         error "Unknown option: $1"
         echo "Run 'mdoctor check --help' for usage."
@@ -292,11 +274,6 @@ cmd_check() {
 
   if [ "$json_flag" = true ]; then
     export JSON_ENABLED=true
-  fi
-
-  if [ "$debug_flag" = true ]; then
-    MDOCTOR_DEBUG=true
-    export MDOCTOR_DEBUG
   fi
 
   if [ "$json_flag" = false ]; then
@@ -450,8 +427,11 @@ cmd_check() {
 cmd_clean() {
   local force=false
   local module=""
-  local debug_flag=false
   local interactive=false
+
+  # Shared common-flag parser (Task 8.4): --debug/--help handled once.
+  parse_common_args usage_clean "$@" || return 0
+  set -- ${_COMMON_REST[@]+"${_COMMON_REST[@]}"}
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -467,31 +447,6 @@ cmd_clean() {
         interactive=true
         shift
         ;;
-      --debug)
-        debug_flag=true
-        shift
-        ;;
-      --help|-h)
-        echo "Usage: mdoctor clean [options]"
-        echo
-        echo "Run system cleanup. Default is dry-run mode (shows what would"
-        echo "be deleted without actually removing anything)."
-        echo
-        echo "Options:"
-        echo "  -f, --force           Actually delete files (no dry-run)"
-        echo "  -m, --module <name>   Run only a specific cleanup module"
-        echo "  -i, --interactive     Interactively choose cleanup modules"
-        echo "  --debug               Enable structured debug diagnostics"
-        echo "  -h, --help            Show this help"
-        echo
-        echo "Cleanup modules:"
-        register_all_modules
-        registry_help_group cleanup
-        echo
-        echo "Whitelist file: ~/.config/mdoctor/cleanup_whitelist"
-        echo "Scope file: ~/.config/mdoctor/cleanup_scope.conf (dev_caches node_modules scan)"
-        return 0
-        ;;
       *)
         error "Unknown option: $1"
         echo "Run 'mdoctor clean --help' for usage."
@@ -499,11 +454,6 @@ cmd_clean() {
         ;;
     esac
   done
-
-  if [ "$debug_flag" = true ]; then
-    MDOCTOR_DEBUG=true
-    export MDOCTOR_DEBUG
-  fi
 
   echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
 
@@ -728,12 +678,14 @@ cmd_clean() {
     return "$all_rc"
   fi
 
-  # Run full cleanup
-  if [ "$force" = true ] && [ "$debug_flag" = true ]; then
+  # Run full cleanup (MDOCTOR_DEBUG set by the shared parser when --debug)
+  local _debug=false
+  [ "${MDOCTOR_DEBUG:-false}" = true ] && _debug=true
+  if [ "$force" = true ] && [ "$_debug" = true ]; then
     MDOCTOR_ASSUME_YES="${MDOCTOR_ASSUME_YES:-false}" MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" --force --debug
   elif [ "$force" = true ]; then
     MDOCTOR_ASSUME_YES="${MDOCTOR_ASSUME_YES:-false}" MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" --force
-  elif [ "$debug_flag" = true ]; then
+  elif [ "$_debug" = true ]; then
     MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" --debug
   else
     MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh"
@@ -746,41 +698,13 @@ cmd_clean() {
 
 cmd_fix() {
   local target=""
-  local debug_flag=false
+
+  # Shared common-flag parser (Task 8.4): --debug/--help handled once.
+  parse_common_args usage_fix "$@" || return 0
+  set -- ${_COMMON_REST[@]+"${_COMMON_REST[@]}"}
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --help|-h)
-        echo "Usage: mdoctor fix [--debug] <target>"
-        echo
-        echo "Apply common fixes for system issues."
-        echo
-        echo "Targets:"
-        echo "  dns           [LOW]  Flush DNS cache"
-        if is_macos; then
-          echo "  disk          [LOW]  Free disk space (cleanup + recommendations)"
-          echo "  homebrew      [LOW]  Fix Homebrew issues (update, cleanup, doctor)"
-          echo "  permissions   [MED]  Reset disk permissions and rebuild"
-          echo "  spotlight     [MED]  Rebuild Spotlight index"
-          echo "  bluetooth     [LOW]  Reset Bluetooth module"
-          echo "  audio         [LOW]  Restart Core Audio daemon"
-          echo "  wifi          [LOW]  Renew DHCP, flush DNS, cycle Wi-Fi"
-          echo "  timemachine   [MED]  Verify Time Machine backup integrity"
-        fi
-        if is_linux; then
-          echo "  apt           [LOW]  Fix APT package issues (update, upgrade, autoremove)"
-        fi
-        echo "  all           Run all applicable fixes"
-        echo
-        echo "Options:"
-        echo "  --debug       Enable structured debug diagnostics"
-        echo "  -h, --help    Show this help"
-        return 0
-        ;;
-      --debug)
-        debug_flag=true
-        shift
-        ;;
       -*)
         error "Unknown option: $1"
         echo "Run 'mdoctor fix --help' for available targets."
@@ -793,20 +717,13 @@ cmd_fix() {
     esac
   done
 
-  if [ "$debug_flag" = true ]; then
-    MDOCTOR_DEBUG=true
-    export MDOCTOR_DEBUG
-  fi
-
   source "${MDOCTOR_DIR}/lib/common.sh"
   source "${MDOCTOR_DIR}/lib/logging.sh"
   init_colors
   debug_log "cmd_fix target=${target:-<none>} debug=${MDOCTOR_DEBUG}"
 
   if [ -z "$target" ]; then
-    echo "Usage: mdoctor fix [--debug] <target>"
-    echo
-    echo "Run 'mdoctor fix --help' for available targets."
+    usage_fix
     return 1
   fi
 
@@ -1012,19 +929,19 @@ cmd_list() {
   echo "${BOLD}${BLUE}== All Modules ($(platform_name)) ==${RESET}"
   echo
 
-  echo "${BOLD}Check Modules (${_MOD_COUNT:-0} — all read-only):${RESET}"
+  echo "${BOLD}Check Modules ($(registry_count check) — all read-only):${RESET}"
   list_modules_by_category check
   echo
 
-  echo "${BOLD}Cleanup Modules:${RESET}"
+  echo "${BOLD}Cleanup Modules ($(registry_count cleanup)):${RESET}"
   list_modules_by_category cleanup
   echo
 
-  echo "${BOLD}Diagnose Modules:${RESET}"
+  echo "${BOLD}Diagnose Modules ($(registry_count diagnose)):${RESET}"
   list_modules_by_category diagnose
   echo
 
-  echo "${BOLD}Fix Targets:${RESET}"
+  echo "${BOLD}Fix Targets ($(registry_count fix)):${RESET}"
   list_modules_by_category fix
   echo
 }
@@ -1056,36 +973,12 @@ cmd_benchmark() {
 ########################################
 
 cmd_diagnose() {
-  local debug_flag=false
+  # Shared common-flag parser (Task 8.4): --debug/--help handled once.
+  parse_common_args usage_diagnose "$@" || return 0
+  set -- ${_COMMON_REST[@]+"${_COMMON_REST[@]}"}
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --debug)
-        debug_flag=true
-        shift
-        ;;
-      --help|-h)
-        echo "Usage: mdoctor diagnose [options]"
-        echo
-        echo "Run active performance diagnosis with bottleneck detection."
-        echo "Checks CPU, memory, disk I/O, swap, and system configuration."
-        echo
-        echo "Output includes a prioritized list of actionable recommendations."
-        echo
-        echo "Options:"
-        echo "  --debug       Enable structured debug diagnostics"
-        echo "  -h, --help    Show this help"
-        echo
-        echo "Checks performed:"
-        echo "  CPU           Load average, top consumers, user/sys ratio (Linux)"
-        echo "  Memory        Usage %, pressure level, OOM risk, swap usage"
-        echo "  Disk I/O      I/O wait percentage, disk usage hotspots"
-        echo "  Swap          Swap usage %, swap thrashing detection"
-        echo "  Zombie        Zombie process count and parent identification"
-        echo "  System Config FD limits, open connections"
-        echo "  Correlation   Swap+I/O thrashing, CPU+I/O contention"
-        return 0
-        ;;
       *)
         error "Unknown option: $1"
         echo "Run 'mdoctor diagnose --help' for usage."
@@ -1093,11 +986,6 @@ cmd_diagnose() {
         ;;
     esac
   done
-
-  if [ "$debug_flag" = true ]; then
-    MDOCTOR_DEBUG=true
-    export MDOCTOR_DEBUG
-  fi
 
   echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
 
@@ -1142,7 +1030,10 @@ cmd_version() {
 cmd_update() {
   local check_only=false
   local channel=""
-  local debug_flag=false
+
+  # Shared common-flag parser (Task 8.4): --debug/--help handled once.
+  parse_common_args usage_update "$@" || return 0
+  set -- ${_COMMON_REST[@]+"${_COMMON_REST[@]}"}
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1158,32 +1049,6 @@ cmd_update() {
         channel="$2"
         shift 2
         ;;
-      --debug)
-        debug_flag=true
-        shift
-        ;;
-      --help|-h)
-        echo "Usage: mdoctor update [options]"
-        echo
-        echo "Update mdoctor to the latest stable release tag."
-        echo
-        echo "Options:"
-        echo "  --check              Check for updates without applying"
-        echo "  --channel <name>     Update channel: stable (latest vX.Y.Z tag,"
-        echo "                       default) or main (branch head — opt in to"
-        echo "                       track main)"
-        echo "  --debug              Enable structured debug diagnostics"
-        echo "  -h, --help           Show this help"
-        echo
-        echo "Environment Variables:"
-        echo "  MDOCTOR_UPDATE_REMOTE   Override git remote name (default: origin;"
-        echo "                          must be a configured remote, never a URL)"
-        echo "  MDOCTOR_UPDATE_BRANCH   Branch for --channel main (default: main)"
-        echo "  MDOCTOR_CHANNEL         Same as --channel (default: stable)"
-        echo "  MDOCTOR_REQUIRE_TAG_SIGNATURE"
-        echo "                          Refuse unsigned release tags (default: false)"
-        return 0
-        ;;
       *)
         error "Unknown option: $1"
         echo "Run 'mdoctor update --help' for usage."
@@ -1191,11 +1056,6 @@ cmd_update() {
         ;;
     esac
   done
-
-  if [ "$debug_flag" = true ]; then
-    MDOCTOR_DEBUG=true
-    export MDOCTOR_DEBUG
-  fi
 
   if [ -z "${channel:-}" ]; then
     channel="${MDOCTOR_CHANNEL:-stable}"
@@ -1401,12 +1261,13 @@ update_from_branch() {
 
 cmd_help() {
   banner
+  register_all_modules
   echo "Usage: ${BOLD}mdoctor${RESET} <command> [options]"
   echo
   echo "${BOLD}Commands:${RESET}"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "check"     "Run system health audit (read-only, 21 checks)"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "clean"     "Run system cleanup (dry-run by default, 10 modules)"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "fix"       "Apply common fixes (9 targets)"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "check"     "Run system health audit (read-only, $(registry_count check) checks)"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "clean"     "Run system cleanup (dry-run by default, $(registry_count cleanup) modules)"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "fix"       "Apply common fixes ($(registry_count fix) targets)"
   printf "  ${GREEN}%-12s${RESET} %s\n" "diagnose"  "Run active performance diagnosis with bottleneck detection"
   printf "  ${GREEN}%-12s${RESET} %s\n" "info"      "Show system information summary"
   printf "  ${GREEN}%-12s${RESET} %s\n" "list"      "List all modules with category & risk level"
@@ -1427,7 +1288,7 @@ cmd_help() {
   registry_help_group fix
   echo
   echo "${BOLD}Examples:${RESET}"
-  echo "  mdoctor check                    # Full health audit (21 checks)"
+  echo "  mdoctor check                    # Full health audit ($(registry_count check) checks)"
   echo "  mdoctor check -m battery         # Check only battery health"
   echo "  mdoctor check --json             # JSON output for automation"
   echo "  mdoctor check --debug            # Check with structured debug diagnostics"
