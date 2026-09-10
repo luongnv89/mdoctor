@@ -22,6 +22,7 @@ fi
 NODE_MODULES_DAYS="${NODE_MODULES_DAYS:-30}"
 
 clean_dev_caches() {
+  local rc=0
   header "Developer caches cleanup"
 
   local total_kb=0
@@ -41,7 +42,7 @@ clean_dev_caches() {
         local sz_hr
         sz_hr=$(kb_to_human "$sz_kb")
         log "${label}: ${sz_hr} (${cache_dir})"
-        safe_remove_children "${cache_dir}" || true
+        safe_remove_children "${cache_dir}" || rc=$?
         total_kb=$((total_kb + sz_kb))
       else
         log "${label}: empty, skipping."
@@ -95,7 +96,7 @@ clean_dev_caches() {
   if command -v docker >/dev/null 2>&1; then
     if [ "${MDOCTOR_ALLOW_DOCKER_PRUNE:-false}" = true ]; then
       log "Docker detected – pruning unused data (MDOCTOR_ALLOW_DOCKER_PRUNE=true)."
-      run_cmd_args docker system prune -af --volumes || true
+      run_cmd_args docker system prune -af --volumes || rc=$?
     else
       log "Docker detected – skipping prune (named volumes are user data, not caches). Set MDOCTOR_ALLOW_DOCKER_PRUNE=true to opt in."
     fi
@@ -156,7 +157,7 @@ clean_dev_caches() {
           nm_parent=$(dirname "$nm_dir")
           nm_parent="${nm_parent/#$HOME/~}"
           log "Stale node_modules: ${nm_hr} — ${nm_parent}"
-          safe_remove "${nm_dir}" || true
+          safe_remove "${nm_dir}" || rc=$?
           nm_total_kb=$((nm_total_kb + nm_sz))
           nm_count=$((nm_count + 1))
         fi
@@ -186,4 +187,6 @@ clean_dev_caches() {
 
   # Unset the helper function to avoid polluting the namespace
   unset -f _clean_cache
+  [ "$rc" -eq 0 ] || log "Module 'dev_caches' finished with $(safety_error_name "$rc"): $(safety_error_hint "$rc" 'dev_caches')"
+  return "$rc"
 }

@@ -98,26 +98,60 @@ check_your_feature() {
 
 ```bash
 clean_your_cache() {
+  local rc=0
   header "Cleaning Your Cache"
   if [ -d "${HOME}/.yourcache" ]; then
     # Argv form only — never pass a command string. Validate the target,
     # then run with an argument vector so nothing is ever re-parsed by a shell.
     validate_deletion_path "${HOME}/.yourcache" || return 1
-    run_cmd_args rm -rf -- "${HOME}/.yourcache"/_tmp_* || return 1
+    run_cmd_args rm -rf -- "${HOME}/.yourcache"/_tmp_* || rc=$?
   else
     log "No cache found."
   fi
+  [ "$rc" -eq 0 ] || log "Module 'yourcache' finished with $(safety_error_name "$rc")"
+  return "$rc"
 }
 ```
 
 > Never use a string-eval path (`bash -c`, `eval`, or a single-string command
 > runner). Destructive modules route deletions through `lib/safety.sh`
 > (`validate_deletion_path`, `safe_remove`) and execute commands only via
-> `run_cmd_args` with separate arguments.
+> `run_cmd_args` with separate arguments. Never swallow a deletion status
+> with `|| true` — capture it into the per-module accumulator (below) so
+> partial failures propagate.
 
-2. Source it in `cleanup.sh` and call the function
-3. Increment `PROGRESS_TOTAL` in `cleanup.sh`
-4. Add the module name to `mdoctor`'s `cmd_clean` case statement
+2. Register it with `register_module` in `lib/registry.sh` (the single source
+   of truth — help text, validation, error messages and dispatch derive from
+   it; no hand-maintained case statement needs updating)
+3. Derive `PROGRESS_TOTAL` coverage in `cleanup.sh` from the module list
+
+## Return-Code Contract
+
+One contract governs every module family (Task 9.3):
+
+- `0` means success — including "nothing to clean" (a missing directory is
+  skipped silently) and dry-run mode (nothing executes, `0` is reported).
+- `21`–`26` are the safety taxonomy from `lib/safety.sh`
+  (`MDOCTOR_SAFE_ERR_*`): `21` invalid target, `22` protected target
+  (blocked by policy), `23` symlink blocked, `24` permission denied,
+  `25` SIP/read-only, `26` runtime failure. Render them with
+  `safety_error_name` / `safety_error_hint`, never with ad-hoc text.
+- Any other non-zero code is an external command failure (e.g. a missing
+  `docker` binary); it propagates the same way, rendered as `UNKNOWN`.
+
+Rules for authors:
+
+- Every deletion call site uses `|| rc=$?` on a per-module `rc` accumulator
+  initialized to `0`; the function ends with `return "$rc"`. A failing
+  module never aborts its siblings: `cleanup.sh` accumulates per-module
+  codes across the full run and reports the first failure at the end, and
+  `run_single_cleanup_module` maps a non-zero module code to an error
+  session end.
+- A module whose every target is blocked (exists, but outside the allowed
+  roots) returns `22` and says so — "blocked" is a result, never silent
+  success. A module whose targets are simply absent returns `0`.
+- `cmd_check` captures each check module's exit code and `cmd_fix` captures
+  each fix target's, and both return it — the same capture on both paths.
 
 ## Commit Conventions
 

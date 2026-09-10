@@ -15,13 +15,16 @@ if [ "${_MDOCTOR_CONTEXT_READY:-false}" != true ]; then
   return 1 2>/dev/null || exit 1
 fi
 clean_logs() {
+  local rc=0
   local days="${DAYS_OLD:-7}"
   local log_dir
   log_dir="$(platform_user_log_dir)"
   header "Cleaning user logs older than ${days} days (${log_dir})"
   if [ -d "$log_dir" ]; then
-    safe_find_delete "$log_dir" -type f -mtime "+${days}" || true
+    safe_find_delete "$log_dir" -type f -mtime "+${days}" || rc=$?
   else
     log "No log directory found at ${log_dir}."
   fi
+  [ "$rc" -eq 0 ] || log "Module 'logs' finished with $(safety_error_name "$rc"): $(safety_error_hint "$rc" 'logs')"
+  return "$rc"
 }

@@ -16,6 +16,7 @@ if [ "${_MDOCTOR_CONTEXT_READY:-false}" != true ]; then
   return 1 2>/dev/null || exit 1
 fi
 clean_xcode() {
+  local rc=0
   local days="${DAYS_OLD:-30}"
   header "Xcode cleanup"
 
@@ -28,7 +29,7 @@ clean_xcode() {
       local dd_hr
       dd_hr=$(human_readable_kb "$dd_size")
       log "Xcode DerivedData: ${dd_hr}"
-      safe_remove_children "${derived_data}" || true
+      safe_remove_children "${derived_data}" || rc=$?
     fi
   else
     log "No Xcode DerivedData directory found."
@@ -38,7 +39,7 @@ clean_xcode() {
   local archives="${HOME}/Library/Developer/Xcode/Archives"
   if [ -d "$archives" ]; then
     log "Cleaning Xcode Archives older than ${days} days..."
-    safe_find_delete "${archives}" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}" || true
+    safe_find_delete "${archives}" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}" || rc=$?
   fi
 
   # Unavailable simulators
@@ -56,7 +57,9 @@ clean_xcode() {
       local sc_hr
       sc_hr=$(human_readable_kb "$sc_size")
       log "Simulator caches: ${sc_hr}"
-      safe_remove_children "${sim_caches}" || true
+      safe_remove_children "${sim_caches}" || rc=$?
     fi
   fi
+  [ "$rc" -eq 0 ] || log "Module 'xcode' finished with $(safety_error_name "$rc"): $(safety_error_hint "$rc" 'xcode')"
+  return "$rc"
 }
