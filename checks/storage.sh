@@ -20,18 +20,17 @@ _scan_dir_for_hogs() {
 
   [ -d "$dir" ] || return 0
 
-  du -sk "$dir"/*/ 2>/dev/null | sort -rn | head -n "$limit"
+  local sub
+  for sub in "$dir"/*/; do
+    [ -e "$sub" ] || continue
+    printf '%s\t%s\n' "$(du_size_kb "$sub")" "$sub"
+  done | sort -rn | head -n "$limit"
 }
 
 # _dir_size_kb dir
-# Returns size in KB for a single directory (with timeout).
+# Returns size in KB for a single directory via the shared hardened probe.
 _dir_size_kb() {
-  local dir="$1"
-  [ -d "$dir" ] || { echo 0; return; }
-
-  local size
-  size=$(timeout 30 du -sk "$dir" 2>/dev/null | awk '{print $1}')
-  echo "${size:-0}"
+  du_size_kb "$1"
 }
 
 # _find_and_sum pattern dirs...
@@ -48,7 +47,7 @@ _find_and_sum() {
     [ -d "$dir" ] || continue
     while IFS= read -r match; do
       local sz
-      sz=$(timeout 30 du -sk "$match" 2>/dev/null | awk '{print $1}')
+      sz=$(du_size_kb "$match")
       sz="${sz:-0}"
       total=$((total + sz))
       count=$((count + 1))
@@ -148,7 +147,11 @@ check_storage() {
         status_info "  ${app_name}: ${app_hr}"
         found_any=true
       fi
-    done < <(du -sk /Applications/*.app 2>/dev/null | sort -rn | head -n 5)
+    done < <(
+      for _app in /Applications/*.app/; do
+        [ -e "$_app" ] || continue
+        printf '%s\t%s\n' "$(du_size_kb "$_app")" "$_app"
+      done | sort -rn | head -n 5)
     grand_total_kb=$((grand_total_kb + app_total))
   fi
 

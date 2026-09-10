@@ -213,18 +213,10 @@ check_memory_usage() {
     fi
   fi
 
-  # Format sizes
+  # Format sizes via the single shared ladder (Task 8.2).
   local total_hr used_hr
-  if (( total_kb >= 1048576 )); then
-    total_hr=$(awk -v k="$total_kb" 'BEGIN {printf "%.1f GB", k/1048576}')
-    used_hr=$(awk -v k="$used_kb" 'BEGIN {printf "%.1f GB", k/1048576}')
-  elif (( total_kb >= 1024 )); then
-    total_hr=$(awk -v k="$total_kb" 'BEGIN {printf "%.0f MB", k/1024}')
-    used_hr=$(awk -v k="$used_kb" 'BEGIN {printf "%.0f MB", k/1024}')
-  else
-    total_hr="${total_kb} KB"
-    used_hr="${used_kb} KB"
-  fi
+  total_hr=$(human_readable_kb "$total_kb")
+  used_hr=$(human_readable_kb "$used_kb")
 
   # Fixed inputs for tests (see header comment).
   if [ -n "${DIAG_MEM_PCT:-}" ]; then
@@ -417,7 +409,7 @@ check_disk_hotspots() {
   local -a fast_dirs=("/tmp" /var/log /var/tmp)
   for dir in "${fast_dirs[@]}"; do
     [ ! -d "$dir" ] && continue
-    dir_size=$(du -sk "$dir" 2>/dev/null | awk '{print $1}')
+    dir_size=$(du_size_kb "$dir")
     if [ -n "$dir_size" ] && (( dir_size > 1048576 )); then
       dir_hr=$(kb_to_human "$dir_size")
       large_dirs="${large_dirs}  ${dir}: ${dir_hr}\n"

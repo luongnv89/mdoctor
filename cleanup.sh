@@ -135,17 +135,7 @@ _finish_cleanup_session() {
 register_exit_hook _finish_cleanup_session
 
 cleanup_preflight_path_kb() {
-	local path="${1-}"
-	if [ -z "$path" ] || [ ! -e "$path" ]; then
-		echo 0
-		return 0
-	fi
-	# du can exit non-zero on permission errors (e.g. items inside ~/.Trash on macOS).
-	# Under `set -euo pipefail` that would abort the entire script, so swallow the
-	# pipeline status here and always emit a numeric byte-count (0 on failure).
-	local kb=""
-	kb=$({ du -sk "$path" 2>/dev/null || true; } | awk '{print $1+0}')
-	echo "${kb:-0}"
+  du_size_kb "${1-}"
 }
 
 cleanup_preflight_find_kb() {
@@ -161,9 +151,9 @@ cleanup_preflight_find_kb() {
 	local p=""
 	while IFS= read -r -d '' p; do
 		local sz=""
-		# Same defensive pattern as cleanup_preflight_path_kb: never propagate a
-		# non-zero pipeline status under pipefail/set -e.
-		sz=$({ du -sk "$p" 2>/dev/null || true; } | awk '{print $1+0}')
+		# Routed through the single hardened probe (Task 8.2): never
+		# propagates a non-zero pipeline status under pipefail/set -e.
+		sz=$(du_size_kb "$p")
 		total=$((total + ${sz:-0}))
 	done < <(find "$base" "$@" -print0 2>/dev/null)
 

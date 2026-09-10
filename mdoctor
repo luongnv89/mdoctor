@@ -71,6 +71,7 @@ MDOCTOR_DIR="$(resolve_script_dir)"
 source "${MDOCTOR_DIR}/lib/platform.sh"
 source "${MDOCTOR_DIR}/lib/metadata.sh"
 source "${MDOCTOR_DIR}/lib/registry.sh"
+source "${MDOCTOR_DIR}/lib/disk.sh"
 
 # Runtime diagnostics flag (can be enabled per-command via --debug)
 MDOCTOR_DEBUG="${MDOCTOR_DEBUG:-false}"
@@ -114,12 +115,7 @@ error() {
 }
 
 md_path_size_kb() {
-  local path="${1-}"
-  if [ -z "$path" ] || [ ! -e "$path" ]; then
-    echo 0
-    return 0
-  fi
-  du -sk "$path" 2>/dev/null | awk '{print $1+0}'
+  du_size_kb "${1-}"
 }
 
 md_find_size_kb() {
@@ -135,7 +131,7 @@ md_find_size_kb() {
   local p=""
   while IFS= read -r -d '' p; do
     local sz=0
-    sz=$(du -sk "$p" 2>/dev/null | awk '{print $1+0}')
+    sz=$(du_size_kb "$p")
     total=$((total + sz))
   done < <(find "$base" "$@" -print0 2>/dev/null)
 
@@ -143,18 +139,7 @@ md_find_size_kb() {
 }
 
 md_human_kb() {
-  local kb="${1:-0}"
-  if declare -f human_readable_kb >/dev/null 2>&1; then
-    human_readable_kb "$kb"
-    return 0
-  fi
-  if (( kb >= 1048576 )); then
-    awk -v v="$kb" 'BEGIN {printf "%.2f GB", v/1048576}'
-  elif (( kb >= 1024 )); then
-    awk -v v="$kb" 'BEGIN {printf "%.2f MB", v/1024}'
-  else
-    printf "%d KB" "$kb"
-  fi
+  human_readable_kb "${1:-0}"
 }
 
 cmd_clean_preflight_summary_module() {
@@ -527,9 +512,8 @@ cmd_clean() {
         echo "  -h, --help            Show this help"
         echo
         echo "Cleanup modules:"
-        echo "  System:    trash [MED], caches [LOW], logs [MED], downloads [LOW],"
-        echo "             crash_reports [MED], ios_backups [HIGH]"
-        echo "  Software:  browser [LOW], dev [MED], xcode [MED], dev_caches [MED]"
+        register_all_modules
+        registry_help_group cleanup
         echo
         echo "Whitelist file: ~/.config/mdoctor/cleanup_whitelist"
         echo "Scope file: ~/.config/mdoctor/cleanup_scope.conf (dev_caches node_modules scan)"
@@ -969,23 +953,23 @@ cmd_info() {
 
     local total_mem
     total_mem=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
-    local total_gb
-    total_gb=$(awk -v m="$total_mem" 'BEGIN {printf "%.0f", m/1073741824}')
+    local total_hr
+    total_hr=$(human_readable_kb "$(( total_mem / 1024 ))")
     local used_kb
     used_kb=$(( (active_pages + wired_pages) * page_size / 1024 ))
-    local used_gb
-    used_gb=$(awk -v kb="$used_kb" 'BEGIN {printf "%.1f", kb/1048576}')
+    local used_hr
+    used_hr=$(human_readable_kb "$used_kb")
 
-    printf "  %-20s %s\n" "Memory:" "${used_gb} GB used / ${total_gb} GB total"
+    printf "  %-20s %s\n" "Memory:" "${used_hr} used / ${total_hr} total"
   elif is_linux && [ -r /proc/meminfo ]; then
-    local mem_total mem_avail mem_used_kb total_gb used_gb
+    local mem_total mem_avail mem_used_kb total_hr used_hr
     mem_total=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
     mem_avail=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
     mem_used_kb=$((mem_total - mem_avail))
-    total_gb=$(awk -v m="$mem_total" 'BEGIN {printf "%.0f", m/1048576}')
-    used_gb=$(awk -v kb="$mem_used_kb" 'BEGIN {printf "%.1f", kb/1048576}')
+    total_hr=$(human_readable_kb "$mem_total")
+    used_hr=$(human_readable_kb "$mem_used_kb")
 
-    printf "  %-20s %s\n" "Memory:" "${used_gb} GB used / ${total_gb} GB total"
+    printf "  %-20s %s\n" "Memory:" "${used_hr} used / ${total_hr} total"
   fi
 
   # CPU
