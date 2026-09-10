@@ -53,6 +53,21 @@ safety_error_name() {
   esac
 }
 
+# handle_cleanup_rc RC — Task 9.3 case distinguishing expected skips from
+# real failures. In dry-run nothing is attempted, so every policy block is
+# an expected skip (reported where it happens, exit 0); in force mode
+# failures propagate to the caller.
+handle_cleanup_rc() {
+  local rc="${1:-0}"
+  [ "$rc" -eq 0 ] && return 0
+  local _dry_rc=0
+  is_dry_run || _dry_rc=$?
+  if [ "$_dry_rc" -ne 1 ]; then
+    return 0
+  fi
+  return "$rc"
+}
+
 safety_error_hint() {
   local code="${1:-0}"
   local path="${2:-target}"

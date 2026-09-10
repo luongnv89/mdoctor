@@ -48,6 +48,9 @@ setup() {
 }
 
 @test "crash_reports where every target is blocked exits non-zero" {
+  # Force mode (the acceptance scenario runs --force): dry-run maps every
+  # policy block to an expected skip instead.
+  DRY_RUN=false
   mkdir -p "$HOME/crash/a" "$HOME/crash/b"
   echo x > "$HOME/crash/a/old.crash"
   touch -d "30 days ago" "$HOME/crash/a/old.crash" 2>/dev/null || true

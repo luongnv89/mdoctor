@@ -64,6 +64,7 @@ clean_ios_backups() {
 
   # In force mode, remove backups older than threshold
   safe_find_delete "${backup_dir}" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}" || rc=$?
+  handle_cleanup_rc "$rc" || rc=$?
   [ "$rc" -eq 0 ] || log "Module 'ios_backups' finished with $(safety_error_name "$rc"): $(safety_error_hint "$rc" 'ios_backups')"
   return "$rc"
 }

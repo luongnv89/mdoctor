@@ -46,6 +46,7 @@ clean_browser_caches() {
       safe_remove_children "$firefox_cache" || rc=$?
     fi
   fi
+  handle_cleanup_rc "$rc" || rc=$?
   [ "$rc" -eq 0 ] || log "Module 'browser' finished with $(safety_error_name "$rc"): $(safety_error_hint "$rc" 'browser')"
   return "$rc"
 }

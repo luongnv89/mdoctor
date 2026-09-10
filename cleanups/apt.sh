@@ -35,6 +35,7 @@ clean_apt_cache() {
   # Remove auto-installed packages no longer needed
   log "Removing unused auto-installed packages..."
   run_cmd_args sudo apt-get autoremove -y || rc=$?
+  handle_cleanup_rc "$rc" || rc=$?
   [ "$rc" -eq 0 ] || log "Module 'apt' finished with $(safety_error_name "$rc"): $(safety_error_hint "$rc" 'apt')"
   return "$rc"
 }

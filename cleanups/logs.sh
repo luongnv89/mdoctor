@@ -25,6 +25,7 @@ clean_logs() {
   else
     log "No log directory found at ${log_dir}."
   fi
+  handle_cleanup_rc "$rc" || rc=$?
   [ "$rc" -eq 0 ] || log "Module 'logs' finished with $(safety_error_name "$rc"): $(safety_error_hint "$rc" 'logs')"
   return "$rc"
 }

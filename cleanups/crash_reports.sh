@@ -46,6 +46,9 @@ clean_crash_reports() {
   if (( attempted == 0 && blocked > 0 )); then
     rc="$MDOCTOR_SAFE_ERR_PROTECTED_TARGET"
   fi
+  # Dry-run maps every block to an expected skip (Task 9.3 case); force
+  # mode propagates, so the message below only fires on real failures.
+  handle_cleanup_rc "$rc" || rc=$?
   if [ "$rc" -eq "$MDOCTOR_SAFE_ERR_PROTECTED_TARGET" ]; then
     log "Module 'crash_reports' blocked: every crash directory is outside the allowed deletion roots — nothing was cleaned."
   elif [ "$rc" -ne 0 ]; then
