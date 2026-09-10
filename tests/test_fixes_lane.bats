@@ -22,6 +22,8 @@ load 'helpers/fixes_lane'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
+source "$ROOT_DIR/lib/context.sh"
+mdoctor_context_init
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR

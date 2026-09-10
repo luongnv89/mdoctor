@@ -20,6 +20,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source library modules
 source "${SCRIPT_DIR}/lib/constants.sh"
+source "${SCRIPT_DIR}/lib/context.sh"
 source "${SCRIPT_DIR}/lib/platform.sh"
 source "${SCRIPT_DIR}/lib/common.sh"
 source "${SCRIPT_DIR}/lib/logging.sh"
@@ -27,6 +28,11 @@ source "${SCRIPT_DIR}/lib/disk.sh"
 source "${SCRIPT_DIR}/lib/preflight.sh"
 source "${SCRIPT_DIR}/lib/safety.sh"
 source "${SCRIPT_DIR}/lib/cleanup_scope.sh"
+
+# Module context contract (Task 9.1): initialized BEFORE any module is
+# sourced — every cleanups/* file fails loudly without it. DRY_RUN/DAYS_OLD
+# defaults come from here; --force/--debug below override them.
+mdoctor_context_init
 
 # Source cleanup modules
 source "${SCRIPT_DIR}/cleanups/trash.sh"
@@ -49,11 +55,7 @@ fi
 # CONFIGURATION
 ########################################
 
-DRY_RUN=true
 LOGFILE="$(platform_log_dir)/mdoctor_cleanup.log"
-MDOCTOR_DEBUG="${MDOCTOR_DEBUG:-false}"
-# shellcheck disable=SC2034
-DAYS_OLD="${DAYS_OLD_OVERRIDE:-7}"
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in

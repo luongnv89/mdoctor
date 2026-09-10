@@ -9,6 +9,8 @@ load 'helpers/fixture'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
+source "$ROOT_DIR/lib/context.sh"
+mdoctor_context_init
 
 @test "estimator helpers are declared once in lib/preflight.sh" {
   count=$(find "$ROOT_DIR" -type f \( -name '*.sh' -o -name mdoctor -o -name cleanup.sh \) -not -path "$ROOT_DIR/tests/*" | xargs grep -l '^preflight_path_kb()\|^preflight_find_kb()' 2>/dev/null | wc -l | tr -d ' ')

@@ -19,6 +19,8 @@ load 'helpers/fixes_lane'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
+source "$ROOT_DIR/lib/context.sh"
+mdoctor_context_init
 
 # Library environment + stub PATH load at file scope (same pattern as
 # test_fixes_lane.bats): setup_file runs in a separate process, so only

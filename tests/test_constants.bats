@@ -11,6 +11,8 @@ load 'helpers/fixture'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
+source "$ROOT_DIR/lib/context.sh"
+mdoctor_context_init
 
 @test "the KB-per-GB literal is defined exactly once" {
   # BusyBox-grep compatible (no grep --include).
