@@ -74,6 +74,7 @@ source "${MDOCTOR_DIR}/lib/registry.sh"
 source "${MDOCTOR_DIR}/lib/disk.sh"
 source "${MDOCTOR_DIR}/lib/preflight.sh"
 source "${MDOCTOR_DIR}/lib/help.sh"
+source "${MDOCTOR_DIR}/lib/clean_common.sh"
 
 # Runtime diagnostics flag (can be enabled per-command via --debug)
 MDOCTOR_DEBUG="${MDOCTOR_DEBUG:-false}"
@@ -425,9 +426,7 @@ cmd_check() {
 ########################################
 
 cmd_clean() {
-  local force=false
-  local module=""
-  local interactive=false
+  local force=false module="" interactive=false
 
   # Shared common-flag parser (Task 8.4): --debug/--help handled once.
   parse_common_args usage_clean "$@" || return 0
@@ -435,260 +434,45 @@ cmd_clean() {
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --force|-f)
-        force=true
-        shift
-        ;;
-      --module|-m)
-        module="$2"
-        shift 2
-        ;;
-      --interactive|-i)
-        interactive=true
-        shift
-        ;;
-      *)
-        error "Unknown option: $1"
-        echo "Run 'mdoctor clean --help' for usage."
-        return 1
-        ;;
+      --force|-f) force=true; shift ;;
+      --module|-m) module="$2"; shift 2 ;;
+      --interactive|-i) interactive=true; shift ;;
+      *) error "Unknown option: $1"; echo "Run 'mdoctor clean --help' for usage."; return 1 ;;
     esac
   done
 
   echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
 
   register_all_modules
-  local _cleanup_names
-  _cleanup_names="$(registry_names cleanup)"
-  local -a cleanup_modules=()
-  local _cm
-  for _cm in $_cleanup_names; do
-    cleanup_modules+=("$_cm")
-  done
-
-  is_valid_cleanup_module() {
-    local needle="${1-}"
-    case "$needle" in
-      ""|*/*|*..*|-*) return 1 ;;
-    esac
-    get_module_index "$needle" cleanup >/dev/null 2>&1
-  }
-
-  cleanup_module_description() {
-    get_module_desc "$1" cleanup 2>/dev/null || true
-  }
-
-  run_single_cleanup_module() {
-    local selected_module="$1"
-    local selected_force="$2"
-
-    local clean_file="${MDOCTOR_DIR}/cleanups/${selected_module}.sh"
-    if [ ! -f "$clean_file" ]; then
-      error "Unknown cleanup module: ${selected_module}"
-      registry_available_text cleanup "Available modules"
-      return 1
-    fi
-
-    # Source libraries (platform.sh already loaded at top level)
-    source "${MDOCTOR_DIR}/lib/common.sh"
-    source "${MDOCTOR_DIR}/lib/logging.sh"
-    source "${MDOCTOR_DIR}/lib/disk.sh"
-    source "${MDOCTOR_DIR}/lib/safety.sh"
-    source "${MDOCTOR_DIR}/lib/cleanup_scope.sh"
-
-    # Initialize progress globals for spinner
-    # shellcheck disable=SC2034
-    STEP_CURRENT=0
-    # shellcheck disable=SC2034
-    STEP_TOTAL=1
-    init_colors
-    debug_log "cmd_clean module=${selected_module} force=${selected_force} debug=${MDOCTOR_DEBUG}"
-
-    # Set globals (used by sourced cleanup modules via run_cmd_args)
-    # shellcheck disable=SC2034
-    DRY_RUN=true
-    LOGFILE="$(platform_log_dir)/mdoctor_cleanup.log"
-    # shellcheck disable=SC2034
-    DAYS_OLD="${DAYS_OLD_OVERRIDE:-7}"
-
-    if [ "$selected_force" = true ]; then
-      # shellcheck disable=SC2034
-      DRY_RUN=false
-      cmd_clean_preflight_summary_module "$selected_module" "${DAYS_OLD}"
-      # Confirmation gate (Task 0.5): y/N prompt, or refusal on a
-      # non-tty unless MDOCTOR_ASSUME_YES=true.
-      confirm_destructive_execution "cleanup module ${selected_module}" || return 1
-    fi
-
-    mkdir -p "$(dirname "$LOGFILE")"
-    if declare -f ensure_cleanup_whitelist_file >/dev/null 2>&1; then
-      ensure_cleanup_whitelist_file
-    fi
-    if declare -f ensure_cleanup_scope_file >/dev/null 2>&1; then
-      ensure_cleanup_scope_file
-    fi
-
-    # shellcheck source=/dev/null
-    source "$clean_file"
-
-    op_session_start "clean:module:${selected_module}"
-
-    # Start spinner for single cleanup module
-    # shellcheck disable=SC2034
-    STEP_CURRENT=1
-    progress_start "Cleaning ${selected_module}..."
-
-    local module_rc=0
-
-    # Registry-driven dispatch (Task 8.1): the function name comes from the
-    # single registry declaration, so adding a module to the registry is
-    # enough to make it runnable here.
-    local _dispatch_func
-    _dispatch_func="$(get_module_func "$selected_module" cleanup 2>/dev/null || true)"
-    if [ -n "$_dispatch_func" ] && declare -f "$_dispatch_func" >/dev/null 2>&1; then
-      "$_dispatch_func" || module_rc=$?
-    else
-      case "$selected_module" in
-        trash)          clean_trash || module_rc=$? ;;
-        caches)         clean_user_caches || module_rc=$? ;;
-        logs)           clean_logs || module_rc=$? ;;
-        downloads)      clean_downloads_large_files || module_rc=$? ;;
-        browser)        clean_browser_caches || module_rc=$? ;;
-        dev)            clean_dev_stuff || module_rc=$? ;;
-        crash_reports)  clean_crash_reports || module_rc=$? ;;
-        ios_backups)    clean_ios_backups || module_rc=$? ;;
-        xcode)          clean_xcode || module_rc=$? ;;
-        dev_caches)     clean_dev_caches || module_rc=$? ;;
-        apt)            clean_apt_cache || module_rc=$? ;;
-        *)
-          error "Unknown cleanup module: ${selected_module}"
-          return 1
-          ;;
-      esac
-    fi
-
-    progress_stop
-
-    if [ "$module_rc" -eq 0 ]; then
-      op_session_end "ok"
-    else
-      op_session_end "error:${module_rc}"
-      return "$module_rc"
-    fi
-  }
-
-  select_interactive_modules() {
-    local i=1
-    local selected=""
-    local input token idx selected_module
-    local -a picks=()
-
-    echo >&2
-    echo "${BOLD}Interactive cleanup mode${RESET}" >&2
-    echo "Select modules to run:" >&2
-
-    for selected_module in "${cleanup_modules[@]}"; do
-      printf "  [%d] %-14s %s\n" "$i" "$selected_module" "$(cleanup_module_description "$selected_module")" >&2
-      i=$((i + 1))
-    done
-
-    echo >&2
-    echo "Enter numbers (comma-separated), 'all', or press Enter to cancel:" >&2
-    printf "> " >&2
-    IFS= read -r input || true
-
-    input="${input//[[:space:]]/}"
-
-    if [ -z "$input" ]; then
-      return 1
-    fi
-
-    if [ "$input" = "all" ] || [ "$input" = "ALL" ]; then
-      printf '%s\n' "${cleanup_modules[*]}"
-      return 0
-    fi
-
-    IFS=',' read -r -a picks <<< "$input"
-
-    # Bash 3.2 floor: empty picks (e.g. input ",") would be unbound under
-    # `set -u` — the ${arr[@]+"${arr[@]}"} idiom expands to nothing instead.
-    for token in "${picks[@]+"${picks[@]}"}"; do
-      [ -z "$token" ] && continue
-      case "$token" in
-        *[!0-9]*)
-          error "Invalid selection token: ${token}"
-          return 2
-          ;;
-      esac
-
-      idx=$((token))
-      if [ "$idx" -lt 1 ] || [ "$idx" -gt "${#cleanup_modules[@]}" ]; then
-        error "Selection out of range: ${token}"
-        return 2
-      fi
-
-      selected_module="${cleanup_modules[$((idx - 1))]}"
-      case " ${selected} " in
-        *" ${selected_module} "*) ;;
-        *) selected="${selected}${selected:+ }${selected_module}" ;;
-      esac
-    done
-
-    if [ -z "$selected" ]; then
-      error "No valid modules selected."
-      return 2
-    fi
-
-    printf '%s\n' "$selected"
-  }
+  local cleanup_list
+  cleanup_list="$(registry_names cleanup)"
 
   if [ "$interactive" = true ] && [ -n "$module" ]; then
     error "Use either --module or --interactive, not both."
     return 1
   fi
-
   if [ -n "$module" ]; then
-    if ! is_valid_cleanup_module "$module"; then
+    if ! is_valid_cleanup_module "$cleanup_list" "$module"; then
       error "Unknown cleanup module: ${module}"
       registry_available_text cleanup "Available modules"
       return 1
     fi
-    run_single_cleanup_module "$module" "$force"
+    run_single_cleanup_module "$cleanup_list" "$module" "$force"
+    return $?
+  fi
+  if [ "$interactive" = true ]; then
+    run_interactive_cleanup "$cleanup_list" "$force"
     return $?
   fi
 
-  if [ "$interactive" = true ]; then
-    local selected_line selection_rc=0 all_rc=0 selected_module
-    selected_line="$(select_interactive_modules)" || selection_rc=$?
-
-    if [ "$selection_rc" -eq 1 ]; then
-      echo "No modules selected. Cancelled."
-      return 0
-    fi
-    if [ "$selection_rc" -ne 0 ]; then
-      return "$selection_rc"
-    fi
-
-    for selected_module in $selected_line; do
-      echo
-      echo "${BOLD}== Running cleanup module: ${selected_module} ==${RESET}"
-      run_single_cleanup_module "$selected_module" "$force" || all_rc=$?
-    done
-
-    return "$all_rc"
-  fi
-
-  # Run full cleanup (MDOCTOR_DEBUG set by the shared parser when --debug)
-  local _debug=false
-  [ "${MDOCTOR_DEBUG:-false}" = true ] && _debug=true
-  if [ "$force" = true ] && [ "$_debug" = true ]; then
-    MDOCTOR_ASSUME_YES="${MDOCTOR_ASSUME_YES:-false}" MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" --force --debug
-  elif [ "$force" = true ]; then
-    MDOCTOR_ASSUME_YES="${MDOCTOR_ASSUME_YES:-false}" MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" --force
-  elif [ "$_debug" = true ]; then
-    MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" --debug
+  # Full cleanup (MDOCTOR_DEBUG set by the shared parser when --debug).
+  local _args=()
+  [ "$force" = true ] && _args+=(--force)
+  [ "${MDOCTOR_DEBUG:-false}" = true ] && _args+=(--debug)
+  if [ "$force" = true ]; then
+    MDOCTOR_ASSUME_YES="${MDOCTOR_ASSUME_YES:-false}" MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" ${_args[@]+"${_args[@]}"}
   else
-    MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh"
+    MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" ${_args[@]+"${_args[@]}"}
   fi
 }
 
