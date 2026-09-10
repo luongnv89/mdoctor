@@ -72,6 +72,7 @@ source "${MDOCTOR_DIR}/lib/platform.sh"
 source "${MDOCTOR_DIR}/lib/metadata.sh"
 source "${MDOCTOR_DIR}/lib/registry.sh"
 source "${MDOCTOR_DIR}/lib/disk.sh"
+source "${MDOCTOR_DIR}/lib/preflight.sh"
 
 # Runtime diagnostics flag (can be enabled per-command via --debug)
 MDOCTOR_DEBUG="${MDOCTOR_DEBUG:-false}"
@@ -114,34 +115,6 @@ error() {
   echo "${RED}Error:${RESET} $*" >&2
 }
 
-md_path_size_kb() {
-  du_size_kb "${1-}"
-}
-
-md_find_size_kb() {
-  local base="${1-}"
-  shift || true
-
-  if [ -z "$base" ] || [ ! -d "$base" ]; then
-    echo 0
-    return 0
-  fi
-
-  local total=0
-  local p=""
-  while IFS= read -r -d '' p; do
-    local sz=0
-    sz=$(du_size_kb "$p")
-    total=$((total + sz))
-  done < <(find "$base" "$@" -print0 2>/dev/null)
-
-  echo "$total"
-}
-
-md_human_kb() {
-  human_readable_kb "${1:-0}"
-}
-
 cmd_clean_preflight_summary_module() {
   local module="${1-}"
   local days="${2:-7}"
@@ -157,9 +130,9 @@ cmd_clean_preflight_summary_module() {
     local label="$1"
     local path="$2"
     local sz=0
-    sz=$(md_path_size_kb "$path")
+    sz=$(preflight_path_kb "$path")
     total_kb=$((total_kb + sz))
-    printf "  - %-30s %s (~%s)\n" "$label" "$path" "$(md_human_kb "$sz")"
+    printf "  - %-30s %s (~%s)\n" "$label" "$path" "$(human_readable_kb "$sz")"
   }
 
   case "$module" in
@@ -173,15 +146,15 @@ cmd_clean_preflight_summary_module() {
       local log_dir
       log_dir="$(platform_user_log_dir)"
       local logs_kb=0
-      logs_kb=$(md_find_size_kb "$log_dir" -type f -mtime "+${days}")
+      logs_kb=$(preflight_find_kb "$log_dir" -type f -mtime "+${days}")
       total_kb=$((total_kb + logs_kb))
-      printf "  - %-30s %s (~%s)\n" "Old logs (>${days}d)" "$log_dir" "$(md_human_kb "$logs_kb")"
+      printf "  - %-30s %s (~%s)\n" "Old logs (>${days}d)" "$log_dir" "$(human_readable_kb "$logs_kb")"
       ;;
     downloads)
       local dl_kb=0
-      dl_kb=$(md_find_size_kb "${HOME}/Downloads" -type f -size +500M -mtime "+${days}")
+      dl_kb=$(preflight_find_kb "${HOME}/Downloads" -type f -size +500M -mtime "+${days}")
       total_kb=$((total_kb + dl_kb))
-      printf "  - %-30s %s (~%s)\n" "Large downloads (>${days}d)" "${HOME}/Downloads" "$(md_human_kb "$dl_kb")"
+      printf "  - %-30s %s (~%s)\n" "Large downloads (>${days}d)" "${HOME}/Downloads" "$(human_readable_kb "$dl_kb")"
       ;;
     browser)
       if is_macos; then
@@ -209,23 +182,23 @@ cmd_clean_preflight_summary_module() {
     crash_reports)
       local crash_dir crash_kb
       while IFS= read -r crash_dir; do
-        crash_kb=$(md_find_size_kb "$crash_dir" -type f -mtime "+${days}")
+        crash_kb=$(preflight_find_kb "$crash_dir" -type f -mtime "+${days}")
         total_kb=$((total_kb + crash_kb))
-        printf "  - %-30s %s (~%s)\n" "Crash reports" "$crash_dir" "$(md_human_kb "$crash_kb")"
+        printf "  - %-30s %s (~%s)\n" "Crash reports" "$crash_dir" "$(human_readable_kb "$crash_kb")"
       done < <(platform_crash_dirs)
       ;;
     ios_backups)
       local ios_kb=0
-      ios_kb=$(md_find_size_kb "${HOME}/Library/Application Support/MobileSync/Backup" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
+      ios_kb=$(preflight_find_kb "${HOME}/Library/Application Support/MobileSync/Backup" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
       total_kb=$((total_kb + ios_kb))
-      printf "  - %-30s %s (~%s)\n" "iOS backups (>${days}d)" "${HOME}/Library/Application Support/MobileSync/Backup" "$(md_human_kb "$ios_kb")"
+      printf "  - %-30s %s (~%s)\n" "iOS backups (>${days}d)" "${HOME}/Library/Application Support/MobileSync/Backup" "$(human_readable_kb "$ios_kb")"
       ;;
     xcode)
       add_path "Xcode DerivedData" "${HOME}/Library/Developer/Xcode/DerivedData"
       local arc_kb=0
-      arc_kb=$(md_find_size_kb "${HOME}/Library/Developer/Xcode/Archives" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
+      arc_kb=$(preflight_find_kb "${HOME}/Library/Developer/Xcode/Archives" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
       total_kb=$((total_kb + arc_kb))
-      printf "  - %-30s %s (~%s)\n" "Xcode Archives (>${days}d)" "${HOME}/Library/Developer/Xcode/Archives" "$(md_human_kb "$arc_kb")"
+      printf "  - %-30s %s (~%s)\n" "Xcode Archives (>${days}d)" "${HOME}/Library/Developer/Xcode/Archives" "$(human_readable_kb "$arc_kb")"
       add_path "CoreSimulator caches" "${HOME}/Library/Developer/CoreSimulator/Caches"
       echo "  - xcrun simctl delete unavailable (size estimate: n/a)"
       ;;
@@ -248,7 +221,7 @@ cmd_clean_preflight_summary_module() {
   esac
 
   echo
-  echo "Estimated reclaim size: ~$(md_human_kb "$total_kb")"
+  echo "Estimated reclaim size: ~$(human_readable_kb "$total_kb")"
   echo "${YELLOW}Note:${RESET} estimate is approximate and excludes some command-based cleanup results."
   echo
 }
