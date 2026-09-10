@@ -61,44 +61,52 @@ _find_and_sum() {
 # MAIN CHECK
 ########################################
 
-check_storage() {
-  step "Storage Hogs Analysis"
+# Accumulators owned by check_storage and shared with the scan helpers.
+STORAGE_TOTAL_KB=0
+STORAGE_FOUND_ANY=false
 
-  local grand_total_kb=0
-  local found_any=false
+# _storage_report LABEL KB [MIN_KB] [WARN_KB]
+# The single measure-compare-classify-report helper (Task 8.6): below MIN_KB
+# the entry is skipped silently, at or above WARN_KB it warns, otherwise it
+# informs. Reported entries accumulate into the run totals.
+_storage_report() {
+  local label="$1"
+  local kb="${2:-0}"
+  local min_kb="${3:-102400}"
+  local warn_kb="${4:-1048576}"
 
-  # ── Category 1: Application Data ──
+  (( kb > min_kb )) || return 1
+
+  local hr
+  hr=$(kb_to_human "$kb")
+  STORAGE_TOTAL_KB=$((STORAGE_TOTAL_KB + kb))
+  STORAGE_FOUND_ANY=true
+  if (( kb >= warn_kb )); then
+    status_warn "${label}: ${hr}"
+  else
+    status_info "${label}: ${hr}"
+  fi
+}
+
+# _storage_scan_appdata — Category 1: application data + top subdirs.
+_storage_scan_appdata() {
   status_info "Scanning application data..."
 
   if is_macos; then
-    local categories=("Application Support" "Caches" "Containers" "Group Containers")
-    for cat in "${categories[@]}"; do
+    local cat
+    for cat in "Application Support" "Caches" "Containers" "Group Containers"; do
       local cat_dir="${HOME}/Library/${cat}"
       [ -d "$cat_dir" ] || continue
-
       local cat_size_kb
       cat_size_kb=$(_dir_size_kb "$cat_dir")
-
-      if (( cat_size_kb > 102400 )); then
-        local cat_hr
-        cat_hr=$(kb_to_human "$cat_size_kb")
-        grand_total_kb=$((grand_total_kb + cat_size_kb))
-        found_any=true
-
-        if (( cat_size_kb >= 1048576 )); then
-          # shellcheck disable=SC2088
-          status_warn "~/Library/${cat}: ${cat_hr}"
-        else
-          # shellcheck disable=SC2088
-          status_info "~/Library/${cat}: ${cat_hr}"
-        fi
-
+      # shellcheck disable=SC2088
+      if _storage_report "~/Library/${cat}" "$cat_size_kb"; then
         while IFS=$'\t' read -r sz path; do
           [ -z "$sz" ] && continue
-          local sub_hr
-          sub_hr=$(kb_to_human "$sz")
           local sub_name
           sub_name=$(basename "$path")
+          local sub_hr
+          sub_hr=$(kb_to_human "$sz")
           if (( sz >= 1048576 )); then
             status_warn "  └─ ${sub_name}: ${sub_hr}"
           elif (( sz >= 102400 )); then
@@ -109,208 +117,169 @@ check_storage() {
     done
   else
     # Linux: XDG directories
-    local xdg_dirs=("${HOME}/.cache" "${HOME}/.local/share" "${HOME}/.config")
-    for xdg_dir in "${xdg_dirs[@]}"; do
+    local xdg_dir
+    for xdg_dir in "${HOME}/.cache" "${HOME}/.local/share" "${HOME}/.config"; do
       [ -d "$xdg_dir" ] || continue
-      local xdg_size_kb
-      xdg_size_kb=$(_dir_size_kb "$xdg_dir")
-      if (( xdg_size_kb > 102400 )); then
-        local xdg_hr xdg_label
-        xdg_hr=$(kb_to_human "$xdg_size_kb")
-        xdg_label="${xdg_dir/#$HOME/~}"
-        grand_total_kb=$((grand_total_kb + xdg_size_kb))
-        found_any=true
-        if (( xdg_size_kb >= 1048576 )); then
-          status_warn "${xdg_label}: ${xdg_hr}"
-        else
-          status_info "${xdg_label}: ${xdg_hr}"
-        fi
-      fi
+      local label="${xdg_dir/#$HOME/~}"
+      _storage_report "$label" "$(_dir_size_kb "$xdg_dir")" || true
     done
   fi
+}
 
-  # ── Category 2: Applications ──
-  if is_macos && [ -d "/Applications" ]; then
-    status_info "Scanning /Applications..."
-    local app_total=0
-    while IFS=$'\t' read -r sz path; do
-      [ -z "$sz" ] && continue
-      local app_hr
-      app_hr=$(kb_to_human "$sz")
-      local app_name
-      app_name=$(basename "$path")
-      app_total=$((app_total + sz))
-      if (( sz >= 1048576 )); then
-        status_warn "  ${app_name}: ${app_hr}"
-        found_any=true
-      elif (( sz >= 524288 )); then
-        status_info "  ${app_name}: ${app_hr}"
-        found_any=true
-      fi
-    done < <(
-      for _app in /Applications/*.app/; do
-        [ -e "$_app" ] || continue
-        printf '%s\t%s\n' "$(du_size_kb "$_app")" "$_app"
-      done | sort -rn | head -n 5)
-    grand_total_kb=$((grand_total_kb + app_total))
-  fi
+# _storage_scan_applications — Category 2: /Applications (macOS only).
+_storage_scan_applications() {
+  is_macos && [ -d "/Applications" ] || return 0
+  status_info "Scanning /Applications..."
+  local app_total=0
+  while IFS=$'\t' read -r sz path; do
+    [ -z "$sz" ] && continue
+    local app_hr
+    app_hr=$(kb_to_human "$sz")
+    local app_name
+    app_name=$(basename "$path")
+    app_total=$((app_total + sz))
+    if (( sz >= 1048576 )); then
+      status_warn "  ${app_name}: ${app_hr}"
+      STORAGE_FOUND_ANY=true
+    elif (( sz >= 524288 )); then
+      status_info "  ${app_name}: ${app_hr}"
+      STORAGE_FOUND_ANY=true
+    fi
+  done < <(
+    for _app in /Applications/*.app/; do
+      [ -e "$_app" ] || continue
+      printf '%s\t%s\n' "$(du_size_kb "$_app")" "$_app"
+    done | sort -rn | head -n 5)
+  STORAGE_TOTAL_KB=$((STORAGE_TOTAL_KB + app_total))
+}
 
-  # ── Category 3: Dev Tools ──
+# _storage_scan_devtools — Category 3: developer tool directories.
+_storage_scan_devtools() {
   status_info "Scanning developer tools..."
 
-  local dev_dirs=()
+  local dev_dirs=("${HOME}/.docker")
   if is_macos; then
     dev_dirs=("${HOME}/Library/Developer" "${HOME}/.docker")
-  else
-    dev_dirs=("${HOME}/.docker")
   fi
+  local dev_dir
   for dev_dir in "${dev_dirs[@]}"; do
-    if [ -d "$dev_dir" ]; then
-      local dev_sz
-      dev_sz=$(_dir_size_kb "$dev_dir")
-      if (( dev_sz > 102400 )); then
-        local dev_hr
-        dev_hr=$(kb_to_human "$dev_sz")
-        grand_total_kb=$((grand_total_kb + dev_sz))
-        found_any=true
-        local dev_label
-        dev_label="${dev_dir/#$HOME/~}"
-        if (( dev_sz >= 1048576 )); then
-          status_warn "${dev_label}: ${dev_hr}"
-        else
-          status_info "${dev_label}: ${dev_hr}"
-        fi
-      fi
-    fi
+    [ -d "$dev_dir" ] || continue
+    local label="${dev_dir/#$HOME/~}"
+    _storage_report "$label" "$(_dir_size_kb "$dev_dir")" || true
   done
+}
 
-  # ── Category 4: Cloud Storage (macOS only) ──
-  if is_macos; then
-    local cloud_dir="${HOME}/Library/CloudStorage"
-    if [ -d "$cloud_dir" ]; then
-      local cloud_sz
-      cloud_sz=$(_dir_size_kb "$cloud_dir")
-      if (( cloud_sz > 102400 )); then
-        local cloud_hr
-        cloud_hr=$(kb_to_human "$cloud_sz")
-        grand_total_kb=$((grand_total_kb + cloud_sz))
-        found_any=true
-        # shellcheck disable=SC2088
-        status_info "~/Library/CloudStorage: ${cloud_hr}"
-      fi
-    fi
-  fi
+# _storage_scan_cloud — Category 4: cloud storage (macOS only).
+_storage_scan_cloud() {
+  is_macos || return 0
+  local cloud_dir="${HOME}/Library/CloudStorage"
+  [ -d "$cloud_dir" ] || return 0
+  # shellcheck disable=SC2088
+  _storage_report "~/Library/CloudStorage" "$(_dir_size_kb "$cloud_dir")" || true
+}
 
-  # ── Category 5: Dev Dependencies (node_modules) ──
+# _storage_scan_nodedeps SEARCH_DIRS... — Category 5: node_modules sweep.
+_storage_scan_nodedeps() {
   status_info "Scanning for node_modules (this may take a moment)..."
+  (( $# > 0 )) || return 0
 
-  local search_dirs=()
-  for d in "${HOME}/Projects" "${HOME}/projects" "${HOME}/code" "${HOME}/workspace" "${HOME}/dev" "${HOME}/src"; do
-    [ -d "$d" ] && search_dirs+=("$d")
-  done
+  local nm_result nm_total_kb nm_count
+  nm_result=$(_find_and_sum "node_modules" "$@")
+  nm_total_kb=$(echo "$nm_result" | awk '{print $1}')
+  nm_count=$(echo "$nm_result" | awk '{print $2}')
+  (( nm_total_kb > 0 )) || return 0
+  _storage_report "node_modules (${nm_count} found)" "$nm_total_kb" 0 || true
+}
 
-  if (( ${#search_dirs[@]} > 0 )); then
-    local nm_result
-    nm_result=$(_find_and_sum "node_modules" "${search_dirs[@]}")
-    local nm_total_kb nm_count
-    nm_total_kb=$(echo "$nm_result" | awk '{print $1}')
-    nm_count=$(echo "$nm_result" | awk '{print $2}')
+# _storage_default_static_caches — single delimited label|path list for the
+# static dev caches (Task 8.6): one list, no placeholders, no magic index.
+_storage_default_static_caches() {
+  printf '%s\n' \
+    "Cargo registry|${HOME}/.cargo/registry" \
+    "Go packages|${HOME}/go/pkg" \
+    "Maven repository|${HOME}/.m2/repository" \
+    "Gradle caches|${HOME}/.gradle/caches"
+}
 
-    if (( nm_total_kb > 0 )); then
-      local nm_hr
-      nm_hr=$(kb_to_human "$nm_total_kb")
-      grand_total_kb=$((grand_total_kb + nm_total_kb))
-      found_any=true
-      if (( nm_total_kb >= 1048576 )); then
-        status_warn "node_modules (${nm_count} found): ${nm_hr}"
-      else
-        status_info "node_modules (${nm_count} found): ${nm_hr}"
-      fi
-    fi
-  fi
+# _storage_scan_static_caches [ENTRIES] — size each label|path entry.
+# ENTRIES defaults to _storage_default_static_caches; callers (and tests)
+# may pass their own list, where position carries no meaning.
+_storage_scan_static_caches() {
+  local entries="${1:-$( _storage_default_static_caches )}"
+  local entry
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    local clabel="${entry%%|*}"
+    local cpath="${entry#*|}"
+    [ -d "$cpath" ] || continue
+    local cpath_label="${cpath/#$HOME/~}"
+    _storage_report "${clabel} (${cpath_label})" "$(_dir_size_kb "$cpath")" || true
+  done <<< "$entries"
+}
 
-  # ── Category 6: Other Dev Caches ──
+# _storage_scan_devcaches SEARCH_DIRS... — Category 6: venvs, conda envs and
+# the static dev-cache list.
+_storage_scan_devcaches() {
   status_info "Scanning development caches..."
 
-  local -a cache_labels cache_paths
-  cache_labels=("Python venvs" "Conda envs (miniconda3)" "Conda envs (anaconda3)" "Cargo registry" "Go packages" "Maven repository" "Gradle caches")
-  cache_paths=("" "" "" "${HOME}/.cargo/registry" "${HOME}/go/pkg" "${HOME}/.m2/repository" "${HOME}/.gradle/caches")
-
-  # Python venvs — search in project dirs
-  if (( ${#search_dirs[@]} > 0 )); then
+  if (( $# > 0 )); then
+    local venv_name
     for venv_name in "venv" ".venv"; do
-      local venv_result
-      venv_result=$(_find_and_sum "$venv_name" "${search_dirs[@]}")
-      local venv_kb venv_cnt
+      local venv_result venv_kb venv_cnt
+      venv_result=$(_find_and_sum "$venv_name" "$@")
       venv_kb=$(echo "$venv_result" | awk '{print $1}')
       venv_cnt=$(echo "$venv_result" | awk '{print $2}')
-      if (( venv_kb > 102400 )); then
-        local venv_hr
-        venv_hr=$(kb_to_human "$venv_kb")
-        grand_total_kb=$((grand_total_kb + venv_kb))
-        found_any=true
-        if (( venv_kb >= 1048576 )); then
-          status_warn "Python ${venv_name}/ (${venv_cnt} found): ${venv_hr}"
-        else
-          status_info "Python ${venv_name}/ (${venv_cnt} found): ${venv_hr}"
-        fi
-      fi
+      _storage_report "Python ${venv_name}/ (${venv_cnt} found)" "$venv_kb" || true
     done
   fi
 
-  # Conda envs
+  local conda_base
   for conda_base in "${HOME}/miniconda3/envs" "${HOME}/anaconda3/envs"; do
-    if [ -d "$conda_base" ]; then
-      local conda_sz
-      conda_sz=$(_dir_size_kb "$conda_base")
-      if (( conda_sz > 102400 )); then
-        local conda_hr
-        conda_hr=$(kb_to_human "$conda_sz")
-        local conda_label="${conda_base/#$HOME/~}"
-        grand_total_kb=$((grand_total_kb + conda_sz))
-        found_any=true
-        if (( conda_sz >= 1048576 )); then
-          status_warn "${conda_label}: ${conda_hr}"
-        else
-          status_info "${conda_label}: ${conda_hr}"
-        fi
-      fi
-    fi
+    [ -d "$conda_base" ] || continue
+    local conda_label="${conda_base/#$HOME/~}"
+    _storage_report "$conda_label" "$(_dir_size_kb "$conda_base")" || true
   done
 
-  # Static dev caches (Cargo, Go, Maven, Gradle)
-  local i=3  # start at index 3 in cache_paths (skipping venv/conda handled above)
-  while (( i < ${#cache_labels[@]} )); do
-    local cpath="${cache_paths[$i]}"
-    local clabel="${cache_labels[$i]}"
-    if [ -d "$cpath" ]; then
-      local csz
-      csz=$(_dir_size_kb "$cpath")
-      if (( csz > 102400 )); then
-        local chr
-        chr=$(kb_to_human "$csz")
-        local cpath_label="${cpath/#$HOME/~}"
-        grand_total_kb=$((grand_total_kb + csz))
-        found_any=true
-        if (( csz >= 1048576 )); then
-          status_warn "${clabel} (${cpath_label}): ${chr}"
-        else
-          status_info "${clabel} (${cpath_label}): ${chr}"
-        fi
-      fi
-    fi
-    i=$((i + 1))
+  _storage_scan_static_caches
+}
+
+# _storage_search_dirs — project roots that exist (node_modules/venv sweep).
+_storage_search_dirs() {
+  local d
+  for d in "${HOME}/Projects" "${HOME}/projects" "${HOME}/code" "${HOME}/workspace" "${HOME}/dev" "${HOME}/src"; do
+    [ -d "$d" ] && printf '%s\n' "$d"
   done
+}
+
+check_storage() {
+  step "Storage Hogs Analysis"
+
+  STORAGE_TOTAL_KB=0
+  STORAGE_FOUND_ANY=false
+
+  _storage_scan_appdata
+  _storage_scan_applications
+  _storage_scan_devtools
+  _storage_scan_cloud
+
+  local -a search_dirs=()
+  local d
+  while IFS= read -r d; do
+    [ -n "$d" ] && search_dirs+=("$d")
+  done < <(_storage_search_dirs)
+
+  _storage_scan_nodedeps "${search_dirs[@]+"${search_dirs[@]}"}"
+  _storage_scan_devcaches "${search_dirs[@]+"${search_dirs[@]}"}"
 
   # ── Summary ──
   echo
-  if [ "$found_any" = true ]; then
+  if [ "$STORAGE_FOUND_ANY" = true ]; then
     local grand_hr
-    grand_hr=$(kb_to_human "$grand_total_kb")
-    if (( grand_total_kb >= 10485760 )); then  # > 10 GB
+    grand_hr=$(kb_to_human "$STORAGE_TOTAL_KB")
+    if (( STORAGE_TOTAL_KB >= 10485760 )); then  # > 10 GB
       status_warn "Total scanned storage: ${grand_hr}"
       add_action "Large storage usage detected (${grand_hr}). Run 'mdoctor clean -m dev_caches' to clean developer caches, or 'mdoctor clean' for full cleanup."
-    elif (( grand_total_kb >= 5242880 )); then  # > 5 GB
+    elif (( STORAGE_TOTAL_KB >= 5242880 )); then  # > 5 GB
       status_info "Total scanned storage: ${grand_hr}"
       add_action "Consider running 'mdoctor clean -m dev_caches' to reclaim space from developer caches."
     else
