@@ -80,21 +80,10 @@ register_all_modules
 # GLOBAL STATE
 ########################################
 
-# shellcheck disable=SC2034
-STEP_CURRENT=0
-# shellcheck disable=SC2034
-STEP_TOTAL="$_MOD_COUNT"  # derived from the shared registry (Task 8.1)
+export STEP_TOTAL="$_MOD_COUNT"  # derived from the shared registry (Task 8.1)
 
 ACTIONS=()
-# shellcheck disable=SC2034
-WARN_COUNT=0
-# shellcheck disable=SC2034
-FAIL_COUNT=0
 
-# shellcheck disable=SC2034
-LOG_PATHS=()
-# shellcheck disable=SC2034
-LOG_DESCS=()
 
 REPORT_MD=""
 

@@ -98,7 +98,6 @@ if command -v tput >/dev/null 2>&1 && [ -t 1 ]; then
   DIM="$(tput dim)"
   RESET="$(tput sgr0)"
 else
-  # shellcheck disable=SC2034
   RED="" GREEN="" YELLOW="" BLUE="" CYAN="" BOLD="" DIM="" RESET=""
 fi
 
@@ -310,22 +309,9 @@ cmd_check() {
     source "${MDOCTOR_DIR}/lib/json.sh"
     source "${MDOCTOR_DIR}/lib/metadata.sh"
 
-    # Initialize globals (used by sourced check modules)
-    # shellcheck disable=SC2034
-    STEP_CURRENT=0
-    # shellcheck disable=SC2034
-    STEP_TOTAL=1
+    # Globals come from mdoctor_context_init (top level); the single-module
+    # path only narrows the progress denominator to this one module.
     ACTIONS=()
-    # shellcheck disable=SC2034
-    WARN_COUNT=0
-    # shellcheck disable=SC2034
-    FAIL_COUNT=0
-    # shellcheck disable=SC2034
-    LOG_PATHS=()
-    # shellcheck disable=SC2034
-    LOG_DESCS=()
-    # shellcheck disable=SC2034
-    REPORT_MD=""
 
     init_colors
     debug_log "cmd_check module=${module} json=${json_flag} debug=${MDOCTOR_DEBUG}"
@@ -787,14 +773,8 @@ cmd_diagnose() {
   init_colors
   debug_log "cmd_diagnose debug=${MDOCTOR_DEBUG}"
 
-  # Initialize globals
-  # shellcheck disable=SC2034
-  STEP_CURRENT=0
-  # shellcheck disable=SC2034
-  STEP_TOTAL=1
+  # Globals come from mdoctor_context_init (top level).
   ACTIONS=()
-  WARN_COUNT=0
-  FAIL_COUNT=0
 
   # Source check module
   # shellcheck source=/dev/null
