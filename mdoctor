@@ -69,6 +69,9 @@ MDOCTOR_DIR="$(resolve_script_dir)"
 
 # Named constants first (Task 8.7): pure assignments, no dependencies.
 source "${MDOCTOR_DIR}/lib/constants.sh"
+# Module context contract (Task 9.1): declares the 11 globals all modules read.
+source "${MDOCTOR_DIR}/lib/context.sh"
+mdoctor_context_init
 # Source platform detection early (before any platform-conditional logic)
 source "${MDOCTOR_DIR}/lib/platform.sh"
 source "${MDOCTOR_DIR}/lib/metadata.sh"

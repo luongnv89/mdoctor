@@ -5,6 +5,8 @@ load 'helpers/fixture'
 
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
+source "$ROOT_DIR/lib/context.sh"
+mdoctor_context_init
 
 setup_file() {
   cd "$ROOT_DIR" || return 1
