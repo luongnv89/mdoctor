@@ -39,8 +39,6 @@ source "${SCRIPT_DIR}/cleanups/trash.sh"
 source "${SCRIPT_DIR}/cleanups/caches.sh"
 source "${SCRIPT_DIR}/cleanups/logs.sh"
 source "${SCRIPT_DIR}/cleanups/downloads.sh"
-source "${SCRIPT_DIR}/cleanups/browser.sh"
-source "${SCRIPT_DIR}/cleanups/dev.sh"
 source "${SCRIPT_DIR}/cleanups/crash_reports.sh"
 if is_macos; then
   source "${SCRIPT_DIR}/cleanups/ios_backups.sh"
@@ -87,29 +85,20 @@ done
 # PROGRESS HANDLING
 ########################################
 
-PROGRESS_CURRENT=0
+# Full-run module list (issue #89): STEP_TOTAL derives from this list —
+# never a hand-maintained literal. Keep it mirrored with the step calls
+# in main() below. Progress rendering itself lives in lib/common.sh step().
+CLEANUP_STEPS=(trash caches logs downloads crash_reports)
 if is_macos; then
-  PROGRESS_TOTAL=8 # trash, caches, logs, downloads, crash_reports, ios_backups, xcode, dev_caches
-else
-  PROGRESS_TOTAL=7 # trash, caches, logs, downloads, crash_reports, dev_caches, apt
+  CLEANUP_STEPS+=(ios_backups xcode)
+fi
+CLEANUP_STEPS+=(dev_caches)
+if is_linux; then
+  CLEANUP_STEPS+=(apt)
 fi
 
-# Alias for progress bar functions (they use STEP_CURRENT/STEP_TOTAL)
-# Aliases consumed by the shared spinner (lib/common.sh).
 export STEP_CURRENT=0
-export STEP_TOTAL=$PROGRESS_TOTAL
-
-step() {
-  progress_stop
-
-  PROGRESS_CURRENT=$((PROGRESS_CURRENT + 1))
-  export STEP_CURRENT=$PROGRESS_CURRENT
-  local label="$1"
-  echo
-  echo "➤ [${PROGRESS_CURRENT}/${PROGRESS_TOTAL}] ${label}"
-
-  progress_start "$label"
-}
+export STEP_TOTAL="${#CLEANUP_STEPS[@]}"
 
 ########################################
 # OPERATION SESSION LIFECYCLE
@@ -258,6 +247,9 @@ cleanup_force_preflight_summary() {
 ########################################
 
 main() {
+  # lib/common.sh step() renders with BOLD/RESET and appends to the
+  # markdown report — both need initializing here (issue #89).
+  init_colors
   mkdir -p "$(dirname "$LOGFILE")"
   echo >>"$LOGFILE"
 
@@ -341,13 +333,6 @@ main() {
     clean_apt_cache || _cleanup_rc=$?
   fi
 
-  # OPTIONAL: Uncomment if you want these too (and bump PROGRESS_TOTAL)
-  # step "Cleaning browser caches"
-  # clean_browser_caches
-  #
-  # step "Developer caches & tools cleanup"
-  # clean_dev_stuff
-
   # Stop spinner from last step
   progress_stop
 
@@ -390,4 +375,4 @@ main() {
 op_session_start "clean:full"
 OP_SESSION_ACTIVE=true
 
-main "$@"
+main

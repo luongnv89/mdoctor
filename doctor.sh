@@ -298,4 +298,4 @@ main() {
   md_append "_End of report._"
 }
 
-main "$@"
+main

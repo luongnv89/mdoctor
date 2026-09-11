@@ -56,6 +56,7 @@ clean_dev_caches() {
 
   # ── Yarn ──
   _clean_cache "Yarn cache (v2+)" "${HOME}/.yarn/cache"
+  _clean_cache "Yarn cache (classic)" "${HOME}/.cache/yarn"
 
   # ── pnpm ──
   _clean_cache "pnpm store (XDG)" "${HOME}/.local/share/pnpm/store"
@@ -88,6 +89,17 @@ clean_dev_caches() {
     _clean_cache "Homebrew cache" "${HOME}/Library/Caches/Homebrew"
     _clean_cache "CocoaPods cache" "${HOME}/Library/Caches/CocoaPods"
     _clean_cache "Xcode DerivedData" "${HOME}/Library/Developer/Xcode/DerivedData"
+  fi
+
+  # ── Homebrew ──
+  # Folded in from the retired dev module (issue #89): the two brew
+  # commands were its only work not already covered here.
+  if command -v brew >/dev/null 2>&1; then
+    log "Homebrew detected – running cleanup."
+    run_cmd_args brew cleanup -s
+    run_cmd_args brew autoremove
+  else
+    log "Homebrew not found; skipping."
   fi
 
   # ── Docker ──

@@ -76,7 +76,6 @@ register_all_modules() {
     register_module cleanup ios_backups   System   HIGH clean_ios_backups         "Old iOS device backups"
   fi
   register_module cleanup browser       Software LOW clean_browser_caches      "Browser cache cleanup"
-  register_module cleanup dev           Software MED clean_dev_stuff           "Developer tool caches"
   if is_macos; then
     register_module cleanup xcode         Software MED clean_xcode              "Xcode DerivedData, archives, simulators"
   fi

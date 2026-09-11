@@ -186,18 +186,6 @@ cmd_clean_preflight_summary_module() {
         add_path "Chromium cache" "${HOME}/.cache/chromium"
       fi
       ;;
-    dev)
-      add_path "pip cache" "${HOME}/.cache/pip"
-      add_path "npm cache" "${HOME}/.npm"
-      if is_macos; then
-        add_path "pip cache (Library)" "${HOME}/Library/Caches/pip"
-        add_path "npm cache (Library)" "${HOME}/Library/Caches/npm"
-        add_path "Yarn cache" "${HOME}/Library/Caches/Yarn"
-        add_path "pnpm store" "${HOME}/Library/pnpm/store"
-        echo "  - Homebrew cleanup/autoremove (size estimate: n/a)"
-      fi
-      echo "  - docker system prune -af --volumes (size estimate: n/a) — ONLY with MDOCTOR_ALLOW_DOCKER_PRUNE=true; --volumes deletes named volumes (database data, not just caches)"
-      ;;
     crash_reports)
       local crash_dir crash_kb
       while IFS= read -r crash_dir; do
@@ -240,12 +228,16 @@ cmd_clean_preflight_summary_module() {
     dev_caches)
       add_path "npm cache" "${HOME}/.npm"
       add_path "pip cache" "${HOME}/.cache/pip"
+      add_path "Yarn cache (classic)" "${HOME}/.cache/yarn"
       add_path "Maven repo" "${HOME}/.m2/repository"
       add_path "Gradle caches" "${HOME}/.gradle/caches"
       add_path "Go module cache" "${HOME}/go/pkg/mod/cache"
       add_path "Cargo cache" "${HOME}/.cargo/registry/cache"
       if is_macos; then
         add_path "Xcode DerivedData" "${HOME}/Library/Developer/Xcode/DerivedData"
+      fi
+      if command -v brew >/dev/null 2>&1; then
+        echo "  - Homebrew cleanup/autoremove (size estimate: n/a)"
       fi
       echo "  - docker system prune -af --volumes (size estimate: n/a) — ONLY with MDOCTOR_ALLOW_DOCKER_PRUNE=true; --volumes deletes named volumes (database data, not just caches)"
       ;;
