@@ -141,9 +141,16 @@ setup() {
   # "$BASH" (absolute) on purpose: the sanitized PATH cannot be relied
   # on for locating bash itself.
   export HOME="$TEST_TMP/home"
-  local rc_bash=0 rc_curl=0 rc_status
+  # No PIPESTATUS and no arrays here on purpose: the macOS lane runs
+  # under Bash 3.2, where assigning a compound array value to a plain
+  # `local` scalar does not produce indexable elements (rc_bash came
+  # back empty and `[ "" -ne 124 ]` failed the test). `$?` (last
+  # pipeline element) plus a `tee` tap for the curl side is portable to
+  # every Bash. The pipe itself is kept literal: script on stdin, no
+  # argv, non-tty — the documented one-liner shape.
+  local rc_bash=0
   if [ -n "$TIMEOUT_BIN" ]; then
-    curl -fsSL "$HTTP_BASE/install.sh" | "$TIMEOUT_BIN" 120 env -i \
+    curl -fsSL "$HTTP_BASE/install.sh" | tee "$TEST_TMP/${stem}-pipe.sh" | "$TIMEOUT_BIN" 120 env -i \
       PATH="/usr/local/bin:/usr/bin:/bin" \
       HOME="$TEST_TMP/home" \
       MDOCTOR_CHANNEL=main \
@@ -155,13 +162,9 @@ setup() {
       MDOCTOR_SKIP_PLATFORM_CHECK=true \
       "$BASH" \
       >"$TEST_TMP/${stem}-install.out" 2>&1
-    # One statement: any read of PIPESTATUS must happen before the next
-    # command (even a bare assignment) resets it to a single element.
-    rc_status=("${PIPESTATUS[@]}")
-    rc_curl="${rc_status[0]}"
-    rc_bash="${rc_status[1]}"
+    rc_bash=$?
   else
-    curl -fsSL "$HTTP_BASE/install.sh" | env -i \
+    curl -fsSL "$HTTP_BASE/install.sh" | tee "$TEST_TMP/${stem}-pipe.sh" | env -i \
       PATH="/usr/local/bin:/usr/bin:/bin" \
       HOME="$TEST_TMP/home" \
       MDOCTOR_CHANNEL=main \
@@ -173,11 +176,9 @@ setup() {
       MDOCTOR_SKIP_PLATFORM_CHECK=true \
       "$BASH" \
       >"$TEST_TMP/${stem}-install.out" 2>&1
-    rc_status=("${PIPESTATUS[@]}")
-    rc_curl="${rc_status[0]}"
-    rc_bash="${rc_status[1]}"
+    rc_bash=$?
   fi
-  [ "$rc_curl" -eq 0 ] || { tail -n 20 "$TEST_TMP/${stem}-install.out"; fail "curl of the committed installer failed"; }
+  [ -s "$TEST_TMP/${stem}-pipe.sh" ] || fail "curl of the committed installer delivered nothing"
   [ "$rc_bash" -ne 124 ] || fail "curl-pipe install hung (timeout killed bash)"
   [ "$rc_bash" -eq 0 ] || { tail -n 20 "$TEST_TMP/${stem}-install.out"; fail "curl-pipe install failed"; }
   [ "$(readlink "$bin_dir/mdoctor")" = "$install_dir/mdoctor" ] \
