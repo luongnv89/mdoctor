@@ -71,6 +71,7 @@ _find_and_sum() {
   local dir
   local match=""
   local find_rc=0
+  local seen_rc=""
   local sz=""
   local sz_rc=0
 
@@ -78,7 +79,12 @@ _find_and_sum() {
     [ -d "$dir" ] || continue
     while IFS= read -r -d '' match; do
       case "$match" in
-        _MDOCTOR_FIND_RC_*) find_rc="${match#_MDOCTOR_FIND_RC_}" ;;
+        _MDOCTOR_FIND_RC_*)
+          seen_rc="${match#_MDOCTOR_FIND_RC_}"
+          if [ "$find_rc" -eq 0 ]; then
+            find_rc="$seen_rc"
+          fi
+          ;;
         *)
           sz_rc=0
           sz=$(du_size_kb "$match") || sz_rc=$?

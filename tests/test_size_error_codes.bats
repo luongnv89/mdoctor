@@ -136,3 +136,26 @@ teardown_file() {
   [ "$rc" -eq 0 ]
   [[ "$out" =~ ^[0-9]+$ ]]
 }
+
+@test "_find_and_sum keeps first dir timeout when later dir succeeds" {
+  if [ "${BASH_VERSINFO[0]:-0}" -lt 4 ] || ! command -v timeout >/dev/null 2>&1; then
+    skip "GNU timeout probe is unavailable in this shell"
+  fi
+  source "$ROOT_DIR/lib/context.sh"
+  mdoctor_context_init
+  source "$ROOT_DIR/lib/disk.sh"
+  source "$ROOT_DIR/checks/storage.sh"
+  TIMEOUT_DIR="$TMPHOME/first-timeout"
+  OK2_DIR="$TMPHOME/second-ok"
+  mkdir -p "$TIMEOUT_DIR" "$OK2_DIR/node_modules"
+  echo "data" > "$OK2_DIR/node_modules/file.txt"
+  REAL_FIND="$(command -v find)"
+  STUBBIN="$TMPHOME/find-sticky-stubbin"
+  mkdir -p "$STUBBIN"
+  printf '#!/usr/bin/env bash\ncase "$*" in\n*first-timeout*) sleep 30 ;;\n*) exec "%s" "$@" ;;\nesac\n' "$REAL_FIND" > "$STUBBIN/find"
+  chmod +x "$STUBBIN/find"
+  out=""; rc=0
+  out=$(PATH="$STUBBIN:$PATH" MDOCTOR_FIND_TIMEOUT_S=1 _find_and_sum "node_modules" "$TIMEOUT_DIR" "$OK2_DIR") || rc=$?
+  [ "$rc" -eq "$MDOCTOR_SIZE_ERR_TIMEOUT" ]
+  [ -z "$out" ]
+}
