@@ -144,7 +144,7 @@ mdoctor clean --interactive --force
 | Category | macOS | Linux (Debian) |
 |----------|-------|----------------|
 | **System** | `trash` [MED], `caches` [LOW], `logs` [MED], `downloads` [LOW], `crash_reports` [MED], `ios_backups` [HIGH] | `trash` [MED], `caches` [LOW], `logs` [MED], `downloads` [LOW], `crash_reports` [MED], `apt` [MED] |
-| **Software** | `browser` [LOW], `dev` [MED], `xcode` [MED], `dev_caches` [MED] | `browser` [LOW], `dev` [MED], `dev_caches` [MED] |
+| **Software** | `browser` [LOW], `xcode` [MED], `dev_caches` [MED] | `browser` [LOW], `dev_caches` [MED] |
 
 ### Fix
 
@@ -307,13 +307,12 @@ mdoctor/
 │   ├── git_config.sh    # Git & SSH config
 │   ├── containers.sh    # Docker & containers
 │   └── apt.sh           # APT package manager health (Linux)
-├── cleanups/            # Cleanup modules (10)
+├── cleanups/            # Cleanup modules (9 on macOS / 8 on Linux)
 │   ├── trash.sh         # Trash cleanup
 │   ├── caches.sh        # User caches
 │   ├── logs.sh          # Old logs
 │   ├── downloads.sh     # Large files in Downloads
 │   ├── browser.sh       # Browser caches
-│   ├── dev.sh           # Developer tool caches
 │   ├── crash_reports.sh # Old crash/diagnostic reports
 │   ├── ios_backups.sh   # Old iOS device backups
 │   ├── xcode.sh         # Xcode DerivedData, archives, simulators
