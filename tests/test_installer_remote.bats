@@ -66,6 +66,12 @@ setup_file() {
   # Fixture upstream: bare clone of the working tree (committed state;
   # untracked files never matter to the installer mechanics).
   git clone -q --bare "$ROOT_DIR" "$TEST_TMP/upstream.git" || return 1
+  # Pin the fixture HEAD to main: the bare clone inherits the checkout's
+  # HEAD (often this very auto/ branch), but the installer update path
+  # pulls `origin main`, so the default shallow clone must land on main
+  # for the fast-forward assertion to hold regardless of which branch
+  # the working tree sits on.
+  git --git-dir="$TEST_TMP/upstream.git" symbolic-ref HEAD refs/heads/main || return 1
   GIT_PORT="$(_free_port)" || return 1
   HTTP_PORT="$(_free_port)" || return 1
   git daemon --export-all --reuseaddr --listen=127.0.0.1 \

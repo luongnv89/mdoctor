@@ -383,6 +383,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Install git-daemon (remote-clone transport for the installer tests)
+        # tests/test_installer_remote.bats skips when git-daemon is absent;
+        # install it so the CI lane asserts the remote paths instead of
+        # passing vacuously. Plain `git` does not provide git-daemon.
+        run: |
+          set -euo pipefail
+          if [ ! -x "$(git --exec-path)/git-daemon" ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends git-daemon-sysvinit
+          fi
+          test -x "$(git --exec-path)/git-daemon"
+
       - name: Serve the repo over loopback HTTP and curl-pipe the installer
         run: |
           set -euo pipefail
@@ -398,8 +410,8 @@ jobs:
           curl -fsSL http://127.0.0.1:18771/install.sh -o /dev/null
           export MDOCTOR_CHANNEL=main
           export MDOCTOR_REPO_URL="$GITHUB_WORKSPACE"
-          export MDOCTOR_INSTALL_DIR="$RUNNER_TEMP/mdoctor-curlpipe"
-          export MDOCTOR_BIN_DIR="$RUNNER_TEMP/mdoctor-curlpipe-bin"
+          export MDOCTOR_INSTALL_DIR="$RUNNER_TEMP/mdoctor-curlpipe/install"
+          export MDOCTOR_BIN_DIR="$RUNNER_TEMP/mdoctor-curlpipe/bin"
           export MDOCTOR_BINARY_NAME="mdoctor"
           export MDOCTOR_ASSUME_YES=true
           export MDOCTOR_SKIP_PLATFORM_CHECK=true
