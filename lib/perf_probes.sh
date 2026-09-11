@@ -33,8 +33,16 @@
 #   live sample, machine-readable record on stdout, rc 1 when indeterminable.
 #
 
+# TRUTHY_BOOTSTRAP (Task 9.5): is_truthy lives in constants.sh, the
+# zero-dependency base lib. Source it before the guard so standalone
+# sourcing of this file still sees the predicate.
+_MDOCTOR_TRUTHY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
+# shellcheck source=/dev/null
+source "${_MDOCTOR_TRUTHY_DIR}/constants.sh"
+unset _MDOCTOR_TRUTHY_DIR
+
 # Guard against double-sourcing.
-if [ "${_MDOCTOR_PERF_PROBES_LOADED:-false}" = true ]; then
+if is_truthy "${_MDOCTOR_PERF_PROBES_LOADED:-}"; then
   return 0 2>/dev/null || true
 fi
 _MDOCTOR_PERF_PROBES_LOADED=true
