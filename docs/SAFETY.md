@@ -63,8 +63,8 @@ Two operations reachable from a forced clean do **not** route through
 the guarded helpers, so `validate_deletion_path` and the whitelist do
 **not** apply to them:
 
-- `docker system prune -af --volumes` — `cleanups/dev.sh:58`,
-  `cleanups/dev_caches.sh:88`. Deletes unused containers, images **and
+- `docker system prune -af --volumes` — `cleanups/dev_caches.sh`.
+  Deletes unused containers, images **and
   named volumes** (database data, not caches). Gated by the opt-in flag
   `MDOCTOR_ALLOW_DOCKER_PRUNE=true` (Task 0.6): without it the prune is
   skipped and logged.

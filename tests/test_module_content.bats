@@ -82,7 +82,6 @@ _expected_content() {
     cleanup:downloads) echo "Downloads" ;;
     cleanup:crash_reports) echo "Cleaning crash reports" ;;
     cleanup:browser) echo "Cleaning browser caches" ;;
-    cleanup:dev) echo "Developer / power-user cleanup" ;;
     cleanup:dev_caches) echo "Developer caches cleanup" ;;
     cleanup:apt) echo "APT cache cleanup" ;;
     cleanup:ios_backups) echo "iOS device backups cleanup" ;;

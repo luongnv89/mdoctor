@@ -54,7 +54,7 @@ mdoctor <command> [options]
 |---------|-------------|
 | `mdoctor check` | Run full system health audit (21 checks, read-only) |
 | `mdoctor check --json` | JSON output for automation |
-| `mdoctor clean` | Run system cleanup (dry-run by default, 10 modules) |
+| `mdoctor clean` | Run system cleanup (dry-run by default, 9 modules on macOS / 8 on Linux) |
 | `mdoctor fix <target>` | Apply common fixes (9 targets) |
 | `mdoctor info` | Show system information summary |
 | `mdoctor list` | List all modules with category & risk level |
@@ -273,7 +273,7 @@ mdoctor/
 ├── install.sh           # One-line installer
 ├── uninstall.sh         # Uninstaller
 ├── doctor.sh            # Health audit engine (21 checks)
-├── cleanup.sh           # Cleanup engine (10 modules)
+├── cleanup.sh           # Cleanup engine (9 modules on macOS / 8 on Linux)
 ├── lib/                 # Shared libraries
 │   ├── platform.sh      # OS/distro detection (macOS, Debian, Ubuntu, etc.)
 │   ├── common.sh        # Colors, icons, UI helpers, progress spinner
