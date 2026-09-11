@@ -50,6 +50,9 @@ teardown_file() {
 }
 
 @test "du_size_kb error channel: print only on success, distinct codes" {
+  if [ "$(id -u)" -eq 0 ]; then
+    skip "root bypasses mode checks"
+  fi
   source "$ROOT_DIR/lib/constants.sh"
   source "$ROOT_DIR/lib/platform.sh"
   source "$ROOT_DIR/lib/disk.sh"

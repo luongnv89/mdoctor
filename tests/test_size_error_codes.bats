@@ -69,8 +69,8 @@ teardown_file() {
 }
 
 @test "timed out: MDOCTOR_SIZE_ERR_TIMEOUT" {
-  if ! command -v timeout >/dev/null 2>&1; then
-    skip "timeout(1) not available"
+  if [ "${BASH_VERSINFO[0]:-0}" -lt 4 ] || ! command -v timeout >/dev/null 2>&1; then
+    skip "GNU timeout probe is unavailable in this shell"
   fi
   source "$ROOT_DIR/lib/disk.sh"
   STUBBIN="$TMPHOME/stubbin"
@@ -83,7 +83,7 @@ teardown_file() {
   [ -z "$out" ]
 }
 
-@test "preflight find preserves missing and timeout errors" {
+@test "preflight find preserves missing and zero-match results" {
   source "$ROOT_DIR/lib/disk.sh"
   source "$ROOT_DIR/lib/preflight.sh"
 
@@ -92,9 +92,19 @@ teardown_file() {
   [ "$rc" -eq "$MDOCTOR_SIZE_ERR_NO_TARGET" ]
   [ -z "$out" ]
 
-  if ! command -v timeout >/dev/null 2>&1; then
-    skip "timeout(1) not available"
+  EMPTY_DIR="$TMPHOME/empty"
+  mkdir -p "$EMPTY_DIR"
+  out=$(preflight_find_kb "$EMPTY_DIR" -type f); rc=$?
+  [ "$rc" -eq 0 ]
+  [ "$out" = 0 ]
+}
+
+@test "preflight find preserves timeout and find errors" {
+  if [ "${BASH_VERSINFO[0]:-0}" -lt 4 ] || ! command -v timeout >/dev/null 2>&1; then
+    skip "GNU timeout probe is unavailable in this shell"
   fi
+  source "$ROOT_DIR/lib/disk.sh"
+  source "$ROOT_DIR/lib/preflight.sh"
   STUBBIN="$TMPHOME/preflight-stubbin"
   mkdir -p "$STUBBIN"
   printf '#!/usr/bin/env bash\nsleep 30\n' > "$STUBBIN/find"
@@ -110,12 +120,6 @@ teardown_file() {
   out=$(PATH="$STUBBIN:$PATH" preflight_find_kb "$OK_DIR" -type f) || rc=$?
   [ "$rc" -eq "$MDOCTOR_SIZE_ERR_DENIED" ]
   [ -z "$out" ]
-
-  EMPTY_DIR="$TMPHOME/empty"
-  mkdir -p "$EMPTY_DIR"
-  out=$(preflight_find_kb "$EMPTY_DIR" -type f); rc=$?
-  [ "$rc" -eq 0 ]
-  [ "$out" = 0 ]
 }
 
 @test "check-module wrapper propagates: _dir_size_kb" {
