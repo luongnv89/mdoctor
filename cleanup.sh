@@ -39,8 +39,6 @@ source "${SCRIPT_DIR}/cleanups/trash.sh"
 source "${SCRIPT_DIR}/cleanups/caches.sh"
 source "${SCRIPT_DIR}/cleanups/logs.sh"
 source "${SCRIPT_DIR}/cleanups/downloads.sh"
-source "${SCRIPT_DIR}/cleanups/browser.sh"
-source "${SCRIPT_DIR}/cleanups/dev.sh"
 source "${SCRIPT_DIR}/cleanups/crash_reports.sh"
 if is_macos; then
   source "${SCRIPT_DIR}/cleanups/ios_backups.sh"
@@ -58,58 +56,49 @@ fi
 LOGFILE="$(platform_log_dir)/mdoctor_cleanup.log"
 
 while [[ $# -gt 0 ]]; do
-	case "$1" in
-		--force|-f)
-			DRY_RUN=false
-			shift
-			;;
-		--debug)
-			MDOCTOR_DEBUG=true
-			export MDOCTOR_DEBUG
-			shift
-			;;
-		--help|-h)
-			echo "Usage: ./cleanup.sh [--force] [--debug]"
-			echo
-			echo "  --force, -f   Actually delete files (default is dry-run)"
-			echo "  --debug       Enable structured debug diagnostics"
-			exit 0
-			;;
-		*)
-			echo "Unknown option: $1" >&2
-			echo "Usage: ./cleanup.sh [--force] [--debug]" >&2
-			exit 1
-			;;
-	esac
+  case "$1" in
+    --force|-f)
+      DRY_RUN=false
+      shift
+      ;;
+    --debug)
+      MDOCTOR_DEBUG=true
+      export MDOCTOR_DEBUG
+      shift
+      ;;
+    --help|-h)
+      echo "Usage: ./cleanup.sh [--force] [--debug]"
+      echo
+      echo "  --force, -f   Actually delete files (default is dry-run)"
+      echo "  --debug       Enable structured debug diagnostics"
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      echo "Usage: ./cleanup.sh [--force] [--debug]" >&2
+      exit 1
+      ;;
+  esac
 done
 
 ########################################
 # PROGRESS HANDLING
 ########################################
 
-PROGRESS_CURRENT=0
+# Full-run module list (issue #89): STEP_TOTAL derives from this list —
+# never a hand-maintained literal. Keep it mirrored with the step calls
+# in main() below. Progress rendering itself lives in lib/common.sh step().
+CLEANUP_STEPS=(trash caches logs downloads crash_reports)
 if is_macos; then
-	PROGRESS_TOTAL=8 # trash, caches, logs, downloads, crash_reports, ios_backups, xcode, dev_caches
-else
-	PROGRESS_TOTAL=7 # trash, caches, logs, downloads, crash_reports, dev_caches, apt
+  CLEANUP_STEPS+=(ios_backups xcode)
+fi
+CLEANUP_STEPS+=(dev_caches)
+if is_linux; then
+  CLEANUP_STEPS+=(apt)
 fi
 
-# Alias for progress bar functions (they use STEP_CURRENT/STEP_TOTAL)
-# Aliases consumed by the shared spinner (lib/common.sh).
 export STEP_CURRENT=0
-export STEP_TOTAL=$PROGRESS_TOTAL
-
-step() {
-	progress_stop
-
-	PROGRESS_CURRENT=$((PROGRESS_CURRENT + 1))
-	export STEP_CURRENT=$PROGRESS_CURRENT
-	local label="$1"
-	echo
-	echo "➤ [${PROGRESS_CURRENT}/${PROGRESS_TOTAL}] ${label}"
-
-	progress_start "$label"
-}
+export STEP_TOTAL="${#CLEANUP_STEPS[@]}"
 
 ########################################
 # OPERATION SESSION LIFECYCLE
@@ -118,17 +107,17 @@ step() {
 OP_SESSION_ACTIVE=false
 
 _finish_cleanup_session() {
-	# Invoked via the ordered exit-hook list with the script's exit
-	# status as $1 (falls back to $? for direct calls).
-	local rc="${1:-$?}"
-	progress_stop || true
-	if is_truthy "$OP_SESSION_ACTIVE" && declare -f op_session_end >/dev/null 2>&1; then
-		if [ "$rc" -eq 0 ]; then
-			op_session_end "ok"
-		else
-			op_session_end "error:${rc}"
-		fi
-	fi
+  # Invoked via the ordered exit-hook list with the script's exit
+  # status as $1 (falls back to $? for direct calls).
+  local rc="${1:-$?}"
+  progress_stop || true
+  if is_truthy "$OP_SESSION_ACTIVE" && declare -f op_session_end >/dev/null 2>&1; then
+    if [ "$rc" -eq 0 ]; then
+      op_session_end "ok"
+    else
+      op_session_end "error:${rc}"
+    fi
+  fi
 }
 
 # Ordered exit hook (Task 4.7): a bare `trap ... EXIT` here would be
@@ -138,119 +127,119 @@ register_exit_hook _finish_cleanup_session
 
 
 cleanup_force_preflight_summary() {
-	local days="${DAYS_OLD:-7}"
-	local total_kb=0
+  local days="${DAYS_OLD:-7}"
+  local total_kb=0
 
-	echo
-	echo "${BOLD:-}${YELLOW:-}== Pre-flight Safety Summary (force mode) ==${RESET:-}"
+  echo
+  echo "${BOLD:-}${YELLOW:-}== Pre-flight Safety Summary (force mode) ==${RESET:-}"
 
-	if is_macos; then
-		echo "Modules touched: trash, caches, logs, downloads, crash_reports, ios_backups, xcode, dev_caches"
-	else
-		echo "Modules touched: trash, caches, logs, downloads, crash_reports, dev_caches, apt"
-	fi
-	echo "Touched targets:"
+  if is_macos; then
+    echo "Modules touched: trash, caches, logs, downloads, crash_reports, ios_backups, xcode, dev_caches"
+  else
+    echo "Modules touched: trash, caches, logs, downloads, crash_reports, dev_caches, apt"
+  fi
+  echo "Touched targets:"
 
-	local path sz
+  local path sz
 
-	# Common cross-platform dev cache paths
-	for path in \
-		"$(platform_trash_dir)" \
-		"$(platform_cache_dir)" \
-		"${HOME}/.npm" \
-		"${HOME}/.cache/pip" \
-		"${HOME}/.m2/repository" \
-		"${HOME}/.gradle/caches" \
-		"${HOME}/go/pkg/mod/cache" \
-		"${HOME}/.cargo/registry/cache"; do
-		sz=$(preflight_path_kb "$path") || sz=""
-		total_kb=$((total_kb + ${sz:-0}))
-		if [ -n "$sz" ]; then
-			printf "  - %-45s (~%s)\n" "$path" "$(human_readable_kb "$sz")"
-		else
-			printf "  - %-45s (could not determine)\n" "$path"
-		fi
-	done
+  # Common cross-platform dev cache paths
+  for path in \
+    "$(platform_trash_dir)" \
+    "$(platform_cache_dir)" \
+    "${HOME}/.npm" \
+    "${HOME}/.cache/pip" \
+    "${HOME}/.m2/repository" \
+    "${HOME}/.gradle/caches" \
+    "${HOME}/go/pkg/mod/cache" \
+    "${HOME}/.cargo/registry/cache"; do
+    sz=$(preflight_path_kb "$path") || sz=""
+    total_kb=$((total_kb + ${sz:-0}))
+    if [ -n "$sz" ]; then
+      printf "  - %-45s (~%s)\n" "$path" "$(human_readable_kb "$sz")"
+    else
+      printf "  - %-45s (could not determine)\n" "$path"
+    fi
+  done
 
-	# macOS-only paths
-	if is_macos; then
-		for path in \
-			"${HOME}/Library/Developer/Xcode/DerivedData" \
-			"${HOME}/Library/Developer/CoreSimulator/Caches"; do
-			sz=$(preflight_path_kb "$path") || sz=""
-			total_kb=$((total_kb + ${sz:-0}))
-			if [ -n "$sz" ]; then
-				printf "  - %-45s (~%s)\n" "$path" "$(human_readable_kb "$sz")"
-			else
-				printf "  - %-45s (could not determine)\n" "$path"
-			fi
-		done
-	fi
+  # macOS-only paths
+  if is_macos; then
+    for path in \
+      "${HOME}/Library/Developer/Xcode/DerivedData" \
+      "${HOME}/Library/Developer/CoreSimulator/Caches"; do
+      sz=$(preflight_path_kb "$path") || sz=""
+      total_kb=$((total_kb + ${sz:-0}))
+      if [ -n "$sz" ]; then
+        printf "  - %-45s (~%s)\n" "$path" "$(human_readable_kb "$sz")"
+      else
+        printf "  - %-45s (could not determine)\n" "$path"
+      fi
+    done
+  fi
 
-	local logs_kb dl_kb
-	local log_dir
-	log_dir="$(platform_user_log_dir)"
-	logs_kb=$(preflight_find_kb "$log_dir" -type f -mtime "+${days}") || logs_kb=""
-	dl_kb=$(preflight_find_kb "${HOME}/Downloads" -type f -size +500M -mtime "+${days}") || dl_kb=""
-	total_kb=$((total_kb + ${logs_kb:-0} + ${dl_kb:-0}))
+  local logs_kb dl_kb
+  local log_dir
+  log_dir="$(platform_user_log_dir)"
+  logs_kb=$(preflight_find_kb "$log_dir" -type f -mtime "+${days}") || logs_kb=""
+  dl_kb=$(preflight_find_kb "${HOME}/Downloads" -type f -size +500M -mtime "+${days}") || dl_kb=""
+  total_kb=$((total_kb + ${logs_kb:-0} + ${dl_kb:-0}))
 
-	if [ -n "$logs_kb" ]; then
-		printf "  - %-45s (~%s)\n" "${log_dir} (files older than ${days}d)" "$(human_readable_kb "$logs_kb")"
-	else
-		printf "  - %-45s (could not determine)\n" "${log_dir} (files older than ${days}d)"
-	fi
-	if [ -n "$dl_kb" ]; then
-		printf "  - %-45s (~%s)\n" "${HOME}/Downloads (>500MB, older than ${days}d)" "$(human_readable_kb "$dl_kb")"
-	else
-		printf "  - %-45s (could not determine)\n" "${HOME}/Downloads (>500MB, older than ${days}d)"
-	fi
+  if [ -n "$logs_kb" ]; then
+    printf "  - %-45s (~%s)\n" "${log_dir} (files older than ${days}d)" "$(human_readable_kb "$logs_kb")"
+  else
+    printf "  - %-45s (could not determine)\n" "${log_dir} (files older than ${days}d)"
+  fi
+  if [ -n "$dl_kb" ]; then
+    printf "  - %-45s (~%s)\n" "${HOME}/Downloads (>500MB, older than ${days}d)" "$(human_readable_kb "$dl_kb")"
+  else
+    printf "  - %-45s (could not determine)\n" "${HOME}/Downloads (>500MB, older than ${days}d)"
+  fi
 
-	# Platform-specific crash dirs
-	local crash_dir crash_kb
-	while IFS= read -r crash_dir; do
-		crash_kb=$(preflight_find_kb "$crash_dir" -type f -mtime "+${days}") || crash_kb=""
-		total_kb=$((total_kb + ${crash_kb:-0}))
-		if [ -n "$crash_kb" ]; then
-			printf "  - %-45s (~%s)\n" "$crash_dir" "$(human_readable_kb "$crash_kb")"
-		else
-			printf "  - %-45s (could not determine)\n" "$crash_dir"
-		fi
-	done < <(platform_crash_dirs)
+  # Platform-specific crash dirs
+  local crash_dir crash_kb
+  while IFS= read -r crash_dir; do
+    crash_kb=$(preflight_find_kb "$crash_dir" -type f -mtime "+${days}") || crash_kb=""
+    total_kb=$((total_kb + ${crash_kb:-0}))
+    if [ -n "$crash_kb" ]; then
+      printf "  - %-45s (~%s)\n" "$crash_dir" "$(human_readable_kb "$crash_kb")"
+    else
+      printf "  - %-45s (could not determine)\n" "$crash_dir"
+    fi
+  done < <(platform_crash_dirs)
 
-	if is_macos; then
-		local ios_kb archives_kb
-		ios_kb=$(preflight_find_kb "${HOME}/Library/Application Support/MobileSync/Backup" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}") || ios_kb=""
-		archives_kb=$(preflight_find_kb "${HOME}/Library/Developer/Xcode/Archives" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}") || archives_kb=""
-		total_kb=$((total_kb + ${ios_kb:-0} + ${archives_kb:-0}))
-		if [ -n "$ios_kb" ]; then
-			printf "  - %-45s (~%s)\n" "${HOME}/Library/Application Support/MobileSync/Backup (> ${days}d)" "$(human_readable_kb "$ios_kb")"
-		else
-			printf "  - %-45s (could not determine)\n" "${HOME}/Library/Application Support/MobileSync/Backup (> ${days}d)"
-		fi
-		if [ -n "$archives_kb" ]; then
-			printf "  - %-45s (~%s)\n" "${HOME}/Library/Developer/Xcode/Archives (> ${days}d)" "$(human_readable_kb "$archives_kb")"
-		else
-			printf "  - %-45s (could not determine)\n" "${HOME}/Library/Developer/Xcode/Archives (> ${days}d)"
-		fi
-		echo "  - xcrun simctl delete unavailable (size estimate: n/a)"
-	fi
+  if is_macos; then
+    local ios_kb archives_kb
+    ios_kb=$(preflight_find_kb "${HOME}/Library/Application Support/MobileSync/Backup" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}") || ios_kb=""
+    archives_kb=$(preflight_find_kb "${HOME}/Library/Developer/Xcode/Archives" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}") || archives_kb=""
+    total_kb=$((total_kb + ${ios_kb:-0} + ${archives_kb:-0}))
+    if [ -n "$ios_kb" ]; then
+      printf "  - %-45s (~%s)\n" "${HOME}/Library/Application Support/MobileSync/Backup (> ${days}d)" "$(human_readable_kb "$ios_kb")"
+    else
+      printf "  - %-45s (could not determine)\n" "${HOME}/Library/Application Support/MobileSync/Backup (> ${days}d)"
+    fi
+    if [ -n "$archives_kb" ]; then
+      printf "  - %-45s (~%s)\n" "${HOME}/Library/Developer/Xcode/Archives (> ${days}d)" "$(human_readable_kb "$archives_kb")"
+    else
+      printf "  - %-45s (could not determine)\n" "${HOME}/Library/Developer/Xcode/Archives (> ${days}d)"
+    fi
+    echo "  - xcrun simctl delete unavailable (size estimate: n/a)"
+  fi
 
-	if is_linux; then
-		local apt_kb
-		apt_kb=$(preflight_path_kb "/var/cache/apt/archives") || apt_kb=""
-		total_kb=$((total_kb + ${apt_kb:-0}))
-		if [ -n "$apt_kb" ]; then
-			printf "  - %-45s (~%s)\n" "/var/cache/apt/archives" "$(human_readable_kb "$apt_kb")"
-		else
-			printf "  - %-45s (could not determine)\n" "/var/cache/apt/archives"
-		fi
-	fi
+  if is_linux; then
+    local apt_kb
+    apt_kb=$(preflight_path_kb "/var/cache/apt/archives") || apt_kb=""
+    total_kb=$((total_kb + ${apt_kb:-0}))
+    if [ -n "$apt_kb" ]; then
+      printf "  - %-45s (~%s)\n" "/var/cache/apt/archives" "$(human_readable_kb "$apt_kb")"
+    else
+      printf "  - %-45s (could not determine)\n" "/var/cache/apt/archives"
+    fi
+  fi
 
-	echo "  - docker system prune -af --volumes (size estimate: n/a) — ONLY with MDOCTOR_ALLOW_DOCKER_PRUNE=true; --volumes deletes named volumes (database data, not just caches)"
-	echo
-	echo "Estimated reclaim size: ~$(human_readable_kb "$total_kb")"
-	echo "${YELLOW:-}Note:${RESET:-} estimate is approximate and excludes dynamic command-based reclaim sizes."
-	echo
+  echo "  - docker system prune -af --volumes (size estimate: n/a) — ONLY with MDOCTOR_ALLOW_DOCKER_PRUNE=true; --volumes deletes named volumes (database data, not just caches)"
+  echo
+  echo "Estimated reclaim size: ~$(human_readable_kb "$total_kb")"
+  echo "${YELLOW:-}Note:${RESET:-} estimate is approximate and excludes dynamic command-based reclaim sizes."
+  echo
 }
 
 ########################################
@@ -258,136 +247,132 @@ cleanup_force_preflight_summary() {
 ########################################
 
 main() {
-	mkdir -p "$(dirname "$LOGFILE")"
-	echo >>"$LOGFILE"
+  # lib/common.sh step() renders with BOLD/RESET and appends to the
+  # markdown report — both need initializing here (issue #89).
+  init_colors
+  mkdir -p "$(dirname "$LOGFILE")"
+  echo >>"$LOGFILE"
 
-	local used_before_kb
-	local used_after_kb
-	local freed_kb
-	local freed_hr
+  local used_before_kb
+  local used_after_kb
+  local freed_kb
+  local freed_hr
 
-	used_before_kb=0
-	local used_before_rc=0
-	used_before_kb="$(disk_used_kb)" || used_before_rc=$?
-	if [ "$used_before_rc" -ne 0 ] || [ -z "$used_before_kb" ]; then
-		log "Disk usage: could not determine"
-		used_before_kb=0
-	fi
+  used_before_kb=0
+  local used_before_rc=0
+  used_before_kb="$(disk_used_kb)" || used_before_rc=$?
+  if [ "$used_before_rc" -ne 0 ] || [ -z "$used_before_kb" ]; then
+    log "Disk usage: could not determine"
+    used_before_kb=0
+  fi
 
-	if declare -f ensure_cleanup_whitelist_file >/dev/null 2>&1; then
-		ensure_cleanup_whitelist_file
-	fi
-	if declare -f ensure_cleanup_scope_file >/dev/null 2>&1; then
-		ensure_cleanup_scope_file
-	fi
+  if declare -f ensure_cleanup_whitelist_file >/dev/null 2>&1; then
+    ensure_cleanup_whitelist_file
+  fi
+  if declare -f ensure_cleanup_scope_file >/dev/null 2>&1; then
+    ensure_cleanup_scope_file
+  fi
 
-	# Central fail-closed predicate (Task 1.6): only rc 1 (explicit
-	# false/0/no/n) deletes; unset/truthy/invalid values stay dry.
-	local _dry_rc=0
-	is_dry_run || _dry_rc=$?
+  # Central fail-closed predicate (Task 1.6): only rc 1 (explicit
+  # false/0/no/n) deletes; unset/truthy/invalid values stay dry.
+  local _dry_rc=0
+  is_dry_run || _dry_rc=$?
 
-	if [ "$_dry_rc" -eq 1 ]; then
-		cleanup_force_preflight_summary
-		# Pre-flight-only early exit (Task 0.1): lets the force test assert
-		# on the pre-flight summary without executing any destructive step.
-		# Set MDOCTOR_PREFLIGHT_ONLY=true to print the summary and stop.
-		if is_truthy "${MDOCTOR_PREFLIGHT_ONLY:-false}"; then
-			log "Pre-flight only (MDOCTOR_PREFLIGHT_ONLY=true) — exiting before destructive execution."
-			exit 0
-		fi
-		# Confirmation gate (Task 0.5): y/N prompt, or refusal on a
-		# non-tty unless MDOCTOR_ASSUME_YES=true.
-		confirm_destructive_execution "full cleanup" || exit 1
-	fi
+  if [ "$_dry_rc" -eq 1 ]; then
+    cleanup_force_preflight_summary
+    # Pre-flight-only early exit (Task 0.1): lets the force test assert
+    # on the pre-flight summary without executing any destructive step.
+    # Set MDOCTOR_PREFLIGHT_ONLY=true to print the summary and stop.
+    if is_truthy "${MDOCTOR_PREFLIGHT_ONLY:-false}"; then
+      log "Pre-flight only (MDOCTOR_PREFLIGHT_ONLY=true) — exiting before destructive execution."
+      exit 0
+    fi
+    # Confirmation gate (Task 0.5): y/N prompt, or refusal on a
+    # non-tty unless MDOCTOR_ASSUME_YES=true.
+    confirm_destructive_execution "full cleanup" || exit 1
+  fi
 
-	header "Starting cleanup (DRY_RUN=${DRY_RUN}, platform=$(platform_name))"
+  header "Starting cleanup (DRY_RUN=${DRY_RUN}, platform=$(platform_name))"
 
-	# Per-module accumulator (Task 9.3): a failing module must not abort its
-	# siblings under `set -e`, but partial failures propagate in the exit code.
-	local _cleanup_rc=0
-	debug_log "cleanup.sh start dry_run=${DRY_RUN} days_old=${DAYS_OLD:-}"
-	log "$(disk_usage)"
+  # Per-module accumulator (Task 9.3): a failing module must not abort its
+  # siblings under `set -e`, but partial failures propagate in the exit code.
+  local _cleanup_rc=0
+  debug_log "cleanup.sh start dry_run=${DRY_RUN} days_old=${DAYS_OLD:-}"
+  log "$(disk_usage)"
 
-	# Core generic cleanups – safe-ish for any macOS user
-	step "Emptying Trash"
-	clean_trash || _cleanup_rc=$?
+  # Core generic cleanups – safe-ish for any macOS user
+  step "Emptying Trash"
+  clean_trash || _cleanup_rc=$?
 
-	step "Cleaning user caches"
-	clean_user_caches || _cleanup_rc=$?
+  step "Cleaning user caches"
+  clean_user_caches || _cleanup_rc=$?
 
-	step "Cleaning old logs"
-	clean_logs || _cleanup_rc=$?
+  step "Cleaning old logs"
+  clean_logs || _cleanup_rc=$?
 
-	step "Scanning large files in Downloads"
-	clean_downloads_large_files || _cleanup_rc=$?
+  step "Scanning large files in Downloads"
+  clean_downloads_large_files || _cleanup_rc=$?
 
-	# New cleanup modules
-	step "Cleaning crash reports"
-	clean_crash_reports || _cleanup_rc=$?
+  # New cleanup modules
+  step "Cleaning crash reports"
+  clean_crash_reports || _cleanup_rc=$?
 
-	if is_macos; then
-		step "Checking iOS backups"
-		clean_ios_backups || _cleanup_rc=$?
+  if is_macos; then
+    step "Checking iOS backups"
+    clean_ios_backups || _cleanup_rc=$?
 
-		step "Xcode cleanup"
-		clean_xcode || _cleanup_rc=$?
-	fi
+    step "Xcode cleanup"
+    clean_xcode || _cleanup_rc=$?
+  fi
 
-	step "Developer caches cleanup"
-	clean_dev_caches || _cleanup_rc=$?
+  step "Developer caches cleanup"
+  clean_dev_caches || _cleanup_rc=$?
 
-	if is_linux; then
-		step "APT cache cleanup"
-		clean_apt_cache || _cleanup_rc=$?
-	fi
+  if is_linux; then
+    step "APT cache cleanup"
+    clean_apt_cache || _cleanup_rc=$?
+  fi
 
-	# OPTIONAL: Uncomment if you want these too (and bump PROGRESS_TOTAL)
-	# step "Cleaning browser caches"
-	# clean_browser_caches
-	#
-	# step "Developer caches & tools cleanup"
-	# clean_dev_stuff
+  # Stop spinner from last step
+  progress_stop
 
-	# Stop spinner from last step
-	progress_stop
+  if [ "$_dry_rc" -ne 1 ]; then
+    used_after_kb="$used_before_kb"
+  else
+    used_after_kb=0
+    local used_after_rc=0
+    used_after_kb="$(disk_used_kb)" || used_after_rc=$?
+    if [ "$used_after_rc" -ne 0 ] || [ -z "$used_after_kb" ]; then
+      log "Disk usage: could not determine"
+      used_after_kb=0
+    fi
+  fi
 
-	if [ "$_dry_rc" -ne 1 ]; then
-		used_after_kb="$used_before_kb"
-	else
-		used_after_kb=0
-		local used_after_rc=0
-		used_after_kb="$(disk_used_kb)" || used_after_rc=$?
-		if [ "$used_after_rc" -ne 0 ] || [ -z "$used_after_kb" ]; then
-			log "Disk usage: could not determine"
-			used_after_kb=0
-		fi
-	fi
+  freed_kb=$((used_before_kb - used_after_kb))
+  if ((freed_kb < 0)); then
+    freed_kb=0
+  fi
 
-	freed_kb=$((used_before_kb - used_after_kb))
-	if ((freed_kb < 0)); then
-		freed_kb=0
-	fi
+  freed_hr="$(human_readable_kb "$freed_kb")"
 
-	freed_hr="$(human_readable_kb "$freed_kb")"
+  if [ "$_cleanup_rc" -ne 0 ]; then
+    log "Cleanup finished with errors from one or more modules (code ${_cleanup_rc}: $(safety_error_name "$_cleanup_rc"))."
+  else
+    log "Cleanup finished."
+  fi
+  log "$(disk_usage)"
 
-	if [ "$_cleanup_rc" -ne 0 ]; then
-		log "Cleanup finished with errors from one or more modules (code ${_cleanup_rc}: $(safety_error_name "$_cleanup_rc"))."
-	else
-		log "Cleanup finished."
-	fi
-	log "$(disk_usage)"
+  if [ "$_dry_rc" -ne 1 ]; then
+    log "Estimated space that COULD be freed: ${freed_hr} (dry run – no actual changes made)."
+  else
+    log "Estimated space freed: ${freed_hr}."
+  fi
 
-	if [ "$_dry_rc" -ne 1 ]; then
-		log "Estimated space that COULD be freed: ${freed_hr} (dry run – no actual changes made)."
-	else
-		log "Estimated space freed: ${freed_hr}."
-	fi
-
-	debug_log "cleanup.sh end dry_run=${DRY_RUN} estimated_freed=${freed_hr} rc=${_cleanup_rc}"
-	return "$_cleanup_rc"
+  debug_log "cleanup.sh end dry_run=${DRY_RUN} estimated_freed=${freed_hr} rc=${_cleanup_rc}"
+  return "$_cleanup_rc"
 }
 
 op_session_start "clean:full"
 OP_SESSION_ACTIVE=true
 
-main "$@"
+main

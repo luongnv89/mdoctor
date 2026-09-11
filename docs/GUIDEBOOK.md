@@ -24,8 +24,7 @@ mdoctor clean --force        # Actually free disk space
 | Find what's eating space | `mdoctor check -m storage` |
 | Clear user caches | `mdoctor clean -m caches --force` |
 | Clean Xcode bloat (DerivedData, archives, simulators) | `mdoctor clean -m xcode --force` |
-| Clean dev dependency caches (npm, pip, Gradle, etc.) | `mdoctor clean -m dev_caches --force` |
-| Clean dev tool caches (Homebrew, Docker) | `mdoctor clean -m dev --force` |
+| Clean dev caches (npm, pip, Yarn, Gradle, Homebrew, Docker) | `mdoctor clean -m dev_caches --force` |
 | Empty the Trash | `mdoctor clean -m trash --force` |
 | Remove large old files from Downloads | `mdoctor clean -m downloads --force` |
 | Delete old crash/diagnostic reports | `mdoctor clean -m crash_reports --force` |
@@ -117,13 +116,12 @@ All cleanup modules are **[LOW]** risk. Dry-run by default — add `--force` to 
 | `crash_reports` | Old crash and diagnostic reports |
 | `ios_backups` | Old iOS device backups |
 | `browser` | Browser cache files |
-| `dev` | Developer tool caches (Homebrew cache, Docker unused images) |
+| `dev_caches` | Developer caches (npm, Yarn, pnpm, pip, Homebrew, Docker unused images, plus Maven, Gradle, Go, Cargo, CocoaPods) |
 | `xcode` | Xcode DerivedData, archives, old simulators |
-| `dev_caches` | Package manager caches (npm, Yarn, pnpm, pip, Composer, Gradle, Maven, Carthage, CocoaPods) |
 
 ```bash
-mdoctor clean                        # Dry-run all 10 modules
-mdoctor clean --force                # Run all 10 modules for real
+mdoctor clean                        # Dry-run all cleanup modules
+mdoctor clean --force                # Run all cleanup modules for real
 mdoctor clean -m <module>            # Dry-run one module
 mdoctor clean -m <module> --force    # Run one module for real
 mdoctor clean --interactive          # Guided module selection

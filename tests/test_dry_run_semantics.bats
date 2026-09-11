@@ -79,18 +79,16 @@ teardown_file() {
   : >"$TMPHOME/prune-off.log"
   MDOCTOR_STUB_LOG="$TMPHOME/prune-off.log" MDOCTOR_ASSUME_YES=true HOME="$TMPHOME" ./mdoctor clean --force -m dev_caches >/dev/null 2>&1
   assert_not_contains "$TMPHOME/prune-off.log" "docker system prune"
-  MDOCTOR_STUB_LOG="$TMPHOME/prune-off.log" MDOCTOR_ASSUME_YES=true HOME="$TMPHOME" ./mdoctor clean --force -m dev >/dev/null 2>&1
-  assert_not_contains "$TMPHOME/prune-off.log" "docker system prune"
   # ... and runs once the opt-in is set.
   : >"$TMPHOME/prune-on.log"
   MDOCTOR_STUB_LOG="$TMPHOME/prune-on.log" MDOCTOR_ALLOW_DOCKER_PRUNE=true MDOCTOR_ASSUME_YES=true HOME="$TMPHOME" ./mdoctor clean --force -m dev_caches >/dev/null 2>&1
   assert_contains "$TMPHOME/prune-on.log" "docker system prune -af --volumes"
 }
 
-@test "re-rated badges: trash/logs/dev/dev_caches MED, caches/downloads/browser LOW" {
-  # Task 0.6
+@test "re-rated badges: trash/logs/dev_caches MED, caches/downloads/browser LOW" {
+  # Task 0.6 (dev module retired into dev_caches, issue #89)
   ./mdoctor list >"$TMPHOME/list.out" 2>&1
-  for m in trash logs dev dev_caches; do
+  for m in trash logs dev_caches; do
     grep -q "$m.*\[MED\]" "$TMPHOME/list.out" || fail "Expected $m at [MED] in mdoctor list"
   done
   for m in caches downloads browser; do
