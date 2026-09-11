@@ -1,12 +1,16 @@
 #!/usr/bin/env bats
-# Issue #87 (part 1 of 2, F-DEAD-015): load average, top-CPU and memory
-# pressure are sampled once in lib/perf_probes.sh; checks/performance.sh
-# and checks/diagnose_performance.sh only capture the probe record and
-# report with their own severity vocabulary. These tests pin every volatile
+# Issues #87/#88 (F-DEAD-015): load average, top-CPU, memory pressure
+# (#87) plus swap usage and zombie scan (#88) are sampled once in
+# lib/perf_probes.sh; checks/performance.sh and
+# checks/diagnose_performance.sh only capture the probe record and report
+# with their own severity vocabulary. These tests pin every volatile
 # input (DIAG_* overrides, which the shared probes apply for both callers,
 # plus a dispatching ps stub and a failing ss stub) and assert the probe
 # output lines are byte-identical to the pre-extraction fixtures captured
-# on main — i.e. the refactor changed no user-visible output.
+# on the #87 base — i.e. the refactor changed no user-visible output.
+# One intentional exception, asserted separately: the retired duplicate
+# load sample in the contention correlation now honors the pinned load
+# like every other load consumer (see the contention test below).
 
 load 'helpers/assert'
 load 'helpers/fixture'
@@ -49,6 +53,29 @@ EOF
   chmod +x "$TEST_TMP/stubbin/ps"
   printf '#!/bin/sh\nexit 1\n' >"$TEST_TMP/stubbin/ss"
   chmod +x "$TEST_TMP/stubbin/ss"
+  # Zombie-positive variant of the dispatcher: same top-CPU/top-memory
+  # tables, but the zombie tables carry two zombies sharing parent 1.
+  mkdir -p "$TEST_TMP/zstubbin"
+  cat >"$TEST_TMP/zstubbin/ps" <<'EOF'
+#!/bin/sh
+case "$*" in
+  *"%cpu"*)
+    printf 'PID %%CPU COMMAND\n101 0.0 init\n102 12.5 worker\n103 3.1 helper\n104 0.2 logger\n105 45.0 builder\n106 0.0 idler\n107 1.1 watcher\n108 0.0 sleeper\n109 2.2 runner\n110 0.4 checker\n'
+    ;;
+  *"rss"*)
+    printf 'PID RSS COMMAND\n101 1024 init\n102 204800 worker\n103 51200 helper\n104 4096 logger\n105 307200 builder\n106 512 idler\n'
+    ;;
+  *"ppid"*)
+    printf 'PID PPID STAT COMMAND\n123 1 Z defunct-worker\n124 1 Z defunct-helper\n'
+    ;;
+  *)
+    printf 'STAT\nZ\nZ\nS\n'
+    ;;
+esac
+EOF
+  chmod +x "$TEST_TMP/zstubbin/ps"
+  printf '#!/bin/sh\nexit 1\n' >"$TEST_TMP/zstubbin/ss"
+  chmod +x "$TEST_TMP/zstubbin/ss"
 }
 
 teardown_file() {
@@ -59,28 +86,51 @@ teardown_file() {
   grep -q "^perf_probe_load()" "$ROOT_DIR/lib/perf_probes.sh"
   grep -q "^perf_probe_top_cpu_raw()" "$ROOT_DIR/lib/perf_probes.sh"
   grep -q "^perf_probe_mem_pressure()" "$ROOT_DIR/lib/perf_probes.sh"
+  grep -q "^perf_probe_swap()" "$ROOT_DIR/lib/perf_probes.sh"
+  grep -q "^perf_probe_zombies()" "$ROOT_DIR/lib/perf_probes.sh"
   grep -q "perf_probe_load" "$ROOT_DIR/checks/performance.sh"
   grep -q "perf_probe_top_cpu_raw" "$ROOT_DIR/checks/performance.sh"
   grep -q "perf_probe_mem_pressure" "$ROOT_DIR/checks/performance.sh"
+  grep -q "perf_probe_swap" "$ROOT_DIR/checks/performance.sh"
+  grep -q "perf_probe_zombies" "$ROOT_DIR/checks/performance.sh"
   grep -q "perf_probe_load" "$ROOT_DIR/checks/diagnose_performance.sh"
   grep -q "perf_probe_top_cpu_raw" "$ROOT_DIR/checks/diagnose_performance.sh"
   grep -q "perf_probe_mem_pressure" "$ROOT_DIR/checks/diagnose_performance.sh"
+  grep -q "perf_probe_swap" "$ROOT_DIR/checks/diagnose_performance.sh"
+  grep -q "perf_probe_zombies" "$ROOT_DIR/checks/diagnose_performance.sh"
+  # The probes are sink-agnostic: no code line calls the reporting sinks
+  # (the contract is spelled out in the header comment, excluded here;
+  # the patterns are the call names so kern.memorystatus_* does not match).
+  [ "$(grep -v '^#' "$ROOT_DIR/lib/perf_probes.sh" | grep -c -e 'status_ok' -e 'status_warn' -e 'status_fail' -e 'status_info' -e 'add_action' || true)" = "0" ]
 }
 
-@test "platform sampling for the three probes exists only in lib" {
-  # check_performance carries no inline platform sampling for the three
-  # probes at all; diagnose keeps exactly one memorystatus read outside
-  # them (the swap-thrashing macOS proxy, part-2 scope in #88) and no
-  # inline load/top-CPU sampling. (checks/system.sh still samples load
-  # for its own report — a different module, out of scope.)
+@test "platform sampling for all five probes exists only in lib" {
+  # Neither caller carries inline platform sampling for any probe: the
+  # swap-thrashing macOS pressure proxy and the contention load sample
+  # were converted in #88, so diagnose keeps zero memorystatus reads.
+  # (checks/system.sh still samples the 1/5/15-min load triple for its
+  # own report — a different shape from the probe's threshold pair,
+  # out of scope with a #88 note in checks/system.sh.)
   [ "$(grep -c 'sysctl -n vm.loadavg' "$ROOT_DIR/checks/performance.sh" || true)" = "0" ]
   [ "$(grep -c 'sysctl -n vm.loadavg' "$ROOT_DIR/checks/diagnose_performance.sh" || true)" = "0" ]
   [ "$(grep -c 'kern.memorystatus_vm_pressure_level' "$ROOT_DIR/checks/performance.sh" || true)" = "0" ]
-  [ "$(grep -c 'kern.memorystatus_vm_pressure_level' "$ROOT_DIR/checks/diagnose_performance.sh" || true)" = "1" ]
+  [ "$(grep -c 'kern.memorystatus_vm_pressure_level' "$ROOT_DIR/checks/diagnose_performance.sh" || true)" = "0" ]
+  [ "$(grep -c 'sysctl -n vm.swapusage' "$ROOT_DIR/checks/performance.sh" || true)" = "0" ]
+  [ "$(grep -c 'sysctl -n vm.swapusage' "$ROOT_DIR/checks/diagnose_performance.sh" || true)" = "0" ]
+  [ "$(grep -c 'SwapTotal' "$ROOT_DIR/checks/performance.sh" || true)" = "0" ]
+  [ "$(grep -c 'SwapTotal' "$ROOT_DIR/checks/diagnose_performance.sh" || true)" = "0" ]
+  [ "$(grep -c 'SwapFree' "$ROOT_DIR/checks/performance.sh" || true)" = "0" ]
+  [ "$(grep -c 'SwapFree' "$ROOT_DIR/checks/diagnose_performance.sh" || true)" = "0" ]
+  [ "$(grep -c -e '/proc/loadavg' "$ROOT_DIR/checks/performance.sh" || true)" = "0" ]
+  [ "$(grep -c -e '/proc/loadavg' "$ROOT_DIR/checks/diagnose_performance.sh" || true)" = "0" ]
   [ "$(grep -c 'ps -arcwwxo "pid,%cpu,comm"' "$ROOT_DIR/checks/performance.sh" || true)" = "0" ]
   [ "$(grep -c 'ps -arcwwxo "pid,%cpu,comm"' "$ROOT_DIR/checks/diagnose_performance.sh" || true)" = "0" ]
   [ "$(grep -c 'ps -eo pid,%cpu,comm' "$ROOT_DIR/checks/performance.sh" || true)" = "0" ]
   [ "$(grep -c 'ps -eo pid,%cpu,comm' "$ROOT_DIR/checks/diagnose_performance.sh" || true)" = "0" ]
+  [ "$(grep -c 'ps -eo pid,ppid,stat,comm' "$ROOT_DIR/checks/performance.sh" || true)" = "0" ]
+  [ "$(grep -c 'ps -eo pid,ppid,stat,comm' "$ROOT_DIR/checks/diagnose_performance.sh" || true)" = "0" ]
+  [ "$(grep -c 'ps -eo stat' "$ROOT_DIR/checks/performance.sh" || true)" = "0" ]
+  [ "$(grep -c 'ps -eo stat' "$ROOT_DIR/checks/diagnose_performance.sh" || true)" = "0" ]
 }
 
 @test "diagnose healthy probe output matches the pre-extraction fixture" {
@@ -155,4 +205,144 @@ EOF
   strip_ansi "$TEST_TMP/probe_check_healthy.raw.txt" >"$TEST_TMP/probe_check_healthy.txt"
   assert_contains "$TEST_TMP/probe_check_healthy.txt" "Load average (0.10) within normal range for 8 cores."
   assert_contains "$TEST_TMP/probe_check_healthy.txt" "Memory pressure: normal (80% available)"
+}
+
+@test "diagnose swap output matches the pre-extraction fixture" {
+  # Live kb values vary by host, so the parenthesized quantities are
+  # normalized; the percent, the severity vocabulary and the thrashing
+  # line are byte-identical to the #87-base capture.
+  env DIAG_LOADAVG="0.10" DIAG_CORES="8" DIAG_MEM_PCT="10" \
+    DIAG_MEM_AVAIL_PCT="80" DIAG_MEM_PRESSURE_LEVEL="1" \
+    DIAG_DISK_PCT="20" DIAG_SWAP_PCT="0" DIAG_LINUX_IOWAIT_PCT="0" \
+    DIAG_CPU_USER_PCT="10" DIAG_CPU_SYS_PCT="5" \
+    PATH="$TEST_TMP/stubbin:$PATH" \
+    ./mdoctor diagnose >"$TEST_TMP/probe_swap_healthy.raw.txt" 2>&1
+  strip_ansi "$TEST_TMP/probe_swap_healthy.raw.txt" >"$TEST_TMP/probe_swap_healthy.txt"
+  grep -E "Swap: [0-9]+% used|SWAP THRASHING|Potential swap" "$TEST_TMP/probe_swap_healthy.txt" \
+    | sed -E 's/\([^)]*\)/(NORM)/' >"$TEST_TMP/probe_swap_healthy.excerpt.txt"
+  cat >"$TEST_TMP/probe_swap_healthy.expected.txt" <<'EOF'
+  ✅ Swap: 0% used (NORM)
+EOF
+  diff "$TEST_TMP/probe_swap_healthy.expected.txt" "$TEST_TMP/probe_swap_healthy.excerpt.txt" \
+    || fail "diagnose healthy swap output differs from the pre-extraction fixture"
+  env DIAG_LOADAVG="99.0" DIAG_CORES="2" DIAG_MEM_PCT="99" \
+    DIAG_MEM_AVAIL_PCT="2" DIAG_MEM_PRESSURE_LEVEL="4" \
+    DIAG_DISK_PCT="99" DIAG_SWAP_PCT="90" DIAG_LINUX_IOWAIT_PCT="50" \
+    DIAG_CPU_USER_PCT="30" DIAG_CPU_SYS_PCT="60" \
+    PATH="$TEST_TMP/stubbin:$PATH" \
+    ./mdoctor diagnose >"$TEST_TMP/probe_swap_unhealthy.raw.txt" 2>&1
+  strip_ansi "$TEST_TMP/probe_swap_unhealthy.raw.txt" >"$TEST_TMP/probe_swap_unhealthy.txt"
+  grep -E "Swap: [0-9]+% used|SWAP THRASHING|Potential swap" "$TEST_TMP/probe_swap_unhealthy.txt" \
+    | sed -E 's/\([^)]*\)/(NORM)/' >"$TEST_TMP/probe_swap_unhealthy.excerpt.txt"
+  cat >"$TEST_TMP/probe_swap_unhealthy.expected.txt" <<'EOF'
+  ❌ Swap: 90% used (NORM) — critical
+  ❌ SWAP THRASHING DETECTED: swap=90% iowait=50%
+EOF
+  diff "$TEST_TMP/probe_swap_unhealthy.expected.txt" "$TEST_TMP/probe_swap_unhealthy.excerpt.txt" \
+    || fail "diagnose unhealthy swap output differs from the pre-extraction fixture"
+}
+
+@test "check swap output matches the pre-extraction fixture" {
+  env DIAG_LOADAVG="99.0" DIAG_CORES="2" DIAG_MEM_AVAIL_PCT="2" \
+    PATH="$TEST_TMP/stubbin:$PATH" \
+    ./mdoctor check -m performance >"$TEST_TMP/probe_check_swap.raw.txt" 2>&1
+  strip_ansi "$TEST_TMP/probe_check_swap.raw.txt" >"$TEST_TMP/probe_check_swap.txt"
+  grep -E "Swap:" "$TEST_TMP/probe_check_swap.txt" \
+    | sed -E 's/Swap: .*/Swap: NORM/' >"$TEST_TMP/probe_check_swap.excerpt.txt"
+  cat >"$TEST_TMP/probe_check_swap.expected.txt" <<'EOF'
+  ℹ️ Swap: NORM
+EOF
+  diff "$TEST_TMP/probe_check_swap.expected.txt" "$TEST_TMP/probe_check_swap.excerpt.txt" \
+    || fail "check swap output differs from the pre-extraction fixture"
+}
+
+@test "zombie details match the pre-extraction fixture in both callers" {
+  env DIAG_LOADAVG="0.10" DIAG_CORES="8" DIAG_MEM_PCT="10" \
+    DIAG_MEM_AVAIL_PCT="80" DIAG_MEM_PRESSURE_LEVEL="1" \
+    DIAG_DISK_PCT="20" DIAG_SWAP_PCT="0" DIAG_LINUX_IOWAIT_PCT="0" \
+    DIAG_CPU_USER_PCT="10" DIAG_CPU_SYS_PCT="5" \
+    PATH="$TEST_TMP/zstubbin:$PATH" \
+    ./mdoctor diagnose >"$TEST_TMP/probe_zombie_diag.raw.txt" 2>&1
+  strip_ansi "$TEST_TMP/probe_zombie_diag.raw.txt" >"$TEST_TMP/probe_zombie_diag.txt"
+  grep -E "Zombie processes: |→ Parent|Zombie process details" "$TEST_TMP/probe_zombie_diag.txt" >"$TEST_TMP/probe_zombie_diag.excerpt.txt"
+  cat >"$TEST_TMP/probe_zombie_diag.expected.txt" <<'EOF'
+  ⚠️ Zombie processes: 2
+  ℹ️   PID 123 → Parent 1 — defunct-worker
+  ℹ️   PID 124 → Parent 1 — defunct-helper
+EOF
+  diff "$TEST_TMP/probe_zombie_diag.expected.txt" "$TEST_TMP/probe_zombie_diag.excerpt.txt" \
+    || fail "diagnose zombie output differs from the pre-extraction fixture"
+  assert_contains "$TEST_TMP/probe_zombie_diag.txt" "Kill zombie parent processes: kill -HUP 1"
+  env DIAG_LOADAVG="0.10" DIAG_CORES="8" DIAG_MEM_AVAIL_PCT="80" \
+    PATH="$TEST_TMP/zstubbin:$PATH" \
+    ./mdoctor check -m performance >"$TEST_TMP/probe_zombie_check.raw.txt" 2>&1
+  strip_ansi "$TEST_TMP/probe_zombie_check.raw.txt" >"$TEST_TMP/probe_zombie_check.txt"
+  grep -E "Zombie processes: |→ Parent|Zombie process details" "$TEST_TMP/probe_zombie_check.txt" >"$TEST_TMP/probe_zombie_check.excerpt.txt"
+  cat >"$TEST_TMP/probe_zombie_check.expected.txt" <<'EOF'
+  ⚠️ Zombie processes: 2
+  ℹ️ Zombie process details (PID → Parent PID — Command):
+  ℹ️   PID 123 → Parent 1 — defunct-worker
+  ℹ️   PID 124 → Parent 1 — defunct-helper
+EOF
+  diff "$TEST_TMP/probe_zombie_check.expected.txt" "$TEST_TMP/probe_zombie_check.excerpt.txt" \
+    || fail "check zombie output differs from the pre-extraction fixture"
+  assert_contains "$TEST_TMP/probe_zombie_check.txt" "kill -HUP 1"
+}
+
+@test "swap and zombie probes emit the proposed records" {
+  source "$ROOT_DIR/lib/platform.sh"
+  source "$ROOT_DIR/lib/perf_probes.sh"
+  local rec
+  rec=$(perf_probe_swap) || fail "perf_probe_swap failed"
+  if is_macos; then
+    case "$rec" in
+      "macos "*) : ;;
+      *) fail "unexpected macOS swap record: $rec" ;;
+    esac
+  else
+    echo "$rec" | grep -Eq '^linux [0-9]+ [0-9]+$' \
+      || fail "unexpected Linux swap record: $rec"
+  fi
+  rec=$(PATH="$TEST_TMP/zstubbin:$PATH" perf_probe_zombies) \
+    || fail "perf_probe_zombies failed"
+  [ "$rec" = "$(printf '123 1 defunct-worker\n124 1 defunct-helper')" ] \
+    || fail "unexpected zombie record: $rec"
+  rec=$(PATH="$TEST_TMP/stubbin:$PATH" perf_probe_zombies) \
+    || fail "perf_probe_zombies failed on the zombie-free stub"
+  [ -z "$rec" ] || fail "expected no zombie lines, got: $rec"
+}
+
+@test "zombie probe returns 1 with no output when ps is missing" {
+  source "$ROOT_DIR/lib/platform.sh"
+  source "$ROOT_DIR/lib/perf_probes.sh"
+  mkdir -p "$TEST_TMP/emptybin"
+  local out rc=0
+  out=$(PATH="$TEST_TMP/emptybin" perf_probe_zombies 2>/dev/null) || rc=$?
+  [ "$rc" -eq 1 ] || fail "expected rc 1 without ps, got $rc"
+  [ -z "$out" ] || fail "expected no output without ps, got: $out"
+}
+
+@test "contention correlation honors pinned load via the shared probe" {
+  # Intentional #88 change: the retired duplicate load sample routes
+  # through perf_probe_load, so DIAG_LOADAVG/DIAG_CORES pin this check
+  # like every other load consumer. Under the unhealthy fixed inputs the
+  # pinned load (99.0 on 2 cores) plus iowait 50% is CPU+I/O contention;
+  # before #88 the live load was sampled here and only the iowait leg
+  # fired under the same inputs.
+  env DIAG_LOADAVG="99.0" DIAG_CORES="2" DIAG_MEM_PCT="99" \
+    DIAG_MEM_AVAIL_PCT="2" DIAG_MEM_PRESSURE_LEVEL="4" \
+    DIAG_DISK_PCT="99" DIAG_SWAP_PCT="90" DIAG_LINUX_IOWAIT_PCT="50" \
+    DIAG_CPU_USER_PCT="30" DIAG_CPU_SYS_PCT="60" \
+    PATH="$TEST_TMP/stubbin:$PATH" \
+    ./mdoctor diagnose >"$TEST_TMP/probe_contention.raw.txt" 2>&1
+  strip_ansi "$TEST_TMP/probe_contention.raw.txt" >"$TEST_TMP/probe_contention.txt"
+  assert_contains "$TEST_TMP/probe_contention.txt" "CPU+I/O contention: load=99.0 (2 cores), iowait=50%"
+  env DIAG_LOADAVG="0.10" DIAG_CORES="8" DIAG_MEM_PCT="10" \
+    DIAG_MEM_AVAIL_PCT="80" DIAG_MEM_PRESSURE_LEVEL="1" \
+    DIAG_DISK_PCT="20" DIAG_SWAP_PCT="0" DIAG_LINUX_IOWAIT_PCT="0" \
+    DIAG_CPU_USER_PCT="10" DIAG_CPU_SYS_PCT="5" \
+    PATH="$TEST_TMP/stubbin:$PATH" \
+    ./mdoctor diagnose >"$TEST_TMP/probe_contention_healthy.raw.txt" 2>&1
+  strip_ansi "$TEST_TMP/probe_contention_healthy.raw.txt" >"$TEST_TMP/probe_contention_healthy.txt"
+  assert_not_contains "$TEST_TMP/probe_contention_healthy.txt" "contention:"
 }
