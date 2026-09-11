@@ -37,8 +37,12 @@ fix_disk() {
 
   mkdir -p "$(dirname "$LOGFILE")"
 
-  local used_before_kb
-  used_before_kb="$(disk_used_kb)"
+  local used_before_kb used_before_rc=0
+  used_before_kb="$(disk_used_kb)" || used_before_rc=$?
+  if [ "$used_before_rc" -ne 0 ]; then
+    echo "${YELLOW}Disk usage before cleanup: could not determine.${RESET}" >&2
+    used_before_kb=0
+  fi
 
   echo "${CYAN}[1/4]${RESET} Emptying Trash..."
   source "${MDOCTOR_DIR}/cleanups/trash.sh"
@@ -56,8 +60,12 @@ fix_disk() {
   local step_rc=0
   run_cmd_args sudo purge 2>/dev/null || step_rc=$?
 
-  local used_after_kb
-  used_after_kb="$(disk_used_kb)"
+  local used_after_kb used_after_rc=0
+  used_after_kb="$(disk_used_kb)" || used_after_rc=$?
+  if [ "$used_after_rc" -ne 0 ]; then
+    echo "${YELLOW}Disk usage after cleanup: could not determine.${RESET}" >&2
+    used_after_kb="$used_before_kb"
+  fi
   local freed_kb=$((used_before_kb - used_after_kb))
   if ((freed_kb < 0)); then
     freed_kb=0

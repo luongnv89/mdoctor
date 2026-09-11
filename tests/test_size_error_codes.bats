@@ -83,6 +83,41 @@ teardown_file() {
   [ -z "$out" ]
 }
 
+@test "preflight find preserves missing and timeout errors" {
+  source "$ROOT_DIR/lib/disk.sh"
+  source "$ROOT_DIR/lib/preflight.sh"
+
+  out=""; rc=0
+  out=$(preflight_find_kb "$TMPHOME/does-not-exist" -type f) || rc=$?
+  [ "$rc" -eq "$MDOCTOR_SIZE_ERR_NO_TARGET" ]
+  [ -z "$out" ]
+
+  if ! command -v timeout >/dev/null 2>&1; then
+    skip "timeout(1) not available"
+  fi
+  STUBBIN="$TMPHOME/preflight-stubbin"
+  mkdir -p "$STUBBIN"
+  printf '#!/usr/bin/env bash\nsleep 30\n' > "$STUBBIN/find"
+  chmod +x "$STUBBIN/find"
+  out=""; rc=0
+  out=$(PATH="$STUBBIN:$PATH" MDOCTOR_FIND_TIMEOUT_S=1 preflight_find_kb "$OK_DIR" -type f) || rc=$?
+  [ "$rc" -eq "$MDOCTOR_SIZE_ERR_TIMEOUT" ]
+  [ -z "$out" ]
+
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$STUBBIN/find"
+  chmod +x "$STUBBIN/find"
+  out=""; rc=0
+  out=$(PATH="$STUBBIN:$PATH" preflight_find_kb "$OK_DIR" -type f) || rc=$?
+  [ "$rc" -eq "$MDOCTOR_SIZE_ERR_DENIED" ]
+  [ -z "$out" ]
+
+  EMPTY_DIR="$TMPHOME/empty"
+  mkdir -p "$EMPTY_DIR"
+  out=$(preflight_find_kb "$EMPTY_DIR" -type f); rc=$?
+  [ "$rc" -eq 0 ]
+  [ "$out" = 0 ]
+}
+
 @test "check-module wrapper propagates: _dir_size_kb" {
   source "$ROOT_DIR/lib/context.sh"
   mdoctor_context_init

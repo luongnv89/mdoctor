@@ -415,12 +415,15 @@ check_disk_hotspots() {
   # Check for large temp/cache directories (fast: only scan known small dirs)
   # Skip deep home directory scans — they are too slow for a diagnostic check
   local large_dirs=""
-  local dir_size dir_hr
+  local dir_size dir_hr dir_size_rc
   local -a fast_dirs=("/tmp" /var/log /var/tmp)
   for dir in "${fast_dirs[@]}"; do
     [ ! -d "$dir" ] && continue
-    dir_size=$(du_size_kb "$dir") || dir_size=""
-    if [ -n "$dir_size" ] && (( dir_size > MDOCTOR_DIAG_DIR_WARN_KB )); then
+    dir_size_rc=0
+    dir_size=$(du_size_kb "$dir") || dir_size_rc=$?
+    if [ "$dir_size_rc" -ne 0 ]; then
+      status_info "Size of ${dir}: could not determine."
+    elif (( dir_size > MDOCTOR_DIAG_DIR_WARN_KB )); then
       dir_hr=$(kb_to_human "$dir_size")
       large_dirs="${large_dirs}  ${dir}: ${dir_hr}\n"
     fi

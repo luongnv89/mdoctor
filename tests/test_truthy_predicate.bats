@@ -66,10 +66,11 @@ teardown_file() {
     hits=$(grep -rE "is_truthy .*${flag}[^A-Za-z0-9_]" \
       "$ROOT_DIR/lib" "$ROOT_DIR/checks/storage.sh" "$ROOT_DIR/mdoctor" "$ROOT_DIR/cleanup.sh" 2>/dev/null | wc -l)
     [ "$hits" -ge 1 ]
-    # And no ad-hoc string-boolean comparison survives for it.
-    adhoc=$(grep -rE "${flag}[^A-Za-z0-9_].*= *\"?(true|1|yes)\"? \]" \
-      "$ROOT_DIR/lib" "$ROOT_DIR/checks/storage.sh" "$ROOT_DIR/mdoctor" "$ROOT_DIR/cleanup.sh" 2>/dev/null \
-      | grep -v is_truthy | wc -l)
-    [ "$adhoc" -eq 0 ]
   done
+
+  # This catches both accepted and rejected literal forms, including the
+  # `!= true` guards that a per-variable grep can miss.
+  adhoc=$(grep -rE '\[[^]]*(=|==|!=)[[:space:]]*"?(true|false|yes|no|1|0|y|n)"?[^]]*\]' \
+    "$ROOT_DIR/lib" "$ROOT_DIR/checks/storage.sh" "$ROOT_DIR/mdoctor" "$ROOT_DIR/cleanup.sh" 2>/dev/null || true)
+  [ -z "$adhoc" ]
 }

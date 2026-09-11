@@ -76,7 +76,7 @@ _find_and_sum() {
 
   for dir in "$@"; do
     [ -d "$dir" ] || continue
-    while IFS= read -r match; do
+    while IFS= read -r -d '' match; do
       case "$match" in
         _MDOCTOR_FIND_RC_*) find_rc="${match#_MDOCTOR_FIND_RC_}" ;;
         *)
@@ -91,27 +91,31 @@ _find_and_sum() {
     done < <( _find_entries_with_rc "$MDOCTOR_FIND_TIMEOUT_S" "$dir" -maxdepth 5 -type d -name "$pattern" )
   done
 
-  if [ "$find_rc" -eq 124 ]; then
-    return "$MDOCTOR_SIZE_ERR_TIMEOUT"
-  fi
+  case "$find_rc" in
+    0) ;;
+    124) return "$MDOCTOR_SIZE_ERR_TIMEOUT" ;;
+    1) return "$MDOCTOR_SIZE_ERR_DENIED" ;;
+    *) return "$MDOCTOR_SIZE_ERR_FAILED" ;;
+  esac
 
   echo "${total} ${count}"
   return 0
 }
 
 # _find_entries_with_rc TIMEOUT ARGS... — producer for _find_and_sum:
-# newline-separated entries plus a final _MDOCTOR_FIND_RC_<n> sentinel
-# carrying the find exit code (a process substitution's rc is lost).
-# Wraps the find in a timeout where available (GNU-only).
+# NUL-separated entries plus a final NUL-terminated
+# _MDOCTOR_FIND_RC_<n> sentinel carrying the find exit code (a process
+# substitution's rc is lost). Wraps the find in a timeout where available
+# (GNU-only).
 _find_entries_with_rc() {
   local t="$1"
   shift
   if command -v timeout >/dev/null 2>&1; then
-    timeout "$t" find "$@" 2>/dev/null
-    printf '%s' "_MDOCTOR_FIND_RC_$?"
+    timeout "$t" find "$@" -print0 2>/dev/null
+    printf '%s\0' "_MDOCTOR_FIND_RC_$?"
   else
-    find "$@" 2>/dev/null
-    printf '%s' "_MDOCTOR_FIND_RC_$?"
+    find "$@" -print0 2>/dev/null
+    printf '%s\0' "_MDOCTOR_FIND_RC_$?"
   fi
 }
 

@@ -47,10 +47,10 @@ preflight_path_kb() {
 _preflight_find_entries() {
   if command -v timeout >/dev/null 2>&1; then
     timeout "$MDOCTOR_FIND_TIMEOUT_S" find "$@" -print0 2>/dev/null
-    printf '%s' "_MDOCTOR_FIND_RC_$?"
+    printf '%s\0' "_MDOCTOR_FIND_RC_$?"
   else
     find "$@" -print0 2>/dev/null
-    printf '%s' "_MDOCTOR_FIND_RC_$?"
+    printf '%s\0' "_MDOCTOR_FIND_RC_$?"
   fi
 }
 
@@ -66,6 +66,9 @@ preflight_find_kb() {
 
   if [ -z "$base" ] || [ ! -d "$base" ]; then
     return "$MDOCTOR_SIZE_ERR_NO_TARGET"
+  fi
+  if [ ! -r "$base" ] || [ ! -x "$base" ]; then
+    return "$MDOCTOR_SIZE_ERR_DENIED"
   fi
 
   local total=0
@@ -88,9 +91,12 @@ preflight_find_kb() {
     esac
   done < <(_preflight_find_entries "$base" "$@")
 
-  if [ "$find_rc" -eq 124 ]; then
-    return "$MDOCTOR_SIZE_ERR_TIMEOUT"
-  fi
+  case "$find_rc" in
+    0) ;;
+    124) return "$MDOCTOR_SIZE_ERR_TIMEOUT" ;;
+    1) return "$MDOCTOR_SIZE_ERR_DENIED" ;;
+    *) return "$MDOCTOR_SIZE_ERR_FAILED" ;;
+  esac
 
   printf '%s\n' "$total"
   return 0

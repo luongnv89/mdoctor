@@ -25,12 +25,16 @@ kb_to_human() {
 }
 
 disk_used_pct_root() {
-  local out rc=0
+  local out rc=0 value
   out=$(df -H "$(_disk_root)" 2>/dev/null) || rc=$?
   if [ "$rc" -ne 0 ] || [ -z "$out" ]; then
     return "$MDOCTOR_SIZE_ERR_FAILED"
   fi
-  printf '%s\n' "$out" | awk 'NR==2 {gsub("%","",$5); print $5}'
+  value=$(printf '%s\n' "$out" | awk 'NR==2 {gsub("%","",$5); print $5}') || return "$MDOCTOR_SIZE_ERR_FAILED"
+  case "$value" in
+    ''|*[!0-9]*) return "$MDOCTOR_SIZE_ERR_FAILED" ;;
+  esac
+  printf '%s\n' "$value"
 }
 
 disk_usage() {
@@ -38,12 +42,16 @@ disk_usage() {
 }
 
 disk_used_kb() {
-  local out rc=0
+  local out rc=0 value
   out=$(df -k "$(_disk_root)" 2>/dev/null) || rc=$?
   if [ "$rc" -ne 0 ] || [ -z "$out" ]; then
     return "$MDOCTOR_SIZE_ERR_FAILED"
   fi
-  printf '%s\n' "$out" | awk 'NR==2 {print $3}'
+  value=$(printf '%s\n' "$out" | awk 'NR==2 {print $3}') || return "$MDOCTOR_SIZE_ERR_FAILED"
+  case "$value" in
+    ''|*[!0-9]*) return "$MDOCTOR_SIZE_ERR_FAILED" ;;
+  esac
+  printf '%s\n' "$value"
 }
 
 human_readable_kb() {

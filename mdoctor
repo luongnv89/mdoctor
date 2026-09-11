@@ -305,7 +305,7 @@ cmd_check() {
     export JSON_ENABLED=true
   fi
 
-  if [ "$json_flag" = false ]; then
+  if ! is_truthy "$json_flag"; then
     echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
   fi
 
