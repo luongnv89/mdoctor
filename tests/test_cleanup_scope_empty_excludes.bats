@@ -67,7 +67,7 @@ EOF
     export MDOCTOR_CLEANUP_SCOPE_FILE="$SCOPE_FILE"
     export LOGFILE="$TMPDIR_SCOPE/mdoctor.log"
     DRY_RUN=false
-    export NODE_MODULES_DAYS=30
+    export DAYS_OLD_NODE_MODULES=30
     # shellcheck source=/dev/null
     source "$ROOT_DIR/lib/platform.sh"
     # shellcheck source=/dev/null

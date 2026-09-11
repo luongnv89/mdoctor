@@ -45,7 +45,7 @@ ird"
   mkdir -p "$WEIRD/node_modules"
   echo "stale-dep" > "$WEIRD/node_modules/stale.txt"
   touch -t 200001010000 "$WEIRD/node_modules" "$WEIRD/node_modules/stale.txt"
-  NODE_MODULES_DAYS=30 clean_dev_caches >/dev/null 2>&1
+  DAYS_OLD_NODE_MODULES=30 clean_dev_caches >/dev/null 2>&1
 }
 
 teardown_file() {

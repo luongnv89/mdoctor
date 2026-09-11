@@ -18,6 +18,18 @@ if [ "${_MDOCTOR_CLEAN_COMMON_LOADED:-false}" = true ]; then
 fi
 _MDOCTOR_CLEAN_COMMON_LOADED=true
 
+# module_documented_days MODULE — the module's own ${DAYS_OLD:-N} fallback as
+# declared in cleanups/<MODULE>.sh. The module file is the single source of
+# truth for its threshold; this keeps the force-mode preflight size summary
+# at the same effective age the module will apply (issue #94).
+module_documented_days() {
+  local file="${MDOCTOR_DIR}/cleanups/${1}.sh"
+  [ -f "$file" ] || { echo 7; return 0; }
+  local d
+  d="$(sed -n 's/.*DAYS_OLD:-\([0-9][0-9]*\).*/\1/p' "$file" | head -1)"
+  echo "${d:-7}"
+}
+
 # is_valid_cleanup_module MODULE_LIST NEEDLE — membership in the passed list.
 # Rejects paths, traversal and option-lookalikes before any comparison.
 is_valid_cleanup_module() {
@@ -84,11 +96,20 @@ run_single_cleanup_module() {
   # Set globals (used by sourced cleanup modules via run_cmd_args)
   export DRY_RUN=true
   LOGFILE="$(platform_log_dir)/mdoctor_cleanup.log"
-  export DAYS_OLD="${DAYS_OLD_OVERRIDE:-7}"
+  # Issue #94: export DAYS_OLD only when an override is present — otherwise
+  # a force-exported 7 shadows the per-module defaults the cleanups/* files
+  # document (30/90). Without an override the module's own fallback applies.
+  local summary_days=7
+  if [ -n "${DAYS_OLD_OVERRIDE:-}" ]; then
+    export DAYS_OLD="${DAYS_OLD_OVERRIDE}"
+    summary_days="$DAYS_OLD"
+  else
+    summary_days="$(module_documented_days "$selected_module")"
+  fi
 
   if [ "$selected_force" = true ]; then
     export DRY_RUN=false
-    cmd_clean_preflight_summary_module "$selected_module" "${DAYS_OLD}"
+    cmd_clean_preflight_summary_module "$selected_module" "$summary_days"
     # Confirmation gate (Task 0.5): y/N prompt, or refusal on a
     # non-tty unless MDOCTOR_ASSUME_YES=true.
     confirm_destructive_execution "cleanup module ${selected_module}" || return 1

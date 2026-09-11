@@ -19,7 +19,7 @@ if [ "${_MDOCTOR_CONTEXT_READY:-false}" != true ]; then
   echo "${BASH_SOURCE[0]##*/}: module context not initialized (_MDOCTOR_CONTEXT_READY) — call mdoctor_context_init from lib/context.sh first" >&2
   return 1 2>/dev/null || exit 1
 fi
-NODE_MODULES_DAYS="${NODE_MODULES_DAYS:-30}"
+DAYS_OLD_NODE_MODULES="${DAYS_OLD_NODE_MODULES:-30}"
 
 clean_dev_caches() {
   local rc=0
@@ -105,7 +105,7 @@ clean_dev_caches() {
   fi
 
   # ── Stale node_modules ──
-  log "Scanning for stale node_modules (unused >${NODE_MODULES_DAYS} days)..."
+  log "Scanning for stale node_modules (unused >${DAYS_OLD_NODE_MODULES} days)..."
 
   local search_dirs=()
   local d
@@ -161,7 +161,7 @@ clean_dev_caches() {
           nm_total_kb=$((nm_total_kb + nm_sz))
           nm_count=$((nm_count + 1))
         fi
-      done < <("${find_cmd[@]}" "${search_dir}" -maxdepth 5 -type d -name "node_modules" -not -path "*/node_modules/*/node_modules" -mtime "+${NODE_MODULES_DAYS}" -print0 2>/dev/null)
+      done < <("${find_cmd[@]}" "${search_dir}" -maxdepth 5 -type d -name "node_modules" -not -path "*/node_modules/*/node_modules" -mtime "+${DAYS_OLD_NODE_MODULES}" -print0 2>/dev/null)
     done
 
     if (( nm_count > 0 )); then
@@ -170,7 +170,7 @@ clean_dev_caches() {
       log "Stale node_modules cleaned: ${nm_count} directories, ${nm_total_hr}"
       total_kb=$((total_kb + nm_total_kb))
     else
-      log "No stale node_modules found (threshold: ${NODE_MODULES_DAYS} days)."
+      log "No stale node_modules found (threshold: ${DAYS_OLD_NODE_MODULES} days)."
     fi
   else
     log "No common project directories found; skipping node_modules scan."

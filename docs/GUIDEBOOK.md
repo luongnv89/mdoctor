@@ -159,11 +159,13 @@ mdoctor fix all         # Run all fixes
 
 **Preview before deleting** — All `mdoctor clean` commands run in dry-run mode by default. Review the output, then re-run with `--force` to actually delete.
 
-**Change the age threshold** — Cleanup modules skip files newer than 7 days. Override with:
+**Change the age threshold** — Cleanup modules each ship their own documented default (7 days for logs/downloads, 30 for crash_reports/xcode, 90 for ios_backups). Override every module at once with:
 
 ```bash
 DAYS_OLD_OVERRIDE=14 mdoctor clean --force
 ```
+
+The `dev_caches` node_modules sweep has its own threshold — `DAYS_OLD_NODE_MODULES=60 mdoctor clean --force` (default 30).
 
 **JSON output for scripts** — Pipe check results into your tooling:
 

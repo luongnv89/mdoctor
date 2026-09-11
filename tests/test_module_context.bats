@@ -17,7 +17,7 @@ mdoctor_context_init
   source "$ROOT_DIR/lib/context.sh"
   mdoctor_context_init
   [ "$DRY_RUN" = true ]
-  [ "$DAYS_OLD" -eq 7 ]
+  [ -z "${DAYS_OLD:-}" ]
   [ "$STEP_CURRENT" -eq 0 ]
   [ "$STEP_TOTAL" -eq 1 ]
   [ "$MDOCTOR_DEBUG" = false ]
@@ -30,6 +30,16 @@ mdoctor_context_init
   grep -q "DRY_RUN.*bool" "$ROOT_DIR/lib/context.sh"
   grep -q "DAYS_OLD.*int" "$ROOT_DIR/lib/context.sh"
   grep -q "LOG_PATHS.*array" "$ROOT_DIR/lib/context.sh"
+}
+
+@test "DAYS_OLD is exported only when DAYS_OLD_OVERRIDE is set (issue #94)" {
+  source "$ROOT_DIR/lib/context.sh"
+  unset DAYS_OLD DAYS_OLD_OVERRIDE
+  mdoctor_context_init
+  [ -z "${DAYS_OLD:-}" ]
+  export DAYS_OLD_OVERRIDE=42
+  mdoctor_context_init
+  [ "$DAYS_OLD" -eq 42 ]
 }
 
 @test "all three entry points call the initializer" {

@@ -1084,7 +1084,8 @@ cmd_help() {
   echo "  mdoctor info                     # Quick system overview"
   echo
   echo "${BOLD}Environment Variables:${RESET}"
-  echo "  DAYS_OLD_OVERRIDE=N              Override cleanup age threshold (default: 7)"
+  echo "  DAYS_OLD_OVERRIDE=N              Override cleanup age threshold (per-module defaults 7/30/90)"
+  echo "  DAYS_OLD_NODE_MODULES=N          Override stale node_modules threshold (default: 30)"
   echo "  MDOCTOR_CLEANUP_WHITELIST_FILE   Override cleanup whitelist file path"
   echo "  MDOCTOR_CLEANUP_SCOPE_FILE       Override cleanup scope config file path"
   echo "  MDOCTOR_UPDATE_REMOTE            Override update git remote (default: origin)"
