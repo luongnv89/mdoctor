@@ -131,16 +131,29 @@ setup() {
   mkdir -p "$bin_dir"
   # NOTE: a `VAR=... curl ... | bash` prefix would export the overrides
   # to curl only — the piped bash (no argv, non-tty stdin) needs them in
-  # its own environment, so export first (each test sets its own dirs,
-  # so the leak across tests in this file is harmless).
-  export MDOCTOR_REPO_URL="$GIT_URL"
-  export MDOCTOR_INSTALL_DIR="$install_dir"
-  export MDOCTOR_BIN_DIR="$bin_dir"
-  export MDOCTOR_BINARY_NAME="mdoctor"
+  # its own environment, passed via `env -i` below. The sanitized
+  # environment is on purpose (same idiom as test_bugfix_regressions):
+  # coverage runners (kcov) export tracing variables
+  # (SHELLOPTS/PS4/BASH_ENV) that the `set -u` installer child would trip
+  # over, failing this test for instrumentation reasons instead of
+  # product reasons. Only the inputs under test cross over; the entry
+  # shape under test (script on stdin, no argv) is unchanged.
+  # "$BASH" (absolute) on purpose: the sanitized PATH cannot be relied
+  # on for locating bash itself.
   export HOME="$TEST_TMP/home"
   local rc_bash=0 rc_curl=0 rc_status
   if [ -n "$TIMEOUT_BIN" ]; then
-    curl -fsSL "$HTTP_BASE/install.sh" | "$TIMEOUT_BIN" 120 bash \
+    curl -fsSL "$HTTP_BASE/install.sh" | "$TIMEOUT_BIN" 120 env -i \
+      PATH="/usr/local/bin:/usr/bin:/bin" \
+      HOME="$TEST_TMP/home" \
+      MDOCTOR_CHANNEL=main \
+      MDOCTOR_REPO_URL="$GIT_URL" \
+      MDOCTOR_INSTALL_DIR="$install_dir" \
+      MDOCTOR_BIN_DIR="$bin_dir" \
+      MDOCTOR_BINARY_NAME="mdoctor" \
+      MDOCTOR_ASSUME_YES=true \
+      MDOCTOR_SKIP_PLATFORM_CHECK=true \
+      "$BASH" \
       >"$TEST_TMP/${stem}-install.out" 2>&1
     # One statement: any read of PIPESTATUS must happen before the next
     # command (even a bare assignment) resets it to a single element.
@@ -148,7 +161,17 @@ setup() {
     rc_curl="${rc_status[0]}"
     rc_bash="${rc_status[1]}"
   else
-    curl -fsSL "$HTTP_BASE/install.sh" | bash \
+    curl -fsSL "$HTTP_BASE/install.sh" | env -i \
+      PATH="/usr/local/bin:/usr/bin:/bin" \
+      HOME="$TEST_TMP/home" \
+      MDOCTOR_CHANNEL=main \
+      MDOCTOR_REPO_URL="$GIT_URL" \
+      MDOCTOR_INSTALL_DIR="$install_dir" \
+      MDOCTOR_BIN_DIR="$bin_dir" \
+      MDOCTOR_BINARY_NAME="mdoctor" \
+      MDOCTOR_ASSUME_YES=true \
+      MDOCTOR_SKIP_PLATFORM_CHECK=true \
+      "$BASH" \
       >"$TEST_TMP/${stem}-install.out" 2>&1
     rc_status=("${PIPESTATUS[@]}")
     rc_curl="${rc_status[0]}"
