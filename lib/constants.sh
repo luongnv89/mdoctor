@@ -101,6 +101,9 @@ export MDOCTOR_SIZE_ERR_TIMEOUT=124
 # Any other measurement failure (could not determine).
 export MDOCTOR_SIZE_ERR_FAILED=1
 
+# is_truthy unrecognized-value code (issue #86): warns and fails closed.
+export MDOCTOR_TRUTHY_RC_UNSET=2
+
 ########################################
 # DIAGNOSE THRESHOLDS (env-overridable)
 ########################################

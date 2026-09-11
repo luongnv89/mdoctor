@@ -174,6 +174,7 @@ _storage_scan_appdata() {
       [ -d "$cat_dir" ] || continue
       local cat_size_kb
       local cat_rc=0
+      # shellcheck disable=SC2088  # display label keeps the literal tilde
       cat_size_kb=$(_storage_measure "~/Library/${cat}" "$cat_dir") || cat_rc=$?
       [ "$cat_rc" -eq 0 ] || continue
       # shellcheck disable=SC2088
@@ -266,8 +267,10 @@ _storage_scan_cloud() {
   # shellcheck disable=SC2088
   local cloud_kb
   local cloud_rc=0
+  # shellcheck disable=SC2088  # display label keeps the literal tilde
   cloud_kb=$(_storage_measure "~/Library/CloudStorage" "$cloud_dir") || cloud_rc=$?
   if [ "$cloud_rc" -eq 0 ]; then
+    # shellcheck disable=SC2088  # display label keeps the literal tilde
     _storage_report "~/Library/CloudStorage" "$cloud_kb" || true
   fi
 }
