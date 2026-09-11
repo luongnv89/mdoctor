@@ -363,3 +363,64 @@ jobs:
       # test_release_tags.bats, which runs in the test lanes above.
       - name: Installer/uninstaller round trip
         run: ./tests/run.sh tests/test_installer.bats
+
+  installer-curl-pipe:
+    # Issue #71 (F-CI-002): cover the curl-pipe, remote-clone and
+    # update-in-place installer paths that release-sanity never touches
+    # (it installs from a local path only). Serves the checkout over
+    # loopback HTTP and pipes the committed install.sh into bash with no
+    # argv on a non-tty stdin — the documented one-liner channel —
+    # asserting a working install that does not hang on the Task 4.2
+    # confirmation gate. The update-in-place and re-clone fallback
+    # branches are asserted separately in tests/test_installer_remote.bats
+    # (remote clone goes over a loopback git daemon there: dumb HTTP has
+    # no shallow capability and the installer clones with --depth 1).
+    name: Installer (curl-pipe)
+    runs-on: ubuntu-24.04 # Task 2.4: pinned image
+    timeout-minutes: 10
+    needs: lint
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install git-daemon (remote-clone transport for the installer tests)
+        # tests/test_installer_remote.bats skips when git-daemon is absent;
+        # install it so the CI lane asserts the remote paths instead of
+        # passing vacuously. Plain `git` does not provide git-daemon.
+        run: |
+          set -euo pipefail
+          if [ ! -x "$(git --exec-path)/git-daemon" ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends git-daemon-sysvinit
+          fi
+          test -x "$(git --exec-path)/git-daemon"
+
+      - name: Serve the repo over loopback HTTP and curl-pipe the installer
+        run: |
+          set -euo pipefail
+          python3 -m http.server 18771 --bind 127.0.0.1 >/tmp/mdoctor-httpd.log 2>&1 &
+          HTTPD_PID=$!
+          trap 'kill "$HTTPD_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 50); do
+            if curl -fsSL http://127.0.0.1:18771/install.sh -o /dev/null; then
+              break
+            fi
+            sleep 0.2
+          done
+          curl -fsSL http://127.0.0.1:18771/install.sh -o /dev/null
+          export MDOCTOR_CHANNEL=main
+          export MDOCTOR_REPO_URL="$GITHUB_WORKSPACE"
+          export MDOCTOR_INSTALL_DIR="$RUNNER_TEMP/mdoctor-curlpipe/install"
+          export MDOCTOR_BIN_DIR="$RUNNER_TEMP/mdoctor-curlpipe/bin"
+          export MDOCTOR_BINARY_NAME="mdoctor"
+          export MDOCTOR_ASSUME_YES=true
+          export MDOCTOR_SKIP_PLATFORM_CHECK=true
+          mkdir -p "$MDOCTOR_BIN_DIR"
+          # No argv, non-tty stdin: the documented one-liner shape. The
+          # job timeout bounds a hang; the installer must complete.
+          curl -fsSL http://127.0.0.1:18771/install.sh | bash
+          test "$(readlink "$MDOCTOR_BIN_DIR/mdoctor")" = "$MDOCTOR_INSTALL_DIR/mdoctor"
+          "$MDOCTOR_BIN_DIR/mdoctor" version
+
+      - name: Remote-path installer tests (update-in-place, re-clone fallback, non-tty)
+        run: ./tests/run.sh tests/test_installer_remote.bats
