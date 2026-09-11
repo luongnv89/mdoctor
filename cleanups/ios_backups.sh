@@ -37,7 +37,7 @@ clean_ios_backups() {
 
     # Get backup size
     local size_kb
-    size_kb=$(du_size_kb "$d")
+    size_kb=$(du_size_kb "$d") || size_kb=""
     total_size_kb=$((total_size_kb + size_kb))
 
     # Get modification time

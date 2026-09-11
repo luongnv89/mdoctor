@@ -177,7 +177,7 @@ EOF
 }
 
 load_cleanup_whitelist() {
-  if [ "$_MDOCTOR_WHITELIST_LOADED" = true ]; then
+  if is_truthy "$_MDOCTOR_WHITELIST_LOADED"; then
     return 0
   fi
 
@@ -429,7 +429,7 @@ safe_remove() {
     return 0
   fi
 
-  if [ -L "$path" ] && [ "$allow_symlink" != true ]; then
+  if [ -L "$path" ] && ! is_truthy "$allow_symlink"; then
     _safety_error "$MDOCTOR_SAFE_ERR_SYMLINK_BLOCKED" "$path" "blocked symlink deletion without explicit allow"
     return "$MDOCTOR_SAFE_ERR_SYMLINK_BLOCKED"
   fi
@@ -509,7 +509,7 @@ safe_remove_children() {
   # Task 3.1: a symlinked directory argument is rejected BEFORE any glob
   # expansion — otherwise "$dir"/* would enumerate (and delete) the
   # link TARGET's children. Explicit --allow-symlink opts in.
-  if [ -L "$dir" ] && [ "$allow_symlink" != true ]; then
+  if [ -L "$dir" ] && ! is_truthy "$allow_symlink"; then
     _safety_error "$MDOCTOR_SAFE_ERR_SYMLINK_BLOCKED" "$dir" "blocked symlinked directory argument without explicit allow"
     return "$MDOCTOR_SAFE_ERR_SYMLINK_BLOCKED"
   fi
@@ -533,7 +533,7 @@ safe_remove_children() {
   local item
   for item in "$dir"/* "$dir"/.[!.]* "$dir"/..?*; do
     [ -e "$item" ] || [ -L "$item" ] || continue
-    if [ "$allow_symlink" = true ]; then
+    if is_truthy "$allow_symlink"; then
       safe_remove "$item" --allow-symlink || rc=$?
     else
       safe_remove "$item" || rc=$?
@@ -592,7 +592,7 @@ safe_find_delete() {
 
   while IFS= read -r -d '' match; do
     count=$((count + 1))
-    if [ "$allow_symlink" = true ]; then
+    if is_truthy "$allow_symlink"; then
       safe_remove "$match" --allow-symlink || rc=$?
     else
       safe_remove "$match" || rc=$?

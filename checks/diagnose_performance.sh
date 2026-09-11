@@ -419,7 +419,7 @@ check_disk_hotspots() {
   local -a fast_dirs=("/tmp" /var/log /var/tmp)
   for dir in "${fast_dirs[@]}"; do
     [ ! -d "$dir" ] && continue
-    dir_size=$(du_size_kb "$dir")
+    dir_size=$(du_size_kb "$dir") || dir_size=""
     if [ -n "$dir_size" ] && (( dir_size > MDOCTOR_DIAG_DIR_WARN_KB )); then
       dir_hr=$(kb_to_human "$dir_size")
       large_dirs="${large_dirs}  ${dir}: ${dir_hr}\n"

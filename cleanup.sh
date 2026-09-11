@@ -122,7 +122,7 @@ _finish_cleanup_session() {
 	# status as $1 (falls back to $? for direct calls).
 	local rc="${1:-$?}"
 	progress_stop || true
-	if [ "$OP_SESSION_ACTIVE" = true ] && declare -f op_session_end >/dev/null 2>&1; then
+	if is_truthy "$OP_SESSION_ACTIVE" && declare -f op_session_end >/dev/null 2>&1; then
 		if [ "$rc" -eq 0 ]; then
 			op_session_end "ok"
 		else
@@ -163,9 +163,13 @@ cleanup_force_preflight_summary() {
 		"${HOME}/.gradle/caches" \
 		"${HOME}/go/pkg/mod/cache" \
 		"${HOME}/.cargo/registry/cache"; do
-		sz=$(preflight_path_kb "$path")
-		total_kb=$((total_kb + sz))
-		printf "  - %-45s (~%s)\n" "$path" "$(human_readable_kb "$sz")"
+		sz=$(preflight_path_kb "$path") || sz=""
+		total_kb=$((total_kb + ${sz:-0}))
+		if [ -n "$sz" ]; then
+			printf "  - %-45s (~%s)\n" "$path" "$(human_readable_kb "$sz")"
+		else
+			printf "  - %-45s (could not determine)\n" "$path"
+		fi
 	done
 
 	# macOS-only paths
@@ -173,45 +177,73 @@ cleanup_force_preflight_summary() {
 		for path in \
 			"${HOME}/Library/Developer/Xcode/DerivedData" \
 			"${HOME}/Library/Developer/CoreSimulator/Caches"; do
-			sz=$(preflight_path_kb "$path")
-			total_kb=$((total_kb + sz))
-			printf "  - %-45s (~%s)\n" "$path" "$(human_readable_kb "$sz")"
+			sz=$(preflight_path_kb "$path") || sz=""
+			total_kb=$((total_kb + ${sz:-0}))
+			if [ -n "$sz" ]; then
+				printf "  - %-45s (~%s)\n" "$path" "$(human_readable_kb "$sz")"
+			else
+				printf "  - %-45s (could not determine)\n" "$path"
+			fi
 		done
 	fi
 
 	local logs_kb dl_kb
 	local log_dir
 	log_dir="$(platform_user_log_dir)"
-	logs_kb=$(preflight_find_kb "$log_dir" -type f -mtime "+${days}")
-	dl_kb=$(preflight_find_kb "${HOME}/Downloads" -type f -size +500M -mtime "+${days}")
-	total_kb=$((total_kb + logs_kb + dl_kb))
+	logs_kb=$(preflight_find_kb "$log_dir" -type f -mtime "+${days}") || logs_kb=""
+	dl_kb=$(preflight_find_kb "${HOME}/Downloads" -type f -size +500M -mtime "+${days}") || dl_kb=""
+	total_kb=$((total_kb + ${logs_kb:-0} + ${dl_kb:-0}))
 
-	printf "  - %-45s (~%s)\n" "${log_dir} (files older than ${days}d)" "$(human_readable_kb "$logs_kb")"
-	printf "  - %-45s (~%s)\n" "${HOME}/Downloads (>500MB, older than ${days}d)" "$(human_readable_kb "$dl_kb")"
+	if [ -n "$logs_kb" ]; then
+		printf "  - %-45s (~%s)\n" "${log_dir} (files older than ${days}d)" "$(human_readable_kb "$logs_kb")"
+	else
+		printf "  - %-45s (could not determine)\n" "${log_dir} (files older than ${days}d)"
+	fi
+	if [ -n "$dl_kb" ]; then
+		printf "  - %-45s (~%s)\n" "${HOME}/Downloads (>500MB, older than ${days}d)" "$(human_readable_kb "$dl_kb")"
+	else
+		printf "  - %-45s (could not determine)\n" "${HOME}/Downloads (>500MB, older than ${days}d)"
+	fi
 
 	# Platform-specific crash dirs
 	local crash_dir crash_kb
 	while IFS= read -r crash_dir; do
-		crash_kb=$(preflight_find_kb "$crash_dir" -type f -mtime "+${days}")
-		total_kb=$((total_kb + crash_kb))
-		printf "  - %-45s (~%s)\n" "$crash_dir" "$(human_readable_kb "$crash_kb")"
+		crash_kb=$(preflight_find_kb "$crash_dir" -type f -mtime "+${days}") || crash_kb=""
+		total_kb=$((total_kb + ${crash_kb:-0}))
+		if [ -n "$crash_kb" ]; then
+			printf "  - %-45s (~%s)\n" "$crash_dir" "$(human_readable_kb "$crash_kb")"
+		else
+			printf "  - %-45s (could not determine)\n" "$crash_dir"
+		fi
 	done < <(platform_crash_dirs)
 
 	if is_macos; then
 		local ios_kb archives_kb
-		ios_kb=$(preflight_find_kb "${HOME}/Library/Application Support/MobileSync/Backup" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
-		archives_kb=$(preflight_find_kb "${HOME}/Library/Developer/Xcode/Archives" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
-		total_kb=$((total_kb + ios_kb + archives_kb))
-		printf "  - %-45s (~%s)\n" "${HOME}/Library/Application Support/MobileSync/Backup (> ${days}d)" "$(human_readable_kb "$ios_kb")"
-		printf "  - %-45s (~%s)\n" "${HOME}/Library/Developer/Xcode/Archives (> ${days}d)" "$(human_readable_kb "$archives_kb")"
+		ios_kb=$(preflight_find_kb "${HOME}/Library/Application Support/MobileSync/Backup" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}") || ios_kb=""
+		archives_kb=$(preflight_find_kb "${HOME}/Library/Developer/Xcode/Archives" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}") || archives_kb=""
+		total_kb=$((total_kb + ${ios_kb:-0} + ${archives_kb:-0}))
+		if [ -n "$ios_kb" ]; then
+			printf "  - %-45s (~%s)\n" "${HOME}/Library/Application Support/MobileSync/Backup (> ${days}d)" "$(human_readable_kb "$ios_kb")"
+		else
+			printf "  - %-45s (could not determine)\n" "${HOME}/Library/Application Support/MobileSync/Backup (> ${days}d)"
+		fi
+		if [ -n "$archives_kb" ]; then
+			printf "  - %-45s (~%s)\n" "${HOME}/Library/Developer/Xcode/Archives (> ${days}d)" "$(human_readable_kb "$archives_kb")"
+		else
+			printf "  - %-45s (could not determine)\n" "${HOME}/Library/Developer/Xcode/Archives (> ${days}d)"
+		fi
 		echo "  - xcrun simctl delete unavailable (size estimate: n/a)"
 	fi
 
 	if is_linux; then
 		local apt_kb
-		apt_kb=$(preflight_path_kb "/var/cache/apt/archives")
-		total_kb=$((total_kb + apt_kb))
-		printf "  - %-45s (~%s)\n" "/var/cache/apt/archives" "$(human_readable_kb "$apt_kb")"
+		apt_kb=$(preflight_path_kb "/var/cache/apt/archives") || apt_kb=""
+		total_kb=$((total_kb + ${apt_kb:-0}))
+		if [ -n "$apt_kb" ]; then
+			printf "  - %-45s (~%s)\n" "/var/cache/apt/archives" "$(human_readable_kb "$apt_kb")"
+		else
+			printf "  - %-45s (could not determine)\n" "/var/cache/apt/archives"
+		fi
 	fi
 
 	echo "  - docker system prune -af --volumes (size estimate: n/a) — ONLY with MDOCTOR_ALLOW_DOCKER_PRUNE=true; --volumes deletes named volumes (database data, not just caches)"
@@ -234,7 +266,13 @@ main() {
 	local freed_kb
 	local freed_hr
 
-	used_before_kb="$(disk_used_kb)"
+	used_before_kb=0
+	local used_before_rc=0
+	used_before_kb="$(disk_used_kb)" || used_before_rc=$?
+	if [ "$used_before_rc" -ne 0 ] || [ -z "$used_before_kb" ]; then
+		log "Disk usage: could not determine"
+		used_before_kb=0
+	fi
 
 	if declare -f ensure_cleanup_whitelist_file >/dev/null 2>&1; then
 		ensure_cleanup_whitelist_file
@@ -253,7 +291,7 @@ main() {
 		# Pre-flight-only early exit (Task 0.1): lets the force test assert
 		# on the pre-flight summary without executing any destructive step.
 		# Set MDOCTOR_PREFLIGHT_ONLY=true to print the summary and stop.
-		if [ "${MDOCTOR_PREFLIGHT_ONLY:-false}" = true ]; then
+		if is_truthy "${MDOCTOR_PREFLIGHT_ONLY:-false}"; then
 			log "Pre-flight only (MDOCTOR_PREFLIGHT_ONLY=true) — exiting before destructive execution."
 			exit 0
 		fi
@@ -316,7 +354,13 @@ main() {
 	if [ "$_dry_rc" -ne 1 ]; then
 		used_after_kb="$used_before_kb"
 	else
-		used_after_kb="$(disk_used_kb)"
+		used_after_kb=0
+		local used_after_rc=0
+		used_after_kb="$(disk_used_kb)" || used_after_rc=$?
+		if [ "$used_after_rc" -ne 0 ] || [ -z "$used_after_kb" ]; then
+			log "Disk usage: could not determine"
+			used_after_kb=0
+		fi
 	fi
 
 	freed_kb=$((used_before_kb - used_after_kb))

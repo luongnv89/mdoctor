@@ -4,8 +4,17 @@
 # Module metadata registry using parallel indexed arrays (Bash 3.2 compatible)
 #
 
+
+# TRUTHY_BOOTSTRAP (Task 9.5): is_truthy lives in constants.sh, the
+# zero-dependency base lib. Source it before the guard so standalone
+# sourcing of this file still sees the predicate.
+_MDOCTOR_TRUTHY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
+# shellcheck source=/dev/null
+source "${_MDOCTOR_TRUTHY_DIR}/constants.sh"
+unset _MDOCTOR_TRUTHY_DIR
+
 # Guard against double-sourcing (re-sourcing would wipe the registry).
-if [ "${_MDOCTOR_METADATA_LOADED:-false}" = true ]; then
+if is_truthy "${_MDOCTOR_METADATA_LOADED:-}"; then
   return 0 2>/dev/null || true
 fi
 _MDOCTOR_METADATA_LOADED=true

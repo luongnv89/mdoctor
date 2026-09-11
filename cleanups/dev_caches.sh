@@ -35,7 +35,7 @@ clean_dev_caches() {
 
     if [ -d "$cache_dir" ]; then
       local sz_kb
-      sz_kb=$(du_size_kb "$cache_dir")
+      sz_kb=$(du_size_kb "$cache_dir") || sz_kb=""
       sz_kb="${sz_kb:-0}"
 
       if (( sz_kb > 0 )); then
@@ -145,7 +145,7 @@ clean_dev_caches() {
         local nm_sz
         # NR==1 + numeric coercion: du prints the path after the size,
         # and the path itself may contain newlines (Task 3.6).
-        nm_sz=$(du_size_kb "$nm_dir")
+        nm_sz=$(du_size_kb "$nm_dir") || nm_sz=""
         nm_sz="${nm_sz:-0}"
         if (( nm_sz > 0 )); then
           local nm_hr

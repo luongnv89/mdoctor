@@ -53,7 +53,7 @@ EOF
 }
 
 load_cleanup_scope() {
-  if [ "$_MDOCTOR_SCOPE_LOADED" = true ]; then
+  if is_truthy "$_MDOCTOR_SCOPE_LOADED"; then
     return 0
   fi
 

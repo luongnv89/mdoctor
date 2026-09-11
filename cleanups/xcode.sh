@@ -24,7 +24,7 @@ clean_xcode() {
   local derived_data="${HOME}/Library/Developer/Xcode/DerivedData"
   if [ -d "$derived_data" ]; then
     local dd_size
-    dd_size=$(du_size_kb "$derived_data")
+    dd_size=$(du_size_kb "$derived_data") || dd_size=""
     if (( dd_size > 0 )); then
       local dd_hr
       dd_hr=$(human_readable_kb "$dd_size")
