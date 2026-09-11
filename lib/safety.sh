@@ -21,10 +21,8 @@ MDOCTOR_SAFE_ERR_INVALID_TARGET=21
 MDOCTOR_SAFE_ERR_PROTECTED_TARGET=22
 MDOCTOR_SAFE_ERR_SYMLINK_BLOCKED=23
 MDOCTOR_SAFE_ERR_PERMISSION_DENIED=24
-MDOCTOR_SAFE_ERR_SIP_READONLY=25
+MDOCTOR_SAFE_ERR_SIP_OR_READONLY=25
 MDOCTOR_SAFE_ERR_RUNTIME_FAILURE=26
-
-# Backward-compat aliases (for existing callers)
 
 # Cleanup whitelist config
 MDOCTOR_CLEANUP_WHITELIST_FILE="${MDOCTOR_CLEANUP_WHITELIST_FILE:-${HOME}/.config/mdoctor/cleanup_whitelist}"
@@ -47,7 +45,7 @@ safety_error_name() {
     "$MDOCTOR_SAFE_ERR_PROTECTED_TARGET") echo "PROTECTED_TARGET" ;;
     "$MDOCTOR_SAFE_ERR_SYMLINK_BLOCKED") echo "SYMLINK_BLOCKED" ;;
     "$MDOCTOR_SAFE_ERR_PERMISSION_DENIED") echo "PERMISSION_DENIED" ;;
-    "$MDOCTOR_SAFE_ERR_SIP_READONLY") echo "SIP_OR_READONLY" ;;
+    "$MDOCTOR_SAFE_ERR_SIP_OR_READONLY") echo "SIP_OR_READONLY" ;;
     "$MDOCTOR_SAFE_ERR_RUNTIME_FAILURE") echo "RUNTIME_FAILURE" ;;
     *)  echo "UNKNOWN" ;;
   esac
@@ -91,7 +89,7 @@ safety_error_hint() {
     "$MDOCTOR_SAFE_ERR_PERMISSION_DENIED")
       echo "Permission denied. Check ownership/permissions, Full Disk Access, or sudo policy for: ${path}"
       ;;
-    "$MDOCTOR_SAFE_ERR_SIP_READONLY")
+    "$MDOCTOR_SAFE_ERR_SIP_OR_READONLY")
       echo "Likely SIP/read-only restriction. Avoid protected/system paths or run from writable scope: ${path}"
       ;;
     "$MDOCTOR_SAFE_ERR_RUNTIME_FAILURE")
@@ -467,7 +465,7 @@ safe_remove() {
 
     case "$rm_out" in
       *"Read-only file system"*|*"Operation not permitted"*)
-        mapped="$MDOCTOR_SAFE_ERR_SIP_READONLY"
+        mapped="$MDOCTOR_SAFE_ERR_SIP_OR_READONLY"
         ;;
       *"Permission denied"*)
         mapped="$MDOCTOR_SAFE_ERR_PERMISSION_DENIED"

@@ -332,32 +332,17 @@ cmd_check() {
       exec >/dev/null
     fi
 
-    # Map module name to function (exit code captured like cmd_fix).
-    local _check_rc=0
-    case "$module" in
-      system)      check_system ;;
-      disk)        check_disk ;;
-      updates)     check_updates_basic ;;
-      homebrew)    check_homebrew ;;
-      node)        check_node_npm ;;
-      python)      check_python ;;
-      devtools)    check_dev_tools ;;
-      shell)       check_shell_configs ;;
-      network)     check_network ;;
-      battery)     check_battery ;;
-      hardware)    check_hardware ;;
-      bluetooth)   check_bluetooth ;;
-      usb)         check_usb ;;
-      security)    check_security ;;
-      startup)     check_startup ;;
-      performance) check_performance ;;
-      apps)        check_apps ;;
-      git_config)  check_git_config ;;
-      containers)  check_containers ;;
-      storage)     check_storage ;;
-      apt)         check_apt ;;
-    esac
-    _check_rc=$?
+    # Registry-driven dispatch (Task 8.1): the function name comes from the
+    # single register_module declaration, so the per-module case mapping is
+    # no longer a hand-maintained second copy of the registry.
+    local _check_func _check_rc=0
+    _check_func="$(get_module_func "$module" check 2>/dev/null || true)"
+    if [ -n "$_check_func" ]; then
+      "$_check_func" || _check_rc=$?
+    else
+      error "Unknown check module: ${module}"
+      return 1
+    fi
 
     # Stop spinner after single-module check
     progress_stop

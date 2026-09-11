@@ -70,10 +70,6 @@ is_debian() {
   esac
 }
 
-is_supported_platform() {
-  is_macos || is_debian
-}
-
 platform_name() {
   printf '%s\n' "$MDOCTOR_OS_NAME"
 }
