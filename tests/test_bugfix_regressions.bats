@@ -246,6 +246,7 @@ EOF
       source "$ROOT_DIR/lib/safety.sh"
       init_colors; MDOCTOR_DIR="$ROOT_DIR"; export MDOCTOR_DIR OPLOG_ENABLED=false; ACTIONS=()
       source "$ROOT_DIR/lib/disk.sh"
+      source "$ROOT_DIR/lib/perf_probes.sh"
       source "$ROOT_DIR/checks/performance.sh"
       check_performance
       printf "ACTIONS:[%s]\n" "${ACTIONS[*]}"' >"$t/out.txt" 2>"$t/err.txt" || fail "check_performance exited non-zero"

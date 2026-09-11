@@ -34,9 +34,9 @@ check_performance() {
       esac
     fi
 
-    # Swap usage
+    # Swap usage (sampling: lib/perf_probes.sh)
     local swap_total
-    swap_total=$(sysctl -n vm.swapusage 2>/dev/null || echo "")
+    swap_total=$(perf_probe_swap 2>/dev/null | sed 's/^macos //' || true)
     if [ -n "$swap_total" ]; then
       status_info "Swap: ${swap_total}"
     fi
@@ -58,12 +58,12 @@ check_performance() {
       fi
     fi
 
-    # Swap
-    if [ -r /proc/meminfo ]; then
-      local swap_total_kb swap_used_kb
-      swap_total_kb=$(awk '/^SwapTotal:/ {print $2}' /proc/meminfo)
-      swap_used_kb=$(( swap_total_kb - $(awk '/^SwapFree:/ {print $2}' /proc/meminfo) ))
-      if (( swap_total_kb > 0 )); then
+    # Swap (sampling: lib/perf_probes.sh — "linux <used_kb> <total_kb>")
+    local swap_rec swap_total_kb swap_used_kb
+    if swap_rec=$(perf_probe_swap 2>/dev/null); then
+      swap_used_kb=$(echo "$swap_rec" | awk '{print $2}')
+      swap_total_kb=$(echo "$swap_rec" | awk '{print $3}')
+      if (( ${swap_total_kb:-0} > 0 )); then
         status_info "Swap: $(kb_to_human "$swap_used_kb") used / $(kb_to_human "$swap_total_kb") total"
       fi
     fi
@@ -117,41 +117,40 @@ check_performance() {
     done <<< "$top_mem"
   fi
 
-  # Zombie processes (Task 2.5: guarded ps)
-  local zombie_count
+  # Zombie processes (Task 2.5: guarded ps; sampling: lib/perf_probes.sh —
+  # one "<pid> <ppid> <name>" line per zombie; rc 1 when ps is missing)
+  local zombie_list zombie_count
   if ! command -v ps >/dev/null 2>&1; then
     status_info "Skipping zombie probe: ps not found."
   else
-    # shellcheck disable=SC2009
-    zombie_count=$(ps -eo stat 2>/dev/null | grep -c '^Z' || true)
+    zombie_list=$(perf_probe_zombies 2>/dev/null || true)
+    if [ -z "$zombie_list" ]; then
+      zombie_count=0
+    else
+      zombie_count=$(printf '%s\n' "$zombie_list" | grep -c . || true)
+    fi
     if (( zombie_count > 0 )); then
       status_warn "Zombie processes: ${zombie_count}"
       # List zombie processes with their parent PIDs
-      local zombie_list
-      zombie_list=$(ps -eo pid,ppid,stat,comm 2>/dev/null | awk '$3 ~ /^Z/ {print $1, $2, $4}')
-      if [ -n "$zombie_list" ]; then
-        status_info "Zombie process details (PID → Parent PID — Command):"
-        local parent_pids=""
-        while IFS= read -r zline; do
-          local zpid zppid zname
-          zpid=$(echo "$zline" | awk '{print $1}')
-          zppid=$(echo "$zline" | awk '{print $2}')
-          zname=$(echo "$zline" | awk '{$1=""; $2=""; print}' | sed 's/^ *//')
-          status_info "  PID ${zpid} → Parent ${zppid} — ${zname}"
-          if [ -n "$parent_pids" ]; then
-            parent_pids="${parent_pids} ${zppid}"
-          else
-            parent_pids="${zppid}"
-          fi
-        done <<< "$zombie_list"
-        # Deduplicate parent PIDs
-        local unique_parents
-        unique_parents=$(echo "$parent_pids" | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/ *$//')
-        if [ -n "$unique_parents" ]; then
-          add_action "Found ${zombie_count} zombie process(es). Kill their parent process(es) to clean up: kill -HUP ${unique_parents}"
+      status_info "Zombie process details (PID → Parent PID — Command):"
+      local parent_pids=""
+      while IFS= read -r zline; do
+        local zpid zppid zname
+        zpid=$(echo "$zline" | awk '{print $1}')
+        zppid=$(echo "$zline" | awk '{print $2}')
+        zname=$(echo "$zline" | awk '{$1=""; $2=""; print}' | sed 's/^ *//')
+        status_info "  PID ${zpid} → Parent ${zppid} — ${zname}"
+        if [ -n "$parent_pids" ]; then
+          parent_pids="${parent_pids} ${zppid}"
+        else
+          parent_pids="${zppid}"
         fi
-      else
-        add_action "Found ${zombie_count} zombie process(es). These are defunct processes that can be cleaned up by killing their parent."
+      done <<< "$zombie_list"
+      # Deduplicate parent PIDs
+      local unique_parents
+      unique_parents=$(echo "$parent_pids" | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/ *$//')
+      if [ -n "$unique_parents" ]; then
+        add_action "Found ${zombie_count} zombie process(es). Kill their parent process(es) to clean up: kill -HUP ${unique_parents}"
       fi
     else
       status_ok "No zombie processes."

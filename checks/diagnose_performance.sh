@@ -285,11 +285,12 @@ check_memory_pressure() {
 ########################################
 
 check_swap_usage() {
-  local swap_total swap_free swap_used pct swap_hr
+  local pct swap_hr
 
   if is_macos; then
+    # Sampling: lib/perf_probes.sh ("macos <raw>").
     local swap_total_raw
-    swap_total_raw=$(sysctl -n vm.swapusage 2>/dev/null || echo "")
+    swap_total_raw=$(perf_probe_swap 2>/dev/null | sed 's/^macos //' || true)
     if [ -n "$swap_total_raw" ]; then
       status_info "Swap: ${swap_total_raw}"
 
@@ -302,11 +303,13 @@ check_swap_usage() {
       status_info "Swap: unavailable"
     fi
   else
-    swap_total=$(awk '/^SwapTotal:/ {print $2}' /proc/meminfo 2>/dev/null || true)
-    swap_free=$(awk '/^SwapFree:/ {print $2}' /proc/meminfo 2>/dev/null || true)
+    # Sampling: lib/perf_probes.sh ("linux <used_kb> <total_kb>").
+    local swap_rec swap_used swap_total
+    swap_rec=$(perf_probe_swap 2>/dev/null || true)
+    swap_used=$(echo "$swap_rec" | awk '{print $2}')
+    swap_total=$(echo "$swap_rec" | awk '{print $3}')
     swap_total="${swap_total:-0}"
-    swap_free="${swap_free:-0}"
-    swap_used=$((${swap_total:-0} - ${swap_free:-0}))
+    swap_used="${swap_used:-0}"
 
     if (( swap_total > 0 )); then
       pct=$((swap_used * 100 / swap_total))
@@ -426,41 +429,43 @@ check_disk_hotspots() {
 
 check_zombie_processes() {
   # Task 2.5: guarded ps; absent ps reports a skip.
+  # Sampling: lib/perf_probes.sh (one "<pid> <ppid> <name>" line per
+  # zombie; the count derives from the probe lines, so count and details
+  # agree by construction).
   if ! command -v ps >/dev/null 2>&1; then
     status_info "Skipping zombie probe: ps not found."
     return 0
   fi
 
-  local zombie_count
-  zombie_count=$(ps -eo stat 2>/dev/null | grep -c '^Z' || true)
+  local zombie_list zombie_count parent_pids unique_parents
+  zombie_list=$(perf_probe_zombies 2>/dev/null || true)
+
+  if [ -z "$zombie_list" ]; then
+    zombie_count=0
+  else
+    zombie_count=$(printf '%s\n' "$zombie_list" | grep -c . || true)
+  fi
 
   if (( zombie_count > 0 )); then
     status_warn "Zombie processes: ${zombie_count}"
 
-    local zombie_list parent_pids unique_parents
-    zombie_list=$(ps -eo pid,ppid,stat,comm 2>/dev/null | awk '$3 ~ /^Z/ {print $1, $2, $4}')
-
-    if [ -n "$zombie_list" ]; then
-      parent_pids=""
-      while IFS= read -r zline; do
-        local zpid zppid zname
-        zpid=$(echo "$zline" | awk '{print $1}')
-        zppid=$(echo "$zline" | awk '{print $2}')
-        zname=$(echo "$zline" | awk '{$1=""; $2=""; print}' | sed 's/^ *//')
-        status_info "  PID ${zpid} → Parent ${zppid} — ${zname}"
-        if [ -n "$parent_pids" ]; then
-          parent_pids="${parent_pids} ${zppid}"
-        else
-          parent_pids="${zppid}"
-        fi
-      done <<< "$zombie_list"
-
-      unique_parents=$(echo "$parent_pids" | tr ' ' '\n' | sort -un | tr '\n' ' ' | sed 's/ *$//')
-      if [ -n "$unique_parents" ]; then
-        add_diagnosis_action "warning" "Kill zombie parent processes: kill -HUP ${unique_parents}"
+    parent_pids=""
+    while IFS= read -r zline; do
+      local zpid zppid zname
+      zpid=$(echo "$zline" | awk '{print $1}')
+      zppid=$(echo "$zline" | awk '{print $2}')
+      zname=$(echo "$zline" | awk '{$1=""; $2=""; print}' | sed 's/^ *//')
+      status_info "  PID ${zpid} → Parent ${zppid} — ${zname}"
+      if [ -n "$parent_pids" ]; then
+        parent_pids="${parent_pids} ${zppid}"
+      else
+        parent_pids="${zppid}"
       fi
-    else
-      add_diagnosis_action "warning" "Found ${zombie_count} zombie process(es). These can be cleaned up by killing their parent process."
+    done <<< "$zombie_list"
+
+    unique_parents=$(echo "$parent_pids" | tr ' ' '\n' | sort -un | tr '\n' ' ' | sed 's/ *$//')
+    if [ -n "$unique_parents" ]; then
+      add_diagnosis_action "warning" "Kill zombie parent processes: kill -HUP ${unique_parents}"
     fi
   else
     status_ok "No zombie processes."
@@ -562,10 +567,11 @@ check_open_connections() {
 check_swap_thrashing() {
   local swap_pct=0 iowait_pct=0
 
-  # Get swap usage
+  # Sampling: lib/perf_probes.sh (swap record; the DIAG_SWAP_PCT fixed
+  # input stays below — it keys on the derived percent, see probe header).
   if is_macos; then
     local swap_total_raw swap_total_mb swap_used_mb
-    swap_total_raw=$(sysctl -n vm.swapusage 2>/dev/null || echo "")
+    swap_total_raw=$(perf_probe_swap 2>/dev/null | sed 's/^macos //' || true)
     if [ -n "$swap_total_raw" ]; then
       # Format varies by macOS version: "0.00M" or "0.00Mb".
       swap_total_mb=$(echo "$swap_total_raw" | sed -n 's/.*total = \([0-9.]*\)[Mm][Bb]*.*/\1/p' | tr -d ' ')
@@ -575,9 +581,10 @@ check_swap_thrashing() {
       fi
     fi
   else
-    local swap_total swap_used
-    swap_total=$(awk '/^SwapTotal:/ {print $2}' /proc/meminfo 2>/dev/null || true)
-    swap_used=$(awk 'BEGIN{t=0} /^SwapTotal:/{t=$2} /^SwapFree:/{print t-$2}' /proc/meminfo 2>/dev/null || true)
+    local swap_rec swap_total swap_used
+    swap_rec=$(perf_probe_swap 2>/dev/null || true)
+    swap_used=$(echo "$swap_rec" | awk '{print $2}')
+    swap_total=$(echo "$swap_rec" | awk '{print $3}')
     swap_total="${swap_total:-0}"
     swap_used="${swap_used:-0}"
     if (( swap_total > 0 )); then
@@ -595,8 +602,12 @@ check_swap_thrashing() {
     iowait_pct=$(get_linux_iowait_pct)
   elif is_macos; then
     # macOS proxy: high memory pressure + swap activity = likely thrashing
-    local pressure
-    pressure=$(sysctl -n kern.memorystatus_vm_pressure_level 2>/dev/null || echo 1)
+    # (pressure sampled via lib/perf_probes.sh; unreadable level falls
+    # back to 1/normal as before).
+    local pressure_rec pressure
+    pressure_rec=$(perf_probe_mem_pressure 2>/dev/null || true)
+    pressure=$(echo "$pressure_rec" | awk '{print $2}')
+    [ -z "$pressure" ] && pressure=1
     if [ "$pressure" = "4" ] && (( swap_pct > MDOCTOR_DIAG_PRESSURE_SWAP )); then
       iowait_pct=$MDOCTOR_DIAG_IOWAIT_HIGH  # Artificially high to trigger thrashing warning
     fi
@@ -617,27 +628,30 @@ check_swap_thrashing() {
 ########################################
 
 check_cpu_io_contention() {
-  local load1 iowait_pct=0
+  local load1 cores iowait_pct=0
 
   if is_macos; then
     # macOS does not expose Linux-style CPU iowait; skip this correlation
     # rather than using unrelated memory counters as a disk I/O proxy.
     return 0
   else
-    load1=$(awk '{print $1}' /proc/loadavg 2>/dev/null)
+    # Sampling: lib/perf_probes.sh (DIAG_LOADAVG / DIAG_CORES fixed
+    # inputs are applied inside the probe, like every other consumer).
+    local probe_load
+    if ! probe_load=$(perf_probe_load 2>/dev/null); then
+      return 0
+    fi
+    load1=$(echo "$probe_load" | awk '{print $1}')
+    cores=$(echo "$probe_load" | awk '{print $2}')
     if [ -f /proc/stat ]; then
       iowait_pct=$(get_linux_iowait_pct)
     fi
   fi
 
   [ -z "$load1" ] && return 0
+  [ -z "$cores" ] && return 0
 
-  local cores load_int threshold
-  if is_macos; then
-    cores=$(sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
-  else
-    cores=$(nproc 2>/dev/null || echo 4)
-  fi
+  local load_int threshold
   load_int=$(awk -v l="$load1" 'BEGIN {printf "%d", l * 100}')
   threshold=$((cores * 100))
 

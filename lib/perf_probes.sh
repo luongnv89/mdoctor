@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
 # lib/perf_probes.sh
-# Shared performance samplers (issue #87, part 1 of 2 — F-DEAD-015).
+# Shared performance samplers (issues #87/#88 — F-DEAD-015).
 # checks/performance.sh and checks/diagnose_performance.sh previously
-# sampled the same three platform metrics with their own inline branches
-# (load average, top-CPU table, memory pressure); each sampler below is the
-# single definition site for one metric, following the lib/disk.sh
-# precedent (du_size_kb, disk_used_pct_root).
+# sampled the same five platform metrics with their own inline branches
+# (load average, top-CPU table, memory pressure, swap usage, zombie scan);
+# each sampler below is the single definition site for one metric,
+# following the lib/disk.sh precedent (du_size_kb, disk_used_pct_root).
 #
 # Sink contract: probes are sink-agnostic. They never call status_*,
 # add_action, or add_diagnosis_action — they print one machine-readable
@@ -18,19 +18,16 @@
 # Platform branching gates on lib/platform.sh predicates (is_macos /
 # is_linux) only — never on uname output directly.
 #
-# Test overrides (inherited from checks/diagnose_performance.sh): every
-# threshold probe honors a DIAG_* environment override so tests feed fixed
-# inputs deterministically:
+# Test overrides (inherited from checks/diagnose_performance.sh): the
+# native-unit probes honor a DIAG_* environment override so tests feed
+# fixed inputs deterministically:
 #   DIAG_LOADAVG / DIAG_CORES .... load average and core count
 #   DIAG_MEM_AVAIL_PCT ........... memory available percent (pressure, Linux)
 #   DIAG_MEM_PRESSURE_LEVEL ...... memory pressure level (macOS sysctl value)
-#
-# Extension points for part 2 (#88: swap, zombies, retire duplicates):
-#   perf_probe_swap .... planned record: "macos <raw>" / "linux <used_kb> <total_kb>"
-#   perf_probe_zombies . planned record: one "<pid> <ppid> <name>" line per
-#                        zombie, empty output with rc 1 when ps is missing.
-#   Keep the same shape: platform branch first, DIAG_* override after the
-#   live sample, machine-readable record on stdout, rc 1 when indeterminable.
+# Swap thresholds key on a caller-derived percent rather than a native
+# unit, so DIAG_SWAP_PCT stays in the callers (applied after the percent
+# derivation): synthesizing kb inside the probe would change the live kb
+# values the callers display. The swap probe itself is a pure sampler.
 #
 
 # TRUTHY_BOOTSTRAP (Task 9.5): is_truthy lives in constants.sh, the
@@ -138,4 +135,47 @@ perf_probe_mem_pressure() {
   fi
 
   echo "linux ${avail_pct}"
+}
+
+# perf_probe_swap — sample swap usage in platform-native units.
+# Prints one record:
+#   "macos <raw>" .............. `sysctl -n vm.swapusage` (may be empty)
+#   "linux <used_kb> <total_kb>"  SwapTotal/SwapFree from /proc/meminfo
+# macOS always succeeds (callers treat an empty raw as "unavailable",
+# mirroring perf_probe_mem_pressure); Linux returns 1 with no output when
+# /proc/meminfo is unreadable or carries no swap fields. Callers derive
+# the threshold percent from the record and apply DIAG_SWAP_PCT there
+# (see header comment).
+perf_probe_swap() {
+  if is_macos; then
+    local raw
+    raw=$(sysctl -n vm.swapusage 2>/dev/null || echo "")
+    echo "macos ${raw}"
+    return 0
+  fi
+
+  if [ ! -r /proc/meminfo ]; then
+    return 1
+  fi
+  local swap_total_kb swap_free_kb swap_used_kb
+  swap_total_kb=$(awk '/^SwapTotal:/ {print $2}' /proc/meminfo)
+  swap_free_kb=$(awk '/^SwapFree:/ {print $2}' /proc/meminfo)
+  if [ -z "$swap_total_kb" ] || [ -z "$swap_free_kb" ]; then
+    return 1
+  fi
+  swap_used_kb=$((${swap_total_kb:-0} - ${swap_free_kb:-0}))
+  echo "linux ${swap_used_kb} ${swap_total_kb}"
+}
+
+# perf_probe_zombies — sample zombie processes.
+# Prints one "<pid> <ppid> <name>" line per zombie (the same
+# `ps -eo pid,ppid,stat,comm` + `$3 ~ /^Z/` shape both callers previously
+# inlined, so counts and details agree by construction). Empty output
+# with rc 0 when there are no zombies; rc 1 with no output when ps is
+# missing. Callers derive the count from the line count.
+perf_probe_zombies() {
+  if ! command -v ps >/dev/null 2>&1; then
+    return 1
+  fi
+  ps -eo pid,ppid,stat,comm 2>/dev/null | awk '$3 ~ /^Z/ {print $1, $2, $4}' || true
 }

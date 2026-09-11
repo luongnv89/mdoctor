@@ -34,7 +34,10 @@ check_system() {
   status_info "Architecture: ${uname_arch}"
   status_info "Uptime: ${uptime_str}"
 
-  # Load average
+  # Load average (stays inline by design, #88 note: this reports the
+  # 1/5/15-min triple for display, while perf_probe_load serves the
+  # 1-min + core-count threshold pair — different shapes, not a pure
+  # duplicate, so it is out of scope for the shared probes).
   local load
   if is_macos; then
     load=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2","$3","$4}')
