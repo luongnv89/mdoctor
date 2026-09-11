@@ -70,7 +70,14 @@ setup_file() {
   # HEAD (often this very auto/ branch), but the installer update path
   # pulls `origin main`, so the default shallow clone must land on main
   # for the fast-forward assertion to hold regardless of which branch
-  # the working tree sits on.
+  # the working tree sits on. The checkout itself may have no local main
+  # (e.g. a shallow single-branch CI checkout), so create it at the
+  # checkout HEAD commit when it is missing — pointing HEAD at a
+  # nonexistent ref would serve an "empty repository".
+  if ! git --git-dir="$TEST_TMP/upstream.git" show-ref --verify -q refs/heads/main; then
+    _fixture_head="$(git --git-dir="$TEST_TMP/upstream.git" rev-parse HEAD)" || return 1
+    git --git-dir="$TEST_TMP/upstream.git" update-ref refs/heads/main "$_fixture_head" || return 1
+  fi
   git --git-dir="$TEST_TMP/upstream.git" symbolic-ref HEAD refs/heads/main || return 1
   GIT_PORT="$(_free_port)" || return 1
   HTTP_PORT="$(_free_port)" || return 1
