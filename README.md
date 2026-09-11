@@ -240,10 +240,11 @@ mdoctor update
 
 ## Configuration
 
-Override cleanup age threshold (default 7 days):
+Override cleanup age thresholds (per-module defaults: 7 for logs/downloads, 30 for crash_reports/xcode, 90 for ios_backups):
 
 ```bash
 DAYS_OLD_OVERRIDE=14 mdoctor clean --force
+DAYS_OLD_NODE_MODULES=60 mdoctor clean --force   # stale node_modules in dev_caches
 ```
 
 Cleanup whitelist path override:

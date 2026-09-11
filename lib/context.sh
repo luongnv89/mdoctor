@@ -20,7 +20,9 @@ _MDOCTOR_CONTEXT_LOADED=true
 
 # Module context contract — all 11 inputs (name: type = default):
 #   DRY_RUN        bool = true    fail-closed: only an explicit false deletes
-#   DAYS_OLD       int = 7        staleness threshold (DAYS_OLD_OVERRIDE wins)
+#   DAYS_OLD       int = <module>  staleness threshold; unset = module's own
+#                                  default (7/30/90 per cleanups/*.sh);
+#                                  DAYS_OLD_OVERRIDE wins when set
 #   LOGFILE        path = ""      run log; each entry point sets its own file
 #   STEP_CURRENT   int = 0        progress numerator for the spinner
 #   STEP_TOTAL     int = 1        progress denominator for the spinner
@@ -37,7 +39,12 @@ mdoctor_context_init() {
   # Scalars are exported: every module in checks/, cleanups/ and fixes/
   # consumes them cross-file, which is exactly what the export declares.
   export DRY_RUN=true
-  export DAYS_OLD="${DAYS_OLD_OVERRIDE:-7}"
+  # Issue #94: export DAYS_OLD only when an override is present so each
+  # cleanups/* module keeps its own documented ${DAYS_OLD:-N} default
+  # reachable (a force-exported 7 shadowed the 30/90 module defaults).
+  if [ -n "${DAYS_OLD_OVERRIDE:-}" ]; then
+    export DAYS_OLD="${DAYS_OLD_OVERRIDE}"
+  fi
   export LOGFILE="${LOGFILE:-}"
   export STEP_CURRENT=0
   export STEP_TOTAL=1

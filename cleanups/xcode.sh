@@ -18,7 +18,7 @@ fi
 clean_xcode() {
   local rc=0
   local days="${DAYS_OLD:-30}"
-  header "Xcode cleanup"
+  header "Xcode cleanup (older than ${days} days)"
 
   # DerivedData (safe — rebuilt on next build)
   local derived_data="${HOME}/Library/Developer/Xcode/DerivedData"

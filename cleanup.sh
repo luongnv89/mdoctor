@@ -267,7 +267,7 @@ main() {
 	# Per-module accumulator (Task 9.3): a failing module must not abort its
 	# siblings under `set -e`, but partial failures propagate in the exit code.
 	local _cleanup_rc=0
-	debug_log "cleanup.sh start dry_run=${DRY_RUN} days_old=${DAYS_OLD}"
+	debug_log "cleanup.sh start dry_run=${DRY_RUN} days_old=${DAYS_OLD:-}"
 	log "$(disk_usage)"
 
 	# Core generic cleanups – safe-ish for any macOS user
