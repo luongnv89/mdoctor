@@ -110,16 +110,13 @@ clean_dev_caches() {
   local search_dirs=()
   local d
 
-  if declare -f cleanup_scope_get_search_dirs >/dev/null 2>&1; then
-    while IFS= read -r d; do
-      [ -z "$d" ] && continue
-      [ -d "$d" ] && search_dirs+=("$d")
-    done < <(cleanup_scope_get_search_dirs)
-  else
-    for d in "${HOME}/Projects" "${HOME}/projects" "${HOME}/code" "${HOME}/workspace" "${HOME}/dev" "${HOME}/src"; do
-      [ -d "$d" ] && search_dirs+=("$d")
-    done
-  fi
+  # lib/cleanup_scope.sh is sourced on every path before this module runs
+  # (cleanup.sh / lib/clean_common.sh), so the function is always present;
+  # the else-branch duplicating _mdoctor_scope_default_dirs is gone.
+  while IFS= read -r d; do
+    [ -z "$d" ] && continue
+    [ -d "$d" ] && search_dirs+=("$d")
+  done < <(cleanup_scope_get_search_dirs)
 
   if (( ${#search_dirs[@]} > 0 )); then
     local nm_count=0
@@ -138,7 +135,7 @@ clean_dev_caches() {
       while IFS= read -r -d '' nm_dir; do
         [ -z "$nm_dir" ] && continue
 
-        if declare -f cleanup_scope_is_excluded >/dev/null 2>&1 && cleanup_scope_is_excluded "$nm_dir"; then
+        if cleanup_scope_is_excluded "$nm_dir"; then
           local nm_skip
           nm_skip="${nm_dir/#$HOME/~}"
           log "Skipping node_modules by cleanup scope: ${nm_skip}"

@@ -102,23 +102,6 @@ risk_badge() {
   esac
 }
 
-# list_modules [TYPE] → prints formatted table of modules
-list_modules() {
-  local filter_type="${1:-}"
-  local i=0
-  while (( i < _MOD_COUNT )); do
-    if [ -z "$filter_type" ] || [ "${_MOD_TYPES[$i]}" = "$filter_type" ]; then
-      printf "  %-8s %-14s %-10s %-6s %s\n" \
-        "${_MOD_TYPES[$i]}" \
-        "${_MOD_NAMES[$i]}" \
-        "${_MOD_CATS[$i]}" \
-        "$(risk_badge "${_MOD_RISKS[$i]}")" \
-        "${_MOD_DESCS[$i]}"
-    fi
-    i=$((i + 1))
-  done
-}
-
 # list_modules_by_category TYPE → prints modules grouped by category
 list_modules_by_category() {
   local filter_type="${1:-}"

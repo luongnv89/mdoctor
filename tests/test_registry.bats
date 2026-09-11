@@ -26,6 +26,18 @@ setup() {
   [ "$count" -eq 0 ]
 }
 
+@test "dead metadata/platform helpers are gone (issue #91)" {
+  # F-DEAD-003 / F-DEAD-006: unreferenced helpers were deleted, not kept.
+  grep -n 'list_modules()' "${REPO_ROOT}/lib/metadata.sh" && return 1 || true
+  grep -n 'is_supported_platform()' "${REPO_ROOT}/lib/platform.sh" && return 1 || true
+}
+
+@test "check dispatch reads the registry function column (issue #91)" {
+  # F-DEAD-001: the single-module check dispatcher routes through
+  # get_module_func instead of a hand-maintained case mapping.
+  grep -q 'get_module_func "$module" check' "${REPO_ROOT}/mdoctor"
+}
+
 @test "help and Available-modules errors are registry-derived (platform-filtered)" {
   run "$REPO_ROOT/mdoctor" help
   if is_macos; then
