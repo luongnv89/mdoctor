@@ -191,7 +191,7 @@ EOF
   safe_remove_children "$TMPHOME/.cache/pip" >/dev/null 2>&1 || rc_children=$?
   [ "$rc_children" -eq "$MDOCTOR_SAFE_ERR_SYMLINK_BLOCKED" ] || fail "Expected symlink-blocked code for symlinked dir argument"
   assert_file_exists "$TMPHOME/Documents/keep.txt"
-  MDOCTOR_ASSUME_YES=true HOME="$TMPHOME" ./mdoctor clean --force -m dev >/dev/null 2>&1 || true
+  MDOCTOR_ASSUME_YES=true HOME="$TMPHOME" ./mdoctor clean --force -m dev_caches >/dev/null 2>&1 || true
   assert_file_exists "$TMPHOME/Documents/keep.txt"
   rm -f "$TMPHOME/.cache/pip"
 }

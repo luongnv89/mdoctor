@@ -59,7 +59,7 @@ recommended first command.
 |---------|-------|-------------|
 | `mdoctor check` | `[SAFE]` | Run full system health audit (20 checks on macOS / 18 on Linux, read-only) |
 | `mdoctor check --json` | `[SAFE]` | JSON output for automation |
-| `mdoctor clean` | `[HIGH]` | Run system cleanup (dry-run by default, 10 on macOS / 9 on Linux) |
+| `mdoctor clean` | `[HIGH]` | Run system cleanup (dry-run by default, 9 on macOS / 8 on Linux) |
 | `mdoctor fix <target>` | `[MED]` | Apply common fixes (9 on macOS / 2 on Linux) |
 | `mdoctor diagnose` | `[SAFE]` | Run active performance diagnosis (read-only — prints remedies, never runs them) |
 | `mdoctor info` | `[SAFE]` | Show system information summary |
@@ -356,7 +356,7 @@ mdoctor/
 ├── install.sh           # One-line installer
 ├── uninstall.sh         # Uninstaller
 ├── doctor.sh            # Health check engine (20 on macOS / 18 on Linux)
-├── cleanup.sh           # Cleanup engine (10 on macOS / 9 on Linux)
+├── cleanup.sh           # Cleanup engine (9 modules on macOS / 8 on Linux)
 ├── lib/                 # Shared libraries (18 files)
 │   ├── platform.sh      # OS/distro detection (macOS, Debian, Ubuntu, etc.)
 │   ├── constants.sh     # Named thresholds/timeouts + truthy predicate
