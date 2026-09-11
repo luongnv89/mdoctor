@@ -18,10 +18,11 @@ fi
 check_performance() {
   step "Performance & Memory"
 
-  # Memory pressure level
+  # Memory pressure level (sampling: lib/perf_probes.sh)
   if is_macos; then
-    local pressure
-    pressure=$(sysctl -n kern.memorystatus_vm_pressure_level 2>/dev/null || echo "")
+    local pressure_rec pressure
+    pressure_rec=$(perf_probe_mem_pressure 2>/dev/null || true)
+    pressure=$(echo "$pressure_rec" | awk '{print $2}')
     if [ -n "$pressure" ]; then
       case "$pressure" in
         1) status_ok "Memory pressure: normal" ;;
@@ -40,13 +41,11 @@ check_performance() {
       status_info "Swap: ${swap_total}"
     fi
   else
-    # Linux: memory pressure via MemAvailable ratio
-    if [ -r /proc/meminfo ]; then
-      local mem_total_kb mem_avail_kb
-      mem_total_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
-      mem_avail_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
-      if [ -n "$mem_total_kb" ] && [ -n "$mem_avail_kb" ] && (( mem_total_kb > 0 )); then
-        local avail_pct=$(( mem_avail_kb * 100 / mem_total_kb ))
+    # Linux: memory pressure via MemAvailable ratio (sampling: lib/perf_probes.sh)
+    local pressure_rec avail_pct
+    if pressure_rec=$(perf_probe_mem_pressure 2>/dev/null); then
+      avail_pct=$(echo "$pressure_rec" | awk '{print $2}')
+      if [ -n "$avail_pct" ]; then
         if (( avail_pct < 10 )); then
           status_fail "Memory pressure: critical (${avail_pct}% available)"
           add_action "Memory pressure is critical. Close applications immediately."
@@ -57,8 +56,10 @@ check_performance() {
           status_ok "Memory pressure: normal (${avail_pct}% available)"
         fi
       fi
+    fi
 
-      # Swap
+    # Swap
+    if [ -r /proc/meminfo ]; then
       local swap_total_kb swap_used_kb
       swap_total_kb=$(awk '/^SwapTotal:/ {print $2}' /proc/meminfo)
       swap_used_kb=$(( swap_total_kb - $(awk '/^SwapFree:/ {print $2}' /proc/meminfo) ))
@@ -68,16 +69,13 @@ check_performance() {
     fi
   fi
 
-  # Top 5 CPU-consuming processes (Task 2.5: guarded long-option ps)
+  # Top 5 CPU-consuming processes (Task 2.5: guarded long-option ps;
+  # sampling: lib/perf_probes.sh)
   local top_cpu
   if ! command -v ps >/dev/null 2>&1; then
     status_info "Skipping top-CPU probe: ps not found."
   else
-    if is_macos; then
-      top_cpu=$(ps -arcwwxo "pid,%cpu,comm" 2>/dev/null | head -6 | tail -5)
-    else
-      top_cpu=$(ps -eo pid,%cpu,comm --sort=-%cpu 2>/dev/null | head -6 | tail -5)
-    fi
+    top_cpu=$(perf_probe_top_cpu_raw 2>/dev/null | head -6 | tail -5 || true)
   fi
   if [ -n "${top_cpu:-}" ]; then
     status_info "Top CPU processes:"
@@ -160,24 +158,21 @@ check_performance() {
     fi
   fi
 
-  # Load average assessment
-  local cores load1
-  if is_macos; then
-    cores=$(sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
-    load1=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}')
-  else
-    cores=$(nproc 2>/dev/null || echo 4)
-    load1=$(awk '{print $1}' /proc/loadavg 2>/dev/null || echo "")
-  fi
-  if [ -n "$load1" ] && [ -n "$cores" ]; then
-    local load_int
-    load_int=$(awk -v l="$load1" 'BEGIN {printf "%d", l * 100}')
-    local threshold=$((cores * 100))
-    if (( load_int > threshold )); then
-      status_warn "Load average (${load1}) exceeds CPU core count (${cores})"
-      add_action "System load is high. Check running processes with 'top' or 'Activity Monitor'."
-    else
-      status_ok "Load average (${load1}) within normal range for ${cores} cores."
+  # Load average assessment (sampling: lib/perf_probes.sh)
+  local probe_load cores load1
+  if probe_load=$(perf_probe_load 2>/dev/null); then
+    load1=$(echo "$probe_load" | awk '{print $1}')
+    cores=$(echo "$probe_load" | awk '{print $2}')
+    if [ -n "$load1" ] && [ -n "$cores" ]; then
+      local load_int
+      load_int=$(awk -v l="$load1" 'BEGIN {printf "%d", l * 100}')
+      local threshold=$((cores * 100))
+      if (( load_int > threshold )); then
+        status_warn "Load average (${load1}) exceeds CPU core count (${cores})"
+        add_action "System load is high. Check running processes with 'top' or 'Activity Monitor'."
+      else
+        status_ok "Load average (${load1}) within normal range for ${cores} cores."
+      fi
     fi
   fi
 }

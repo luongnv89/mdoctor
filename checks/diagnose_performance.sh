@@ -25,6 +25,9 @@
 #   DIAG_SWAP_PCT ................ swap usage percent
 #   DIAG_LINUX_IOWAIT_PCT ........ sampled CPU iowait percent (pre-existing)
 #   DIAG_CPU_USER_PCT / DIAG_CPU_SYS_PCT .. user/kernel CPU time split
+# (Issue #87: the load, top-CPU and memory-pressure samplers live in
+# lib/perf_probes.sh; their DIAG_* overrides are applied inside the
+# shared probe so both callers stay deterministic under test.)
 
 # Module context contract (Task 9.1): the 11 globals this module reads are
 # declared by mdoctor_context_init in lib/context.sh. Fail loudly when a
@@ -94,26 +97,20 @@ get_linux_iowait_pct() {
 check_load_average() {
   local cores load1 load_int threshold
   local ratio_pct
+  local probe_load
 
-  if is_macos; then
-    cores=$(sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
-    load1=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}')
-  else
-    cores=$(nproc 2>/dev/null || echo 4)
-    load1=$(awk '{print $1}' /proc/loadavg 2>/dev/null || echo "")
+  # Sampling: lib/perf_probes.sh (DIAG_LOADAVG / DIAG_CORES overrides
+  # are applied inside the probe).
+  if ! probe_load=$(perf_probe_load 2>/dev/null); then
+    status_info "Load average: unable to determine"
+    return 0
   fi
+  load1=$(echo "$probe_load" | awk '{print $1}')
+  cores=$(echo "$probe_load" | awk '{print $2}')
 
   if [ -z "$load1" ] || [ -z "$cores" ]; then
     status_info "Load average: unable to determine"
     return 0
-  fi
-
-  # Fixed inputs for tests (see header comment).
-  if [ -n "${DIAG_LOADAVG:-}" ]; then
-    load1="$DIAG_LOADAVG"
-  fi
-  if [ -n "${DIAG_CORES:-}" ]; then
-    cores="$DIAG_CORES"
   fi
 
   # Convert to integers (load1 * 100)
@@ -141,16 +138,13 @@ check_top_cpu_consumers() {
   local high_count=0
 
   # Task 2.5: guarded long-option ps; absent ps reports a skip.
+  # Sampling: lib/perf_probes.sh (row slicing keeps this caller's top-10).
   if ! command -v ps >/dev/null 2>&1; then
     status_info "Skipping top-CPU probe: ps not found."
     return 0
   fi
 
-  if is_macos; then
-    top_cpu=$(ps -arcwwxo "pid,%cpu,comm" 2>/dev/null | head -11 | tail -10)
-  else
-    top_cpu=$(ps -eo pid,%cpu,comm --sort=-%cpu 2>/dev/null | head -11 | tail -10)
-  fi
+  top_cpu=$(perf_probe_top_cpu_raw 2>/dev/null | head -11 | tail -10 || true)
 
   if [ -z "$top_cpu" ]; then
     status_info "Top CPU processes: unable to retrieve"
@@ -249,14 +243,12 @@ check_memory_usage() {
 ########################################
 
 check_memory_pressure() {
+  # Sampling: lib/perf_probes.sh (DIAG_MEM_PRESSURE_LEVEL /
+  # DIAG_MEM_AVAIL_PCT overrides are applied inside the probe).
   if is_macos; then
-    local pressure
-    pressure=$(sysctl -n kern.memorystatus_vm_pressure_level 2>/dev/null || echo "")
-
-    # Fixed inputs for tests (see header comment).
-    if [ -n "${DIAG_MEM_PRESSURE_LEVEL:-}" ]; then
-      pressure="$DIAG_MEM_PRESSURE_LEVEL"
-    fi
+    local pressure_rec pressure
+    pressure_rec=$(perf_probe_mem_pressure 2>/dev/null || true)
+    pressure=$(echo "$pressure_rec" | awk '{print $2}')
 
     case "$pressure" in
       1) status_ok "Memory pressure: normal" ;;
@@ -267,18 +259,11 @@ check_memory_pressure() {
       *) status_info "Memory pressure level: ${pressure:-unknown}" ;;
     esac
   else
-    # Linux: MemAvailable ratio
+    # Linux: MemAvailable ratio (sampling: lib/perf_probes.sh)
     if [ -r /proc/meminfo ]; then
-      local mem_total_kb mem_avail_kb avail_pct
-      mem_total_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
-      mem_avail_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
-
-      if [ -n "$mem_total_kb" ] && [ -n "$mem_avail_kb" ] && (( mem_total_kb > 0 )); then
-        avail_pct=$(( mem_avail_kb * 100 / mem_total_kb ))
-        # Fixed inputs for tests (see header comment).
-        if [ -n "${DIAG_MEM_AVAIL_PCT:-}" ]; then
-          avail_pct="$DIAG_MEM_AVAIL_PCT"
-        fi
+      local pressure_rec avail_pct
+      if pressure_rec=$(perf_probe_mem_pressure 2>/dev/null); then
+        avail_pct=$(echo "$pressure_rec" | awk '{print $2}')
         if (( avail_pct < MDOCTOR_DIAG_MEM_FREE_CRIT )); then
           status_fail "Memory pressure: critical (${avail_pct}% available)"
           add_diagnosis_action "critical" "Memory pressure is critical. Close applications immediately."
