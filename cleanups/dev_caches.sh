@@ -34,11 +34,12 @@ clean_dev_caches() {
     local cache_dir="$2"
 
     if [ -d "$cache_dir" ]; then
-      local sz_kb
-      sz_kb=$(du_size_kb "$cache_dir")
-      sz_kb="${sz_kb:-0}"
+      local sz_kb sz_rc=0
+      sz_kb=$(du_size_kb "$cache_dir") || sz_rc=$?
 
-      if (( sz_kb > 0 )); then
+      if [ "$sz_rc" -ne 0 ]; then
+        log "${label}: could not determine (${cache_dir}), skipping."
+      elif (( sz_kb > 0 )); then
         local sz_hr
         sz_hr=$(kb_to_human "$sz_kb")
         log "${label}: ${sz_hr} (${cache_dir})"
@@ -142,12 +143,13 @@ clean_dev_caches() {
           continue
         fi
 
-        local nm_sz
+        local nm_sz nm_rc=0
         # NR==1 + numeric coercion: du prints the path after the size,
         # and the path itself may contain newlines (Task 3.6).
-        nm_sz=$(du_size_kb "$nm_dir")
-        nm_sz="${nm_sz:-0}"
-        if (( nm_sz > 0 )); then
+        nm_sz=$(du_size_kb "$nm_dir") || nm_rc=$?
+        if [ "$nm_rc" -ne 0 ]; then
+          log "Stale node_modules: could not determine — ${nm_dir}"
+        elif (( nm_sz > 0 )); then
           local nm_hr
           nm_hr=$(kb_to_human "$nm_sz")
           local nm_parent

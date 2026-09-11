@@ -26,15 +26,16 @@ mdoctor_context_init
 
 @test "mdoctor and direct probe give byte-identical trash estimates" {
   export HOME="$BATS_TEST_TMPDIR/home"
-  mkdir -p "$HOME/.local/share/Trash/files" "$HOME/.cache"
-  echo hello > "$HOME/.local/share/Trash/files/f.txt"
   source "$ROOT_DIR/lib/constants.sh"
   source "$ROOT_DIR/lib/platform.sh"
   source "$ROOT_DIR/lib/disk.sh"
   source "$ROOT_DIR/lib/preflight.sh"
-  expected_kb=$(preflight_path_kb "$(platform_trash_dir)")
+  trash_dir="$(platform_trash_dir)"
+  mkdir -p "$trash_dir" "$HOME/.cache"
+  echo hello > "$trash_dir/f.txt"
+  expected_kb=$(preflight_path_kb "$trash_dir")
   expected_hr=$(human_readable_kb "$expected_kb")
   out=$(printf 'n\n' | "$ROOT_DIR/mdoctor" clean -m trash --force 2>&1 || true)
-  [[ "$out" == *"Trash"*"${HOME}/.local/share/Trash/files"*" (~${expected_hr})"* ]]
+  [[ "$out" == *"Trash"*"${trash_dir}"*" (~${expected_hr})"* ]]
   [[ "$out" == *"Estimated reclaim size: ~${expected_hr}"* ]]
 }

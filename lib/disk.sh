@@ -25,7 +25,16 @@ kb_to_human() {
 }
 
 disk_used_pct_root() {
-  df -H "$(_disk_root)" | awk 'NR==2 {gsub("%","",$5); print $5}'
+  local out rc=0 value
+  out=$(df -H "$(_disk_root)" 2>/dev/null) || rc=$?
+  if [ "$rc" -ne 0 ] || [ -z "$out" ]; then
+    return "$MDOCTOR_SIZE_ERR_FAILED"
+  fi
+  value=$(printf '%s\n' "$out" | awk 'NR==2 {gsub("%","",$5); print $5}') || return "$MDOCTOR_SIZE_ERR_FAILED"
+  case "$value" in
+    ''|*[!0-9]*) return "$MDOCTOR_SIZE_ERR_FAILED" ;;
+  esac
+  printf '%s\n' "$value"
 }
 
 disk_usage() {
@@ -33,7 +42,16 @@ disk_usage() {
 }
 
 disk_used_kb() {
-  df -k "$(_disk_root)" | awk 'NR==2 {print $3}'
+  local out rc=0 value
+  out=$(df -k "$(_disk_root)" 2>/dev/null) || rc=$?
+  if [ "$rc" -ne 0 ] || [ -z "$out" ]; then
+    return "$MDOCTOR_SIZE_ERR_FAILED"
+  fi
+  value=$(printf '%s\n' "$out" | awk 'NR==2 {print $3}') || return "$MDOCTOR_SIZE_ERR_FAILED"
+  case "$value" in
+    ''|*[!0-9]*) return "$MDOCTOR_SIZE_ERR_FAILED" ;;
+  esac
+  printf '%s\n' "$value"
 }
 
 human_readable_kb() {
@@ -60,26 +78,54 @@ format_size_kb() {
   fi
 }
 
-# du_size_kb PATH — the single hardened du probe (Task 8.2).
-# Never propagates a non-zero du status (permission-denied subdirectories
-# must not abort callers running under `set -e` / `pipefail`); always prints
-# a numeric KB value (0 on failure). Wraps the probe in a timeout where
-# available (GNU-only; macOS runs it directly). Every du call site routes
-# through this.
+# du_size_kb PATH — the single hardened du probe (Task 8.2, error channel
+# added by Task 9.4 / issue #85).
+#
+# Prints a numeric KB value ONLY on success (rc 0). On failure prints
+# nothing and returns a distinct non-zero code from the MDOCTOR_SIZE_ERR_*
+# constants, so failure is never indistinguishable from an empty result:
+#   0   — genuine measurement (may be 0 KB for an empty directory; when du
+#         reports partial data because some subdirectories were unreadable,
+#         the partial total is still a genuine, useful measurement)
+#   MDOCTOR_SIZE_ERR_NO_TARGET   — path empty/missing ("not a directory")
+#   MDOCTOR_SIZE_ERR_DENIED      — top-level target not readable/traversable
+#   MDOCTOR_SIZE_ERR_TIMEOUT     — probe timed out
+#   MDOCTOR_SIZE_ERR_FAILED      — any other measurement failure
+#
+# A top-level permission denial is detected before the probe (running as
+# root bypasses mode checks, and du then succeeds — so under root the probe
+# measures and returns 0, which is correct). Callers MUST branch on the
+# return code; an unset result with rc 0 is never possible.
 du_size_kb() {
   local path="${1-}"
   if [ -z "$path" ] || [ ! -e "$path" ]; then
-    echo 0
-    return 0
+    return "$MDOCTOR_SIZE_ERR_NO_TARGET"
   fi
-  local kb=""
+  # Top-level denial check: a directory needs +x (traverse), a file +r.
+  # (Running as root bypasses mode checks — du then succeeds and the probe
+  # measures normally, which is correct.) Nested unreadable subdirectories
+  # still yield a partial du total; that partial size is a genuine,
+  # useful measurement and keeps rc 0.
+  if { [ -d "$path" ] && [ ! -x "$path" ]; } || { [ -f "$path" ] && [ ! -r "$path" ]; }; then
+    return "$MDOCTOR_SIZE_ERR_DENIED"
+  fi
+  local kb_raw=""
+  local probe_rc=0
+  if command -v timeout >/dev/null 2>&1; then
+    kb_raw=$(timeout "$MDOCTOR_DU_TIMEOUT_S" du -sk "$path" 2>/dev/null) || probe_rc=$?
+  else
+    kb_raw=$(du -sk "$path" 2>/dev/null) || probe_rc=$?
+  fi
+  if [ "$probe_rc" -eq 124 ]; then
+    return "$MDOCTOR_SIZE_ERR_TIMEOUT"
+  fi
+  if [ -z "$kb_raw" ]; then
+    # No data at all: du died before printing anything (other failure).
+    return "$MDOCTOR_SIZE_ERR_FAILED"
+  fi
   # NR==1 + numeric coercion: du prints the path after the size, and the
   # path itself may contain newlines (Task 3.6) — only the first line
   # carries the size.
-  if command -v timeout >/dev/null 2>&1; then
-    kb=$({ timeout "$MDOCTOR_DU_TIMEOUT_S" du -sk "$path" 2>/dev/null || true; } | awk 'NR==1{print $1+0}')
-  else
-    kb=$({ du -sk "$path" 2>/dev/null || true; } | awk 'NR==1{print $1+0}')
-  fi
-  echo "${kb:-0}"
+  printf '%s\n' "$kb_raw" | awk 'NR==1{print $1+0}'
+  return 0
 }

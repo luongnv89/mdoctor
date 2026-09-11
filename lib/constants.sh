@@ -13,8 +13,47 @@
 # tests that source one lib in isolation still see the values.
 #
 
+########################################
+# TRUTHY PREDICATE (Task 9.5)
+########################################
+
+# is_truthy VALUE — the single truthy predicate (issue #86). Every
+# string-boolean comparison routes through here; never compare a flag to a
+# literal again. One accepted truthy set: true/1/yes/y in any letter case,
+# surrounding whitespace ignored.
+#
+# Return codes:
+#   0 — truthy (true/1/yes/y, any case, whitespace-trimmed)
+#   1 — explicitly falsy: false/0/no/n, empty/unset
+#   2 — value UNRECOGNIZED: warns on stderr and fails closed (rc 2, i.e.
+#       non-zero — a plain `if is_truthy` treats it as "not enabled", the
+#       conservative direction for enable-flags)
+#
+# (Bash 3.2-safe: no extglob, no [[ =~ ]].)
+is_truthy() {
+  local raw="${1-}"
+  local norm="$raw"
+
+  # Trim leading/trailing whitespace (same idiom as is_dry_run).
+  norm="${norm#"${norm%%[![:space:]]*}"}"
+  norm="${norm%"${norm##*[![:space:]]}"}"
+
+  case "$norm" in
+    [tT][rR][uU][eE]|1|[yY][eE][sS]|[yY])
+      return 0
+      ;;
+    ""|[fF][aA][lL][sS][eE]|0|[nN][oO]|[nN])
+      return 1
+      ;;
+    *)
+      echo "warning: ignoring unrecognized boolean value '${raw}' — failing closed (treated as false)" >&2
+      return 2
+      ;;
+  esac
+}
+
 # Guard against double-sourcing.
-if [ "${_MDOCTOR_CONSTANTS_LOADED:-false}" = true ]; then
+if is_truthy "${_MDOCTOR_CONSTANTS_LOADED:-}"; then
   return 0 2>/dev/null || true
 fi
 _MDOCTOR_CONSTANTS_LOADED=true
@@ -43,6 +82,27 @@ export MDOCTOR_REPORT_WARN_KB="$MDOCTOR_KB_PER_GB"
 export MDOCTOR_DU_TIMEOUT_S=30
 export MDOCTOR_FIND_TIMEOUT_S=30
 export MDOCTOR_DEV_FIND_TIMEOUT_S=60
+
+########################################
+# SIZE-PROBE ERROR CODES (Task 9.4)
+########################################
+#
+# Every size/lookup helper (du_size_kb, preflight_path_kb, preflight_find_kb,
+# disk_used_*) returns 0 ONLY for a genuine measurement and one of these
+# distinct codes otherwise; it prints its value only on success, so a caller
+# can never mistake a failure for an empty result.
+
+# Path missing/empty/not measurable target ("not a directory").
+export MDOCTOR_SIZE_ERR_NO_TARGET=2
+# Permission denied (top-level target unreadable/untraversable).
+export MDOCTOR_SIZE_ERR_DENIED=3
+# Probe timed out (timeout(1) exit code, mirrored here).
+export MDOCTOR_SIZE_ERR_TIMEOUT=124
+# Any other measurement failure (could not determine).
+export MDOCTOR_SIZE_ERR_FAILED=1
+
+# is_truthy unrecognized-value code (issue #86): warns and fails closed.
+export MDOCTOR_TRUTHY_RC_UNSET=2
 
 ########################################
 # DIAGNOSE THRESHOLDS (env-overridable)

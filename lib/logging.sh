@@ -55,7 +55,9 @@ log() {
 }
 
 debug_enabled() {
-  [ "${MDOCTOR_DEBUG:-false}" = true ] || [ "${MDOCTOR_DEBUG:-0}" = "1" ]
+  # One truthy predicate (Task 9.5): true/1/yes/y accepted alike, so
+  # MDOCTOR_DEBUG=1 enables debug logging everywhere consistently.
+  is_truthy "${MDOCTOR_DEBUG:-false}"
 }
 
 debug_log() {
@@ -83,7 +85,7 @@ OP_ACTION_COUNT=0
 OP_ERROR_COUNT=0
 
 oplog_enabled() {
-  [ "${OPLOG_ENABLED:-true}" = true ]
+  is_truthy "${OPLOG_ENABLED:-true}"
 }
 
 oplog_timestamp() {

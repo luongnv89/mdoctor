@@ -18,7 +18,12 @@ check_disk() {
   step "Disk health & free space"
 
   local used_pct
-  used_pct=$(disk_used_pct_root)
+  local used_rc=0
+  used_pct=$(disk_used_pct_root) || used_rc=$?
+  if [ "$used_rc" -ne 0 ] || [ -z "$used_pct" ]; then
+    status_warn "Disk usage: could not determine"
+    return 0
+  fi
 
   status_info "Root filesystem usage: ${used_pct}%"
   df -h "$(_disk_root)" | awk 'NR==1 || NR==2 {print "  "$0}'

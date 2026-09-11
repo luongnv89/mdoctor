@@ -12,8 +12,17 @@
 #   plus globals MDOCTOR_DIR and an error() function.
 #
 
+
+# TRUTHY_BOOTSTRAP (Task 9.5): is_truthy lives in constants.sh, the
+# zero-dependency base lib. Source it before the guard so standalone
+# sourcing of this file still sees the predicate.
+_MDOCTOR_TRUTHY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
+# shellcheck source=/dev/null
+source "${_MDOCTOR_TRUTHY_DIR}/constants.sh"
+unset _MDOCTOR_TRUTHY_DIR
+
 # Guard against double-sourcing.
-if [ "${_MDOCTOR_CLEAN_COMMON_LOADED:-false}" = true ]; then
+if is_truthy "${_MDOCTOR_CLEAN_COMMON_LOADED:-}"; then
   return 0 2>/dev/null || true
 fi
 _MDOCTOR_CLEAN_COMMON_LOADED=true
@@ -107,7 +116,7 @@ run_single_cleanup_module() {
     summary_days="$(module_documented_days "$selected_module")"
   fi
 
-  if [ "$selected_force" = true ]; then
+  if is_truthy "$selected_force"; then
     export DRY_RUN=false
     cmd_clean_preflight_summary_module "$selected_module" "$summary_days"
     # Confirmation gate (Task 0.5): y/N prompt, or refusal on a

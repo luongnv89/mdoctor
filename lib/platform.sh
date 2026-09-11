@@ -5,8 +5,17 @@
 # Sets globals used by all modules to gate platform-specific logic.
 #
 
-# Guard against double-sourcing
-if [ "${_MDOCTOR_PLATFORM_LOADED:-false}" = true ]; then
+
+# TRUTHY_BOOTSTRAP (Task 9.5): is_truthy lives in constants.sh, the
+# zero-dependency base lib. Source it before the guard so standalone
+# sourcing of this file still sees the predicate.
+_MDOCTOR_TRUTHY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
+# shellcheck source=/dev/null
+source "${_MDOCTOR_TRUTHY_DIR}/constants.sh"
+unset _MDOCTOR_TRUTHY_DIR
+
+
+if is_truthy "${_MDOCTOR_PLATFORM_LOADED:-}"; then
   return 0 2>/dev/null || true
 fi
 _MDOCTOR_PLATFORM_LOADED=true

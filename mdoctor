@@ -136,9 +136,13 @@ cmd_clean_preflight_summary_module() {
     local label="$1"
     local path="$2"
     local sz=0
-    sz=$(preflight_path_kb "$path")
-    total_kb=$((total_kb + sz))
-    printf "  - %-30s %s (~%s)\n" "$label" "$path" "$(human_readable_kb "$sz")"
+    sz=$(preflight_path_kb "$path") || sz=""
+    total_kb=$((total_kb + ${sz:-0}))
+    if [ -n "$sz" ]; then
+      printf "  - %-30s %s (~%s)\n" "$label" "$path" "$(human_readable_kb "$sz")"
+    else
+      printf "  - %-30s %s (could not determine)\n" "$label" "$path"
+    fi
   }
 
   case "$module" in
@@ -152,15 +156,23 @@ cmd_clean_preflight_summary_module() {
       local log_dir
       log_dir="$(platform_user_log_dir)"
       local logs_kb=0
-      logs_kb=$(preflight_find_kb "$log_dir" -type f -mtime "+${days}")
-      total_kb=$((total_kb + logs_kb))
-      printf "  - %-30s %s (~%s)\n" "Old logs (>${days}d)" "$log_dir" "$(human_readable_kb "$logs_kb")"
+      logs_kb=$(preflight_find_kb "$log_dir" -type f -mtime "+${days}") || logs_kb=""
+      total_kb=$((total_kb + ${logs_kb:-0}))
+      if [ -n "$logs_kb" ]; then
+        printf "  - %-30s %s (~%s)\n" "Old logs (>${days}d)" "$log_dir" "$(human_readable_kb "$logs_kb")"
+      else
+        printf "  - %-30s %s (could not determine)\n" "Old logs (>${days}d)" "$log_dir"
+      fi
       ;;
     downloads)
       local dl_kb=0
-      dl_kb=$(preflight_find_kb "${HOME}/Downloads" -type f -size +500M -mtime "+${days}")
-      total_kb=$((total_kb + dl_kb))
-      printf "  - %-30s %s (~%s)\n" "Large downloads (>${days}d)" "${HOME}/Downloads" "$(human_readable_kb "$dl_kb")"
+      dl_kb=$(preflight_find_kb "${HOME}/Downloads" -type f -size +500M -mtime "+${days}") || dl_kb=""
+      total_kb=$((total_kb + ${dl_kb:-0}))
+      if [ -n "$dl_kb" ]; then
+        printf "  - %-30s %s (~%s)\n" "Large downloads (>${days}d)" "${HOME}/Downloads" "$(human_readable_kb "$dl_kb")"
+      else
+        printf "  - %-30s %s (could not determine)\n" "Large downloads (>${days}d)" "${HOME}/Downloads"
+      fi
       ;;
     browser)
       if is_macos; then
@@ -188,23 +200,35 @@ cmd_clean_preflight_summary_module() {
     crash_reports)
       local crash_dir crash_kb
       while IFS= read -r crash_dir; do
-        crash_kb=$(preflight_find_kb "$crash_dir" -type f -mtime "+${days}")
-        total_kb=$((total_kb + crash_kb))
-        printf "  - %-30s %s (~%s)\n" "Crash reports" "$crash_dir" "$(human_readable_kb "$crash_kb")"
+        crash_kb=$(preflight_find_kb "$crash_dir" -type f -mtime "+${days}") || crash_kb=""
+        total_kb=$((total_kb + ${crash_kb:-0}))
+        if [ -n "$crash_kb" ]; then
+          printf "  - %-30s %s (~%s)\n" "Crash reports" "$crash_dir" "$(human_readable_kb "$crash_kb")"
+        else
+          printf "  - %-30s %s (could not determine)\n" "Crash reports" "$crash_dir"
+        fi
       done < <(platform_crash_dirs)
       ;;
     ios_backups)
       local ios_kb=0
-      ios_kb=$(preflight_find_kb "${HOME}/Library/Application Support/MobileSync/Backup" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
-      total_kb=$((total_kb + ios_kb))
-      printf "  - %-30s %s (~%s)\n" "iOS backups (>${days}d)" "${HOME}/Library/Application Support/MobileSync/Backup" "$(human_readable_kb "$ios_kb")"
+      ios_kb=$(preflight_find_kb "${HOME}/Library/Application Support/MobileSync/Backup" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}") || ios_kb=""
+      total_kb=$((total_kb + ${ios_kb:-0}))
+      if [ -n "$ios_kb" ]; then
+        printf "  - %-30s %s (~%s)\n" "iOS backups (>${days}d)" "${HOME}/Library/Application Support/MobileSync/Backup" "$(human_readable_kb "$ios_kb")"
+      else
+        printf "  - %-30s %s (could not determine)\n" "iOS backups (>${days}d)" "${HOME}/Library/Application Support/MobileSync/Backup"
+      fi
       ;;
     xcode)
       add_path "Xcode DerivedData" "${HOME}/Library/Developer/Xcode/DerivedData"
       local arc_kb=0
-      arc_kb=$(preflight_find_kb "${HOME}/Library/Developer/Xcode/Archives" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}")
-      total_kb=$((total_kb + arc_kb))
-      printf "  - %-30s %s (~%s)\n" "Xcode Archives (>${days}d)" "${HOME}/Library/Developer/Xcode/Archives" "$(human_readable_kb "$arc_kb")"
+      arc_kb=$(preflight_find_kb "${HOME}/Library/Developer/Xcode/Archives" -mindepth 1 -maxdepth 1 -type d -mtime "+${days}") || arc_kb=""
+      total_kb=$((total_kb + ${arc_kb:-0}))
+      if [ -n "$arc_kb" ]; then
+        printf "  - %-30s %s (~%s)\n" "Xcode Archives (>${days}d)" "${HOME}/Library/Developer/Xcode/Archives" "$(human_readable_kb "$arc_kb")"
+      else
+        printf "  - %-30s %s (could not determine)\n" "Xcode Archives (>${days}d)" "${HOME}/Library/Developer/Xcode/Archives"
+      fi
       add_path "CoreSimulator caches" "${HOME}/Library/Developer/CoreSimulator/Caches"
       echo "  - xcrun simctl delete unavailable (size estimate: n/a)"
       ;;
@@ -277,11 +301,11 @@ cmd_check() {
     esac
   done
 
-  if [ "$json_flag" = true ]; then
+  if is_truthy "$json_flag"; then
     export JSON_ENABLED=true
   fi
 
-  if [ "$json_flag" = false ]; then
+  if ! is_truthy "$json_flag"; then
     echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
   fi
 
@@ -327,7 +351,7 @@ cmd_check() {
     json_set_context "$module" "$_json_cat" "$_json_risk"
 
     # In JSON mode, silence human-readable stdout while running checks.
-    if [ "$json_flag" = true ]; then
+    if is_truthy "$json_flag"; then
       exec 3>&1
       exec >/dev/null
     fi
@@ -352,7 +376,7 @@ cmd_check() {
     # the payload parses as valid JSON on its own (issues #90, #183).
     # Check records were accumulated in-memory by the status helpers while
     # stdout was silenced; only the actions need adding here.
-    if [ "$json_flag" = true ]; then
+    if is_truthy "$json_flag"; then
       exec >&3
       exec 3>&-
 
@@ -393,7 +417,7 @@ cmd_check() {
   else
     # Run full doctor, propagating its exit code like cmd_fix does.
     local _doctor_rc=0
-    if [ "$json_flag" = true ]; then
+    if is_truthy "$json_flag"; then
       JSON_ENABLED=true MDOCTOR_VERSION="${MDOCTOR_VERSION}" MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/doctor.sh" || _doctor_rc=$?
     else
       MDOCTOR_VERSION="${MDOCTOR_VERSION}" MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/doctor.sh" || _doctor_rc=$?
@@ -428,7 +452,7 @@ cmd_clean() {
   local cleanup_list
   cleanup_list="$(registry_names cleanup)"
 
-  if [ "$interactive" = true ] && [ -n "$module" ]; then
+  if is_truthy "$interactive" && [ -n "$module" ]; then
     error "Use either --module or --interactive, not both."
     return 1
   fi
@@ -441,16 +465,16 @@ cmd_clean() {
     run_single_cleanup_module "$cleanup_list" "$module" "$force"
     return $?
   fi
-  if [ "$interactive" = true ]; then
+  if is_truthy "$interactive"; then
     run_interactive_cleanup "$cleanup_list" "$force"
     return $?
   fi
 
   # Full cleanup (MDOCTOR_DEBUG set by the shared parser when --debug).
   local _args=()
-  [ "$force" = true ] && _args+=(--force)
-  [ "${MDOCTOR_DEBUG:-false}" = true ] && _args+=(--debug)
-  if [ "$force" = true ]; then
+  is_truthy "$force" && _args+=(--force)
+  is_truthy "${MDOCTOR_DEBUG:-false}" && _args+=(--debug)
+  if is_truthy "$force"; then
     MDOCTOR_ASSUME_YES="${MDOCTOR_ASSUME_YES:-false}" MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" ${_args[@]+"${_args[@]}"}
   else
     MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" ${_args[@]+"${_args[@]}"}
@@ -857,7 +881,7 @@ cmd_update() {
   fi
   local remote_ref="${remote}/${branch}"
 
-  if [ "${MDOCTOR_DEBUG}" = "true" ]; then
+  if is_truthy "${MDOCTOR_DEBUG:-false}"; then
     echo "${DIM}[debug]${RESET} update remote=${remote} branch=${branch} channel=${channel} check_only=${check_only}"
   fi
 
@@ -901,7 +925,7 @@ mdoctor_verify_tag() {
       return 1
       ;;
   esac
-  if [ "${MDOCTOR_REQUIRE_TAG_SIGNATURE:-false}" = true ]; then
+  if is_truthy "${MDOCTOR_REQUIRE_TAG_SIGNATURE:-false}"; then
     error "Release tag '${tag}' has no verifiable signature and MDOCTOR_REQUIRE_TAG_SIGNATURE=true."
     return 1
   fi
@@ -945,7 +969,7 @@ update_from_tag() {
 
   echo "Update available: ${local_short} -> ${tag} (${tag_short})"
 
-  if [ "$check_only" = true ]; then
+  if is_truthy "$check_only"; then
     return 0
   fi
 
@@ -992,7 +1016,7 @@ update_from_branch() {
 
   echo "Update available: ${local_short} -> ${remote_short}"
 
-  if [ "$check_only" = true ]; then
+  if is_truthy "$check_only"; then
     return 0
   fi
 

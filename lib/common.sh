@@ -8,9 +8,18 @@
 # COLORS & ICONS
 ########################################
 
-# Guard against double-sourcing (lib/logging.sh and lib/safety.sh pull
-# this file in when is_dry_run is otherwise unavailable).
-if [ "${_MDOCTOR_COMMON_LOADED:-false}" = true ]; then
+
+# TRUTHY_BOOTSTRAP (Task 9.5): is_truthy lives in constants.sh, the
+# zero-dependency base lib. Source it before the guard so standalone
+# sourcing of this file still sees the predicate.
+_MDOCTOR_TRUTHY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
+# shellcheck source=/dev/null
+source "${_MDOCTOR_TRUTHY_DIR}/constants.sh"
+unset _MDOCTOR_TRUTHY_DIR
+
+# Guard against double-sourcing (the is_dry_run loader in logging.sh and
+# lib/safety.sh pull this file in when is_dry_run is otherwise unavailable).
+if is_truthy "${_MDOCTOR_COMMON_LOADED:-}"; then
   return 0 2>/dev/null || true
 fi
 _MDOCTOR_COMMON_LOADED=true
@@ -267,7 +276,7 @@ status_info() {
 # library is also sourced by engines that never load it, so the recorder
 # resolves lazily instead of a hard call.
 _json_record_status() {
-  [ "${JSON_ENABLED:-false}" = true ] || return 0
+  is_truthy "${JSON_ENABLED:-false}" || return 0
   if ! declare -f json_add_check >/dev/null 2>&1; then
     return 0
   fi
@@ -377,7 +386,7 @@ mdoctor_mktemp_dir() {
 confirm_destructive_execution() {
   local context="${1:-cleanup}"
 
-  if [ "${MDOCTOR_ASSUME_YES:-false}" = true ]; then
+  if is_truthy "${MDOCTOR_ASSUME_YES:-false}"; then
     return 0
   fi
 

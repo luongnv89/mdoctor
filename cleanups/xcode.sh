@@ -23,9 +23,11 @@ clean_xcode() {
   # DerivedData (safe — rebuilt on next build)
   local derived_data="${HOME}/Library/Developer/Xcode/DerivedData"
   if [ -d "$derived_data" ]; then
-    local dd_size
-    dd_size=$(du_size_kb "$derived_data")
-    if (( dd_size > 0 )); then
+    local dd_size dd_rc=0
+    dd_size=$(du_size_kb "$derived_data") || dd_rc=$?
+    if [ "$dd_rc" -ne 0 ]; then
+      log "Xcode DerivedData: could not determine, skipping."
+    elif (( dd_size > 0 )); then
       local dd_hr
       dd_hr=$(human_readable_kb "$dd_size")
       log "Xcode DerivedData: ${dd_hr}"
@@ -51,9 +53,11 @@ clean_xcode() {
   # Simulator caches
   local sim_caches="${HOME}/Library/Developer/CoreSimulator/Caches"
   if [ -d "$sim_caches" ]; then
-    local sc_size
-    sc_size=$(du_size_kb "$sim_caches")
-    if (( sc_size > 1024 )); then
+    local sc_size sc_rc=0
+    sc_size=$(du_size_kb "$sim_caches") || sc_rc=$?
+    if [ "$sc_rc" -ne 0 ]; then
+      log "Simulator caches: could not determine, skipping."
+    elif (( sc_size > 1024 )); then
       local sc_hr
       sc_hr=$(human_readable_kb "$sc_size")
       log "Simulator caches: ${sc_hr}"

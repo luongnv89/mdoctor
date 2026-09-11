@@ -36,16 +36,19 @@ clean_ios_backups() {
     found=$((found + 1))
 
     # Get backup size
-    local size_kb
-    size_kb=$(du_size_kb "$d")
-    total_size_kb=$((total_size_kb + size_kb))
+    local size_kb size_rc=0
+    size_kb=$(du_size_kb "$d") || size_rc=$?
+    local size_hr
+    if [ "$size_rc" -ne 0 ]; then
+      size_hr="could not determine"
+    else
+      total_size_kb=$((total_size_kb + size_kb))
+      size_hr=$(human_readable_kb "$size_kb")
+    fi
 
     # Get modification time
     local mod_date
     mod_date=$(stat -f "%Sm" -t "%Y-%m-%d" "$d" 2>/dev/null || echo "unknown")
-
-    local size_hr
-    size_hr=$(human_readable_kb "$size_kb")
 
     local backup_name
     backup_name=$(basename "$d")

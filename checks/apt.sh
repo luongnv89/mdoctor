@@ -59,14 +59,18 @@ check_apt() {
   fi
 
   # APT cache size
-  local cache_size cache_size_raw
-  cache_size_raw=$(du_size_kb /var/cache/apt/archives)
-  cache_size=$(to_int "$cache_size_raw")
-  if (( cache_size > 524288 )); then  # > 512 MB
-    local cache_hr
-    cache_hr=$(kb_to_human "$cache_size")
-    status_info "APT cache size: ${cache_hr}"
-    add_action "Clean APT cache: sudo apt clean"
+  local cache_size cache_size_raw cache_size_rc=0
+  cache_size_raw=$(du_size_kb /var/cache/apt/archives) || cache_size_rc=$?
+  if [ "$cache_size_rc" -ne 0 ]; then
+    status_info "APT cache size: could not determine"
+  else
+    cache_size=$(to_int "$cache_size_raw")
+    if (( cache_size > 524288 )); then  # > 512 MB
+      local cache_hr
+      cache_hr=$(kb_to_human "$cache_size")
+      status_info "APT cache size: ${cache_hr}"
+      add_action "Clean APT cache: sudo apt clean"
+    fi
   fi
 
   # Auto-removable packages

@@ -33,3 +33,6 @@ gui/node_modules/
 
 # Task 6.2: bats/JUnit suite outputs
 test-results/
+
+# auto-pilot run state (machine-local)
+/.gitissue/

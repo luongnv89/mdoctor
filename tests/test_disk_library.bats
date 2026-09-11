@@ -3,7 +3,8 @@
 # Regression test for Task 8.2 (#76):
 #   one size-formatter ladder, one hardened du probe, one timestamp function.
 # - format_size_kb is the single ladder; kb_to_human/human_readable_kb agree
-# - du_size_kb always prints a number and exits 0 (even on unreadable paths)
+# - du_size_kb prints only on success; failure modes are distinct non-zero
+#   codes (error channel added by Task 9.4 / issue #85)
 # - no `du -sk` call site survives outside lib/disk.sh
 # - no awk GB/MB formatter ladder survives outside lib/disk.sh
 # - timestamp and oplog_timestamp agree (one implementation)
@@ -48,15 +49,22 @@ teardown_file() {
   [ "$(human_readable_kb -2048)" = "$(format_size_kb 2048)" ]
 }
 
-@test "du_size_kb always prints a number and exits 0" {
+@test "du_size_kb error channel: print only on success, distinct codes" {
+  if [ "$(id -u)" -eq 0 ]; then
+    skip "root bypasses mode checks"
+  fi
   source "$ROOT_DIR/lib/constants.sh"
   source "$ROOT_DIR/lib/platform.sh"
   source "$ROOT_DIR/lib/disk.sh"
-  out=$(du_size_kb "$POISONED/sub"); rc=$?
-  [ "$rc" -eq 0 ]
-  [[ "$out" =~ ^[0-9]+$ ]]
-  [ "$(du_size_kb /nonexistent-path-xyz)" = "0" ]
-  out=$(du_size_kb "$POISONED/sub/file.txt"); rc=$?
+  out=""; rc=0
+  out=$(du_size_kb "$POISONED/sub") || rc=$?
+  [ "$rc" -eq "$MDOCTOR_SIZE_ERR_DENIED" ]
+  [ -z "$out" ]
+  out=""; rc=0
+  out=$(du_size_kb /nonexistent-path-xyz) || rc=$?
+  [ "$rc" -eq "$MDOCTOR_SIZE_ERR_NO_TARGET" ]
+  [ -z "$out" ]
+  out=$(du_size_kb "$POISONED"); rc=$?
   [ "$rc" -eq 0 ]
   [[ "$out" =~ ^[0-9]+$ ]]
 }
