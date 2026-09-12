@@ -240,7 +240,10 @@ oplog_ensure_file() {
   oplog_enabled || return 0
   # Once per OPLOGFILE per process: hoisted to op_session_start and gated
   # here so session-less callers (tests, debug_log) still get one ensure.
-  if [ "$_MDOCTOR_OPLOG_READY" = "$OPLOGFILE" ]; then
+  # The -f test keeps the gate honest when the file is deleted mid-session:
+  # fall through to recreate it (0600) rather than letting the append in
+  # oplog_write re-create it at umask permissions (Task 3.4 guarantee).
+  if [ "$_MDOCTOR_OPLOG_READY" = "$OPLOGFILE" ] && [ -f "$OPLOGFILE" ]; then
     return 0
   fi
   local dir
@@ -261,12 +264,9 @@ oplog_ensure_file() {
 oplog_write() {
   oplog_enabled || return 0
   # Issue #99: the dirname/mkdir ensure is once per OPLOGFILE, not per
-  # write — this steady-state path is two builtin tests plus the append.
-  # The [ -f ] recheck keeps the 0600 guarantee when the file is deleted
-  # mid-session (previously ensured-away on every write).
-  if [ "$_MDOCTOR_OPLOG_READY" != "$OPLOGFILE" ] || [ ! -f "$OPLOGFILE" ]; then
-    oplog_ensure_file
-  fi
+  # write — steady state is the builtin gate inside oplog_ensure_file
+  # (which also catches a mid-session file deletion) plus this append.
+  oplog_ensure_file
   printf '%s\n' "$*" >> "$OPLOGFILE"
 }
 

@@ -89,6 +89,22 @@ teardown_file() {
   assert_contains "$OPLOGFILE" "session end"
 }
 
+@test "oplog recreate keeps 0600 when the file is deleted mid-session" {
+  op_session_start "del-test"
+  rm -f "$OPLOGFILE"
+  op_record "X" "t"
+  [ -f "$OPLOGFILE" ] || fail "oplog not recreated after mid-session delete"
+  local mode
+  mode="$(stat -c '%a' "$OPLOGFILE" 2>/dev/null || stat -f '%Lp' "$OPLOGFILE" 2>/dev/null || echo "")"
+  [ "$mode" = "600" ] || fail "recreated oplog mode '$mode', want 600"
+  # Same when the whole directory vanished: ensure re-makes dir + file.
+  rm -rf "$(dirname "$OPLOGFILE")"
+  op_record "Y" "t"
+  [ -f "$OPLOGFILE" ] || fail "oplog not recreated after dir delete"
+  mode="$(stat -c '%a' "$OPLOGFILE" 2>/dev/null || stat -f '%Lp' "$OPLOGFILE" 2>/dev/null || echo "")"
+  [ "$mode" = "600" ] || fail "recreated oplog mode '$mode' after dir delete, want 600"
+}
+
 @test "_normalize_path OUTVAR form matches the echo form" {
   local c v e
   for c in "/a//b" "/a/./b/" "/a/b/." "/" "////" "/a//./b//." "/a/" "" "/var/crash//x/"; do
