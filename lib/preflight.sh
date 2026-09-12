@@ -418,16 +418,35 @@ preflight_find_kb() {
     return 0
   fi
 
-  # Pass 2: one sizing traversal over the match set — the per-entry
-  # du + awk spawn that made this 210x slower is gone (F-PERF-004).
-  # Chunked so a very large match set can never overflow exec argv.
+  # Pass 2: one chunked sizing traversal over the match set — the
+  # per-entry du + awk spawn that made this 210x slower is gone
+  # (F-PERF-004). Shared with callers that resolved their own match set
+  # (Task 11.3).
+  preflight_size_paths_kb "${matches[@]}"
+}
+
+# preflight_size_paths_kb PATH... — summed size in KB of an already-
+# resolved path set: each path contributes its whole subtree, exactly as
+# a per-path du in kilobytes reported it. One chunked sizing traversal
+# per MDOCTOR_FIND_ARGV_CHUNK paths (find -printf '%k' on GNU, a probed
+# stat -exec elsewhere) — never a du per path. Prints the total on rc 0;
+# the MDOCTOR_SIZE_ERR_* codes propagate per chunk.
+preflight_size_paths_kb() {
+  local -a paths=("$@")
+  local n="${#paths[@]}"
+  if [ "$n" -eq 0 ]; then
+    printf '0\n'
+    return 0
+  fi
+
+  # Chunked so a very large path set can never overflow exec argv.
   local total=0
   local i=0
   local chunk_kb=""
   local chunk_rc=0
   while [ "$i" -lt "$n" ]; do
     chunk_rc=0
-    chunk_kb=$(_preflight_find_size_kb "${matches[@]:$i:$MDOCTOR_FIND_ARGV_CHUNK}") || chunk_rc=$?
+    chunk_kb=$(_preflight_find_size_kb "${paths[@]:$i:$MDOCTOR_FIND_ARGV_CHUNK}") || chunk_rc=$?
     case "$chunk_rc" in
       0) ;;
       124) return "$MDOCTOR_SIZE_ERR_TIMEOUT" ;;
