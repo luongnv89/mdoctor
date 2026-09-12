@@ -151,9 +151,12 @@ cleanup_force_preflight_summary() {
 	fi
 	echo "Touched targets:"
 
-	local path sz
+	local path
 
-	# Common cross-platform dev cache paths
+	# Common cross-platform dev cache paths. Each path is sized at most
+	# once per process through the keyed size cache (Task 11.2): a path
+	# nested inside an already-measured parent is neither re-measured nor
+	# counted in the estimate — its bytes are already in the parent total.
 	for path in \
 		"$(platform_trash_dir)" \
 		"$(platform_cache_dir)" \
@@ -163,10 +166,12 @@ cleanup_force_preflight_summary() {
 		"${HOME}/.gradle/caches" \
 		"${HOME}/go/pkg/mod/cache" \
 		"${HOME}/.cargo/registry/cache"; do
-		sz=$(preflight_path_kb "$path") || sz=""
-		total_kb=$((total_kb + ${sz:-0}))
-		if [ -n "$sz" ]; then
-			printf "  - %-45s (~%s)\n" "$path" "$(human_readable_kb "$sz")"
+		preflight_size_path "$path"
+		total_kb=$((total_kb + MDOCTOR_SIZE_ADD))
+		if [ -n "$MDOCTOR_SIZE_COVER" ]; then
+			printf "  - %-45s (included in %s)\n" "$path" "$MDOCTOR_SIZE_COVER"
+		elif [ -n "$MDOCTOR_SIZE_KB" ]; then
+			printf "  - %-45s (~%s)\n" "$path" "$(human_readable_kb "$MDOCTOR_SIZE_KB")"
 		else
 			printf "  - %-45s (could not determine)\n" "$path"
 		fi
@@ -177,10 +182,12 @@ cleanup_force_preflight_summary() {
 		for path in \
 			"${HOME}/Library/Developer/Xcode/DerivedData" \
 			"${HOME}/Library/Developer/CoreSimulator/Caches"; do
-			sz=$(preflight_path_kb "$path") || sz=""
-			total_kb=$((total_kb + ${sz:-0}))
-			if [ -n "$sz" ]; then
-				printf "  - %-45s (~%s)\n" "$path" "$(human_readable_kb "$sz")"
+			preflight_size_path "$path"
+			total_kb=$((total_kb + MDOCTOR_SIZE_ADD))
+			if [ -n "$MDOCTOR_SIZE_COVER" ]; then
+				printf "  - %-45s (included in %s)\n" "$path" "$MDOCTOR_SIZE_COVER"
+			elif [ -n "$MDOCTOR_SIZE_KB" ]; then
+				printf "  - %-45s (~%s)\n" "$path" "$(human_readable_kb "$MDOCTOR_SIZE_KB")"
 			else
 				printf "  - %-45s (could not determine)\n" "$path"
 			fi
@@ -236,11 +243,12 @@ cleanup_force_preflight_summary() {
 	fi
 
 	if is_linux; then
-		local apt_kb
-		apt_kb=$(preflight_path_kb "/var/cache/apt/archives") || apt_kb=""
-		total_kb=$((total_kb + ${apt_kb:-0}))
-		if [ -n "$apt_kb" ]; then
-			printf "  - %-45s (~%s)\n" "/var/cache/apt/archives" "$(human_readable_kb "$apt_kb")"
+		preflight_size_path "/var/cache/apt/archives"
+		total_kb=$((total_kb + MDOCTOR_SIZE_ADD))
+		if [ -n "$MDOCTOR_SIZE_COVER" ]; then
+			printf "  - %-45s (included in %s)\n" "/var/cache/apt/archives" "$MDOCTOR_SIZE_COVER"
+		elif [ -n "$MDOCTOR_SIZE_KB" ]; then
+			printf "  - %-45s (~%s)\n" "/var/cache/apt/archives" "$(human_readable_kb "$MDOCTOR_SIZE_KB")"
 		else
 			printf "  - %-45s (could not determine)\n" "/var/cache/apt/archives"
 		fi

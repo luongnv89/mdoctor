@@ -19,6 +19,20 @@ if [ "${_MDOCTOR_CONTEXT_READY:-false}" != true ]; then
   echo "${BASH_SOURCE[0]##*/}: module context not initialized (_MDOCTOR_CONTEXT_READY) — call mdoctor_context_init from lib/context.sh first" >&2
   return 1 2>/dev/null || exit 1
 fi
+
+# Size-cache bootstrap (Task 11.2): both entry points source
+# lib/preflight.sh before any module; a standalone `source` (unit tests)
+# may not have — pull it in when its entry point is missing so the
+# per-process size cache the modules read is always available.
+if ! declare -f size_cache_kb >/dev/null 2>&1; then
+  _MDOCTOR_MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
+  # shellcheck source=/dev/null
+  source "${_MDOCTOR_MODULE_DIR}/../lib/disk.sh"
+  # shellcheck source=/dev/null
+  source "${_MDOCTOR_MODULE_DIR}/../lib/preflight.sh"
+  unset _MDOCTOR_MODULE_DIR
+fi
+
 DAYS_OLD_NODE_MODULES="${DAYS_OLD_NODE_MODULES:-30}"
 
 clean_dev_caches() {
@@ -34,8 +48,12 @@ clean_dev_caches() {
     local cache_dir="$2"
 
     if [ -d "$cache_dir" ]; then
-      local sz_kb sz_rc=0
-      sz_kb=$(du_size_kb "$cache_dir") || sz_rc=$?
+      # Task 11.2: sizes come from the keyed per-process cache — the
+      # force-mode pre-flight already measured these roots, so this is a
+      # cache hit there and the tree is never walked twice.
+      local sz_kb="" sz_rc=0
+      size_cache_kb "$cache_dir" || sz_rc=$?
+      sz_kb="${MDOCTOR_SIZE_KB:-}"
 
       if [ "$sz_rc" -ne 0 ]; then
         log "${label}: could not determine (${cache_dir}), skipping."
@@ -144,9 +162,11 @@ clean_dev_caches() {
         fi
 
         local nm_sz nm_rc=0
-        # NR==1 + numeric coercion: du prints the path after the size,
-        # and the path itself may contain newlines (Task 3.6).
-        nm_sz=$(du_size_kb "$nm_dir") || nm_rc=$?
+        # Task 11.2: route the probe through the keyed size cache so a
+        # path already measured this process is never walked twice and
+        # MDOCTOR_SIZE_CACHE_MEASUREMENTS counts every real du.
+        size_cache_kb "$nm_dir" || nm_rc=$?
+        nm_sz="${MDOCTOR_SIZE_KB:-}"
         if [ "$nm_rc" -ne 0 ]; then
           log "Stale node_modules: could not determine — ${nm_dir}"
         elif (( nm_sz > 0 )); then

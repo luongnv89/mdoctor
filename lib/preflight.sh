@@ -24,17 +24,222 @@ if is_truthy "${_MDOCTOR_PREFLIGHT_LOADED:-}"; then
 fi
 _MDOCTOR_PREFLIGHT_LOADED=true
 
-# preflight_path_kb PATH — size of one path in KB. Prints the size only on
-# success (rc 0); on failure prints nothing and propagates the distinct
-# MDOCTOR_SIZE_ERR_* code from du_size_kb (Task 9.4).
-preflight_path_kb() {
-  local kb=""
-  local rc=0
-  kb=$(du_size_kb "${1-}") || rc=$?
+# ---------------------------------------------------------------------------
+# Keyed per-process size cache (Task 11.2 / issue #96, F-PERF-005)
+# ---------------------------------------------------------------------------
+#
+# The force-mode pre-flight sizes a fixed set of cache roots; the cleanup
+# modules then re-measure the same paths seconds later in the same process
+# (on macOS DerivedData was walked three times). The cache stores one KB
+# figure per normalized path so every path is measured at most once per
+# process; preflight_size_path additionally drops a path nested inside an
+# already-measured parent from the estimate (its bytes are already inside
+# the parent's total).
+#
+# Bash 3.2 has no associative arrays, so the store is one newline-separated
+# list of "key<TAB>kb" records (~a dozen entries — a linear scan is cheap
+# and portable). Keys are normalized by _size_cache_key; a path containing
+# a tab or newline can never be a key and is measured without caching (the
+# deletion validators reject those characters anyway).
+#
+# Call contract — mutating entry points MUST be invoked as plain commands,
+# never inside $(...): a command substitution runs in a subshell whose
+# writes die with it, so `x=$(size_cache_kb p)` would silently bypass the
+# store (the value would still be returned via MDOCTOR_SIZE_KB inside the
+# subshell only — use the read-only print API size_cache_lookup there).
+# Mutating calls return their result in globals instead of stdout:
+#   MDOCTOR_SIZE_KB   — KB printed-equivalent of the last size_cache_kb /
+#                       preflight_size_path call ("" on failure)
+#   MDOCTOR_SIZE_ADD  — KB the last preflight_size_path contributes to an
+#                       estimate total (0 for cache hits and covered paths)
+#   MDOCTOR_SIZE_COVER — cached ancestor covering the last queried path
+#                       ("" when none)
+# MDOCTOR_SIZE_CACHE_MEASUREMENTS counts real disk probes — it is
+# incremented only on a fresh successful measurement, never on a cache hit
+# or a failed probe.
+_MDOCTOR_SIZE_CACHE=""
+# The MDOCTOR_SIZE_* result globals are exported: cleanup.sh, mdoctor and
+# the cleanup modules consume them cross-file — same convention as the
+# module-context scalars in lib/context.sh. The private store
+# (_MDOCTOR_SIZE_CACHE) stays unexported on purpose: it is per-process
+# state and must never leak into a child's environment.
+export MDOCTOR_SIZE_CACHE_MEASUREMENTS=0
+export MDOCTOR_SIZE_KB=""
+export MDOCTOR_SIZE_ADD=0
+export MDOCTOR_SIZE_COVER=""
+
+# _size_cache_key PATH — normalized cache identity for a path: collapses
+# repeated slashes and strips trailing ones ("/" survives). Deliberately
+# textual — no symlink resolution: the cache dedupes one spelling of a
+# path per process, and callers pass canonical absolute paths.
+_size_cache_key() {
+  local p="${1-}"
+  while [[ "$p" == *"//"* ]]; do
+    p="${p//\/\//\/}"
+  done
+  while [ "$p" != "/" ] && [ "${p%/}" != "$p" ]; do
+    p="${p%/}"
+  done
+  [ -z "$p" ] && p="/"
+  printf '%s\n' "$p"
+}
+
+# _size_cache_key_cacheable PATH — rc 0 when the normalized key can be
+# stored (no tab/newline, which would corrupt the line-based records).
+_size_cache_key_cacheable() {
+  case "${1-}" in
+    ''|*$'\t'*|*$'\n'*) return 1 ;;
+  esac
+  return 0
+}
+
+# size_cache_lookup PATH — read-only lookup. Prints the cached KB and
+# returns 0 on a hit; prints nothing and returns 1 on a miss. Never
+# measures, never mutates — safe to call inside $(...).
+size_cache_lookup() {
+  local key line k
+  key="$(_size_cache_key "${1-}")"
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    k="${line%%$'\t'*}"
+    if [ "$k" = "$key" ]; then
+      printf '%s\n' "${line#*$'\t'}"
+      return 0
+    fi
+  done <<EOF
+$_MDOCTOR_SIZE_CACHE
+EOF
+  return 1
+}
+
+# size_cache_covering_root PATH — read-only ancestor check. When a stored
+# key is a strict ancestor of PATH (its measurement already includes this
+# subtree), prints the LONGEST such key and returns 0; returns 1 when no
+# cached root covers PATH. A path does not cover itself. Safe for $(...).
+size_cache_covering_root() {
+  local key line k best=""
+  key="$(_size_cache_key "${1-}")"
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    k="${line%%$'\t'*}"
+    [ "$k" = "$key" ] && continue
+    if [ "$k" = "/" ]; then
+      # "/" is a strict ancestor of every other absolute path.
+      best="/"
+      continue
+    fi
+    # Literal-prefix test (quoted RHS of ${var#...} is literal): removing
+    # "$k/" from the front changes the string iff $k is a strict ancestor.
+    if [ "${key#"$k"/}" != "$key" ]; then
+      if [ "${#k}" -gt "${#best}" ]; then
+        best="$k"
+      fi
+    fi
+  done <<EOF
+$_MDOCTOR_SIZE_CACHE
+EOF
+  if [ -n "$best" ]; then
+    printf '%s\n' "$best"
+    return 0
+  fi
+  return 1
+}
+
+# size_cache_kb PATH — cached whole-path size in KB. On a hit returns 0
+# with MDOCTOR_SIZE_KB set and no disk access; on a miss runs du_size_kb
+# once, stores the result and bumps MDOCTOR_SIZE_CACHE_MEASUREMENTS.
+# Probe failures propagate the MDOCTOR_SIZE_ERR_* code unchanged and are
+# never cached (a later caller may retry). DIRECT CALL ONLY — see the
+# call-contract note above; MDOCTOR_SIZE_KB carries the result.
+size_cache_kb() {
+  MDOCTOR_SIZE_KB=""
+  local path="${1-}"
+  local key kb rc=0
+  key="$(_size_cache_key "$path")"
+  if _size_cache_key_cacheable "$key"; then
+    if kb="$(size_cache_lookup "$path")"; then
+      MDOCTOR_SIZE_KB="$kb"
+      if declare -f debug_log >/dev/null 2>&1; then
+        debug_log "size-cache hit ${key} ${kb}KB"
+      fi
+      return 0
+    fi
+  fi
+  kb="$(du_size_kb "$path")" || rc=$?
   if [ "$rc" -ne 0 ]; then
     return "$rc"
   fi
-  printf '%s\n' "$kb"
+  MDOCTOR_SIZE_KB="$kb"
+  if _size_cache_key_cacheable "$key"; then
+    _MDOCTOR_SIZE_CACHE="${_MDOCTOR_SIZE_CACHE}${key}"$'\t'"${kb}"$'\n'
+  fi
+  MDOCTOR_SIZE_CACHE_MEASUREMENTS=$((MDOCTOR_SIZE_CACHE_MEASUREMENTS + 1))
+  if declare -f debug_log >/dev/null 2>&1; then
+    debug_log "size-cache measured ${key} ${kb}KB (measurements=${MDOCTOR_SIZE_CACHE_MEASUREMENTS})"
+  fi
+  return 0
+}
+
+# preflight_size_path PATH — the estimate-time path sizer. Wraps
+# size_cache_kb with the two estimate policies of Task 11.2: a path that
+# was already measured contributes its size to the display but 0 KB to
+# the total (MDOCTOR_SIZE_ADD), and a path nested inside an already-
+# measured parent is neither measured nor counted — MDOCTOR_SIZE_COVER
+# names the covering ancestor so the caller can print "included in …".
+# Always returns 0; an unmeasurable path leaves MDOCTOR_SIZE_KB empty.
+preflight_size_path() {
+  MDOCTOR_SIZE_KB=""
+  MDOCTOR_SIZE_ADD=0
+  MDOCTOR_SIZE_COVER=""
+  local path="${1-}"
+  local anc
+  if MDOCTOR_SIZE_KB="$(size_cache_lookup "$path")"; then
+    # Exact repeat: display the cached size, add nothing a second time.
+    return 0
+  fi
+  if anc="$(size_cache_covering_root "$path")"; then
+    MDOCTOR_SIZE_COVER="$anc"
+    return 0
+  fi
+  if size_cache_kb "$path"; then
+    MDOCTOR_SIZE_ADD="$MDOCTOR_SIZE_KB"
+  fi
+  return 0
+}
+
+# size_cache_reset — test/debug hook: drop every entry and the counter.
+size_cache_reset() {
+  _MDOCTOR_SIZE_CACHE=""
+  MDOCTOR_SIZE_CACHE_MEASUREMENTS=0
+  MDOCTOR_SIZE_KB=""
+  MDOCTOR_SIZE_ADD=0
+  MDOCTOR_SIZE_COVER=""
+}
+
+# size_cache_keys — read-only dump: prints each cached key, one per line.
+size_cache_keys() {
+  local line
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    printf '%s\n' "${line%%$'\t'*}"
+  done <<EOF
+$_MDOCTOR_SIZE_CACHE
+EOF
+}
+
+# preflight_path_kb PATH — size of one path in KB. Prints the size only on
+# success (rc 0); on failure prints nothing and propagates the distinct
+# MDOCTOR_SIZE_ERR_* code. Thin printing wrapper over size_cache_kb
+# (Task 11.2): called directly it populates the cache; called inside
+# $(...) the store cannot persist, which degrades to a plain probe —
+# correct either way, only the dedup is lost.
+preflight_path_kb() {
+  local rc=0
+  size_cache_kb "${1-}" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    return "$rc"
+  fi
+  printf '%s\n' "$MDOCTOR_SIZE_KB"
 }
 
 # _preflight_find_entries BASE [FIND ARGS...] — matcher producer for

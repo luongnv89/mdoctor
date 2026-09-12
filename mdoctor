@@ -136,11 +136,15 @@ cmd_clean_preflight_summary_module() {
   add_path() {
     local label="$1"
     local path="$2"
-    local sz=0
-    sz=$(preflight_path_kb "$path") || sz=""
-    total_kb=$((total_kb + ${sz:-0}))
-    if [ -n "$sz" ]; then
-      printf "  - %-30s %s (~%s)\n" "$label" "$path" "$(human_readable_kb "$sz")"
+    # Task 11.2: each path is sized at most once per process through the
+    # keyed size cache; a path nested inside an already-measured parent is
+    # excluded from the estimate (its bytes are in the parent's total).
+    preflight_size_path "$path"
+    total_kb=$((total_kb + MDOCTOR_SIZE_ADD))
+    if [ -n "$MDOCTOR_SIZE_COVER" ]; then
+      printf "  - %-30s %s (included in %s)\n" "$label" "$path" "$MDOCTOR_SIZE_COVER"
+    elif [ -n "$MDOCTOR_SIZE_KB" ]; then
+      printf "  - %-30s %s (~%s)\n" "$label" "$path" "$(human_readable_kb "$MDOCTOR_SIZE_KB")"
     else
       printf "  - %-30s %s (could not determine)\n" "$label" "$path"
     fi
