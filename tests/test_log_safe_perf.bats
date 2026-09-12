@@ -66,22 +66,31 @@ teardown_file() {
 
 @test "log() needs no date/tee fork per call once seeded" {
   timestamp >/dev/null # seed this process before stubbing
-  date() { return 99; }
-  tee() { return 99; }
-  log "fork free line" >/dev/null || fail "log failed with stubbed date/tee"
+  # Stubs run in a subshell: bats' own EXIT-trap timing calls `date` on
+  # Bash 3.2 (no EPOCHREALTIME), so a `date(){ return 99; }` left defined
+  # in the test shell kills the test before its TAP line prints.
+  (
+    date() { return 99; }
+    tee() { return 99; }
+    log "fork free line" >/dev/null
+  ) || fail "log failed with stubbed date/tee"
   assert_contains "$LOGFILE" "] fork free line"
 }
 
 @test "oplog ensure work runs once per OPLOGFILE, not per action" {
   op_session_start "perf-test"
   local count_file="$TMPHOME/dirname.count"
-  dirname() { echo x >>"$count_file"; command dirname "$@"; }
-  mkdir() { return 99; }
-  date() { return 99; }
-  op_record "A" "t1"
-  op_record "B" "t2"
-  op_error "E" "t3"
-  op_session_end "ok"
+  # Subshell-scoped stubs — see the "fork free" test for why `date` must
+  # not stay stubbed in the test shell under Bash 3.2.
+  (
+    dirname() { echo x >>"$count_file"; command dirname "$@"; }
+    mkdir() { return 99; }
+    date() { return 99; }
+    op_record "A" "t1"
+    op_record "B" "t2"
+    op_error "E" "t3"
+    op_session_end "ok"
+  )
   [ ! -f "$count_file" ] || fail "dirname ran on the per-action oplog path"
   # Note: assert_contains needles are grep regexes — avoid '[' ']'.
   assert_contains "$OPLOGFILE" "ACTION"
@@ -140,12 +149,15 @@ teardown_file() {
   export DRY_RUN=true
   timestamp >/dev/null
   op_session_start "stubbed" # performs the one-time oplog ensure
-  date() { return 99; }
-  tee() { return 99; }
-  dirname() { return 99; }
-  mkdir() { return 99; }
-  safe_remove "$TMPHOME/.cache/perf/f0" >/dev/null \
-    || fail "safe_remove rc=$? with stubbed date/tee/dirname/mkdir"
+  # Subshell-scoped stubs — see the "fork free" test for why `date` must
+  # not stay stubbed in the test shell under Bash 3.2.
+  (
+    date() { return 99; }
+    tee() { return 99; }
+    dirname() { return 99; }
+    mkdir() { return 99; }
+    safe_remove "$TMPHOME/.cache/perf/f0" >/dev/null
+  ) || fail "safe_remove rc=$? with stubbed date/tee/dirname/mkdir"
   [ -f "$TMPHOME/.cache/perf/f0" ] || fail "dry-run removed f0"
   assert_contains "$LOGFILE" "DRY RUN"
   assert_contains "$OPLOGFILE" "DRY_RUN_REMOVE"
