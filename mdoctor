@@ -633,25 +633,52 @@ cmd_info() {
   if is_macos && command -v vm_stat >/dev/null 2>&1; then
     local page_size active_pages wired_pages
     page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096)
-    active_pages=$(vm_stat | awk '/Pages active/ {gsub("\\.","",$3); print $3}')
-    wired_pages=$(vm_stat | awk '/Pages wired down/ {gsub("\\.","",$4); print $4}')
+    # Shared vm_stat snapshot — one invocation per process (issue #100;
+    # was two forks of the same report for active + wired pages).
+    perf_capture_vm_stat || true
+    local _vline _v1 _v2 _v3 _vv
+    active_pages="" wired_pages=""
+    while IFS= read -r _vline; do
+      case "$_vline" in
+        *"Pages active:"*)
+          # "Pages active:              120000." — field 3 is the value.
+          read -r _v1 _v2 _vv <<< "$_vline"
+          active_pages="${_vv//./}"
+          ;;
+        *"Pages wired down:"*)
+          # "Pages wired down:           30000." — field 4 is the value.
+          read -r _v1 _v2 _v3 _vv <<< "$_vline"
+          wired_pages="${_vv//./}"
+          ;;
+      esac
+    done <<< "${_PERF_VM_STAT:-}"
 
     local total_mem
     total_mem=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
     local total_hr
     total_hr=$(human_readable_kb "$(( total_mem / 1024 ))")
     local used_kb
-    used_kb=$(( (active_pages + wired_pages) * page_size / 1024 ))
+    used_kb=$(( (${active_pages:-0} + ${wired_pages:-0}) * page_size / 1024 ))
     local used_hr
     used_hr=$(human_readable_kb "$used_kb")
 
     printf "  %-20s %s\n" "Memory:" "${used_hr} used / ${total_hr} total"
   elif is_linux && [ -r /proc/meminfo ]; then
     local mem_total mem_avail mem_used_kb total_hr used_hr
-    mem_total=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
-    mem_avail=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
-    mem_used_kb=$((mem_total - mem_avail))
-    total_hr=$(human_readable_kb "$mem_total")
+    # Shared /proc/meminfo snapshot — read once per process (issue #100;
+    # was two awk opens of the same file).
+    perf_capture_meminfo || true
+    local _mline _mk _mv
+    mem_total="" mem_avail=""
+    while IFS= read -r _mline; do
+      read -r _mk _mv _ <<< "$_mline"
+      case "$_mk" in
+        MemTotal:)     mem_total="$_mv" ;;
+        MemAvailable:) mem_avail="$_mv" ;;
+      esac
+    done <<< "${_PERF_MEMINFO:-}"
+    mem_used_kb=$(( ${mem_total:-0} - ${mem_avail:-0} ))
+    total_hr=$(human_readable_kb "${mem_total:-0}")
     used_hr=$(human_readable_kb "$mem_used_kb")
 
     printf "  %-20s %s\n" "Memory:" "${used_hr} used / ${total_hr} total"
@@ -674,7 +701,15 @@ cmd_info() {
   if is_macos; then
     load=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2", "$3", "$4}')
   else
-    load=$(awk '{print $1", "$2", "$3}' /proc/loadavg 2>/dev/null || echo "Unknown")
+    # Shared /proc/loadavg snapshot (issue #100); fields 1/5/15 in-shell.
+    load="Unknown"
+    if perf_capture_loadavg; then
+      local _l1 _l5 _l15 _lrest
+      read -r _l1 _l5 _l15 _lrest <<< "$_PERF_LOADAVG"
+      if [ -n "$_l1" ]; then
+        load="${_l1}, ${_l5}, ${_l15}"
+      fi
+    fi
   fi
   printf "  %-20s %s\n" "Load (1/5/15m):" "${load}"
 

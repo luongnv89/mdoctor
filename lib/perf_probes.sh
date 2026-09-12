@@ -29,6 +29,30 @@
 # derivation): synthesizing kb inside the probe would change the live kb
 # values the callers display. The swap probe itself is a pure sampler.
 #
+# Capture-once samplers (issue #100 — F-PERF-011/013/017): the
+# perf_capture_* helpers below each capture one slow report — a /proc
+# file or an external listing like `vm_stat`, `nproc` or `dpkg -l` — at
+# most once per process into a _PERF_* global, and the metric probes
+# memoize their live records on top. Consumers parse the shared
+# snapshot in-shell instead of re-invoking the binary or re-reading the
+# file for every field.
+#
+# Why setter-globals instead of `$(perf_capture_*)` output: command
+# substitution runs the callee in a subshell whose variable writes die
+# with it, so a cache filled there can never serve the next call. The
+# samplers are therefore direct-call setters — invoke bare
+# (`perf_capture_meminfo || true`), then read the _PERF_* variable; any
+# later $(perf_probe_*) subshell inherits the populated snapshot, which
+# is what lets one read serve every consumer in the run. Drivers that
+# know a report will be consumed may prefill it once at the top (see
+# check_diagnose_performance); a plain call mid-check works the same.
+#
+# A separate *_DONE flag distinguishes "captured empty" from "never
+# ran" — an empty report must not trigger a re-capture. `cat` reads the
+# /proc snapshots deliberately: one fork per process, and the single
+# read point stays interceptable by a stub-PATH or function-level cat
+# counter in tests.
+#
 
 # TRUTHY_BOOTSTRAP (Task 9.5): is_truthy lives in constants.sh, the
 # zero-dependency base lib. Source it before the guard so standalone
@@ -44,25 +68,128 @@ if is_truthy "${_MDOCTOR_PERF_PROBES_LOADED:-}"; then
 fi
 _MDOCTOR_PERF_PROBES_LOADED=true
 
+########################################
+# CAPTURE-ONCE RAW SAMPLERS (issue #100)
+########################################
+# Contract per the header comment: direct-call setters, never invoked
+# through $(). Each returns 0 when its _PERF_* snapshot is non-empty, 1
+# when the source is missing or empty — an empty report still counts as
+# captured (the *_DONE flag is what stops re-capture).
+
+# perf_capture_reset — drop every capture + memoized record so a second
+# in-process run re-samples (used by check_diagnose_performance, whose
+# probes otherwise keep serving the previous run's globals).
+perf_capture_reset() {
+  _PERF_MEMINFO=""          _PERF_MEMINFO_DONE=""
+  _PERF_LOADAVG=""          _PERF_LOADAVG_DONE=""
+  _PERF_NPROC=""            _PERF_NPROC_DONE=""
+  _PERF_VM_STAT=""          _PERF_VM_STAT_DONE=""
+  _PERF_DPKG_L=""           _PERF_DPKG_L_DONE=""
+  _PERF_LOAD_L1=""          _PERF_LOAD_CORES=""
+  _PERF_LOAD_DONE=""
+  _PERF_MEMPRESSURE_LIVE="" _PERF_MEMPRESSURE_DONE=""
+  _PERF_SWAP_LIVE=""        _PERF_SWAP_DONE=""
+}
+
+# perf_capture_meminfo — read /proc/meminfo once into _PERF_MEMINFO.
+perf_capture_meminfo() {
+  if ! is_truthy "${_PERF_MEMINFO_DONE:-}"; then
+    _PERF_MEMINFO=""
+    if [ -r /proc/meminfo ]; then
+      _PERF_MEMINFO=$(cat /proc/meminfo 2>/dev/null || true)
+    fi
+    _PERF_MEMINFO_DONE=true
+  fi
+  [ -n "$_PERF_MEMINFO" ]
+}
+
+# perf_capture_loadavg — read /proc/loadavg once into _PERF_LOADAVG.
+perf_capture_loadavg() {
+  if ! is_truthy "${_PERF_LOADAVG_DONE:-}"; then
+    _PERF_LOADAVG=""
+    if [ -r /proc/loadavg ]; then
+      _PERF_LOADAVG=$(cat /proc/loadavg 2>/dev/null || true)
+    fi
+    _PERF_LOADAVG_DONE=true
+  fi
+  [ -n "$_PERF_LOADAVG" ]
+}
+
+# perf_capture_nproc — run nproc once into _PERF_NPROC.
+perf_capture_nproc() {
+  if ! is_truthy "${_PERF_NPROC_DONE:-}"; then
+    _PERF_NPROC=""
+    if command -v nproc >/dev/null 2>&1; then
+      _PERF_NPROC=$(nproc 2>/dev/null || true)
+    fi
+    _PERF_NPROC_DONE=true
+  fi
+  [ -n "$_PERF_NPROC" ]
+}
+
+# perf_capture_vm_stat — run vm_stat once into _PERF_VM_STAT (macOS).
+perf_capture_vm_stat() {
+  if ! is_truthy "${_PERF_VM_STAT_DONE:-}"; then
+    _PERF_VM_STAT=""
+    if command -v vm_stat >/dev/null 2>&1; then
+      _PERF_VM_STAT=$(vm_stat 2>/dev/null || true)
+    fi
+    _PERF_VM_STAT_DONE=true
+  fi
+  [ -n "$_PERF_VM_STAT" ]
+}
+
+# perf_capture_dpkg_l — run `dpkg -l` once into _PERF_DPKG_L. The full
+# package list (2,000–4,000 rows) was formatted three times per check
+# run — twice in check_apt, once in check_apps — plus a filtered
+# `dpkg -l <pkg>` in check_security that the same snapshot now answers.
+perf_capture_dpkg_l() {
+  if ! is_truthy "${_PERF_DPKG_L_DONE:-}"; then
+    _PERF_DPKG_L=""
+    if command -v dpkg >/dev/null 2>&1; then
+      _PERF_DPKG_L=$(dpkg -l 2>/dev/null || true)
+    fi
+    _PERF_DPKG_L_DONE=true
+  fi
+  [ -n "$_PERF_DPKG_L" ]
+}
+
 # perf_probe_load — sample 1-minute load average and logical core count.
 # Prints: "<load1> <cores>" (e.g. "1.04 4").
 # Returns 1 with no output when either value is indeterminable.
 perf_probe_load() {
   local cores load1
-  if is_macos; then
-    cores=$(sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
-    # vm.loadavg prints "{ 1.23 4.56 7.89 }" — field 2 is load1. In-shell
-    # split replaces sysctl|awk (issue #98).
-    local _la
-    _la=$(sysctl -n vm.loadavg 2>/dev/null || true)
-    load1=""
-    read -r _ load1 _ <<< "$_la"
-  else
-    cores=$(nproc 2>/dev/null || echo 4)
-    load1=""
-    if [ -r /proc/loadavg ]; then
-      read -r load1 _ < /proc/loadavg
+  # Memoized live sample (issue #100): the first call per process
+  # samples the platform inputs (nproc + /proc/loadavg via the shared
+  # captures on Linux, sysctl on macOS); later calls replay the record.
+  # DIAG_* fixed inputs are applied after the cached sample so they win
+  # on every call — the same rule get_linux_iowait_pct documents.
+  if ! is_truthy "${_PERF_LOAD_DONE:-}"; then
+    if is_macos; then
+      cores=$(sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
+      # vm.loadavg prints "{ 1.23 4.56 7.89 }" — field 2 is load1.
+      # In-shell split replaces sysctl|awk (issue #98).
+      local _la
+      _la=$(sysctl -n vm.loadavg 2>/dev/null || true)
+      load1=""
+      read -r _ load1 _ <<< "$_la"
+    else
+      if perf_capture_nproc; then
+        cores="$_PERF_NPROC"
+      else
+        cores=4
+      fi
+      load1=""
+      if perf_capture_loadavg; then
+        read -r load1 _ <<< "$_PERF_LOADAVG"
+      fi
     fi
+    _PERF_LOAD_L1="$load1"
+    _PERF_LOAD_CORES="$cores"
+    _PERF_LOAD_DONE=true
+  else
+    load1="$_PERF_LOAD_L1"
+    cores="$_PERF_LOAD_CORES"
   fi
 
   # Fixed inputs for tests (see header comment).
@@ -109,48 +236,57 @@ perf_probe_top_cpu_raw() {
 # Returns 1 with no output when the pressure is indeterminable (Linux only:
 # unreadable /proc/meminfo, or missing/non-positive MemTotal).
 perf_probe_mem_pressure() {
-  if is_macos; then
-    local pressure
-    pressure=$(sysctl -n kern.memorystatus_vm_pressure_level 2>/dev/null || echo "")
-
-    # Fixed inputs for tests (see header comment).
-    if [ -n "${DIAG_MEM_PRESSURE_LEVEL:-}" ]; then
-      pressure="$DIAG_MEM_PRESSURE_LEVEL"
+  # Memoized live record (issue #100): the first call per process parses
+  # the shared /proc/meminfo snapshot (or the macOS sysctl); later calls
+  # replay it. The DIAG_* fixed inputs are re-applied per call on top of
+  # the cached record so tests still pin every invocation.
+  if ! is_truthy "${_PERF_MEMPRESSURE_DONE:-}"; then
+    if is_macos; then
+      local pressure
+      pressure=$(sysctl -n kern.memorystatus_vm_pressure_level 2>/dev/null || echo "")
+      _PERF_MEMPRESSURE_LIVE="macos ${pressure}"
+    else
+      # Linux: MemAvailable ratio from the shared /proc/meminfo snapshot
+      # (issue #100 — was one open of the file per call).
+      _PERF_MEMPRESSURE_LIVE=""
+      if perf_capture_meminfo; then
+        local mem_total_kb="" mem_avail_kb="" avail_pct
+        local _mk _mv _mline
+        while IFS= read -r _mline; do
+          read -r _mk _mv _ <<< "$_mline"
+          case "$_mk" in
+            MemTotal:)     mem_total_kb="$_mv" ;;
+            MemAvailable:) mem_avail_kb="$_mv" ;;
+          esac
+        done <<< "$_PERF_MEMINFO"
+        if [ -n "$mem_total_kb" ] && [ -n "$mem_avail_kb" ] \
+          && (( mem_total_kb > 0 )); then
+          avail_pct=$(( mem_avail_kb * 100 / mem_total_kb ))
+          _PERF_MEMPRESSURE_LIVE="linux ${avail_pct}"
+        fi
+      fi
     fi
-
-    echo "macos ${pressure}"
-    return 0
+    _PERF_MEMPRESSURE_DONE=true
   fi
-
-  # Linux: MemAvailable ratio.
-  if [ ! -r /proc/meminfo ]; then
+  if [ -z "$_PERF_MEMPRESSURE_LIVE" ]; then
     return 1
   fi
-  local mem_total_kb="" mem_avail_kb="" avail_pct
-  # One in-shell pass over /proc/meminfo for both fields (issue #98 —
-  # was two awk opens of the same file).
-  local _mk _mv _mline
-  while IFS= read -r _mline; do
-    read -r _mk _mv _ <<< "$_mline"
-    case "$_mk" in
-      MemTotal:)     mem_total_kb="$_mv" ;;
-      MemAvailable:) mem_avail_kb="$_mv" ;;
-    esac
-  done < /proc/meminfo
-  if [ -z "$mem_total_kb" ] || [ -z "$mem_avail_kb" ]; then
-    return 1
-  fi
-  if ! (( mem_total_kb > 0 )); then
-    return 1
-  fi
-  avail_pct=$(( mem_avail_kb * 100 / mem_total_kb ))
 
   # Fixed inputs for tests (see header comment).
-  if [ -n "${DIAG_MEM_AVAIL_PCT:-}" ]; then
-    avail_pct="$DIAG_MEM_AVAIL_PCT"
-  fi
-
-  echo "linux ${avail_pct}"
+  local rec="$_PERF_MEMPRESSURE_LIVE"
+  case "$rec" in
+    macos\ *)
+      if [ -n "${DIAG_MEM_PRESSURE_LEVEL:-}" ]; then
+        rec="macos ${DIAG_MEM_PRESSURE_LEVEL}"
+      fi
+      ;;
+    linux\ *)
+      if [ -n "${DIAG_MEM_AVAIL_PCT:-}" ]; then
+        rec="linux ${DIAG_MEM_AVAIL_PCT}"
+      fi
+      ;;
+  esac
+  echo "$rec"
 }
 
 # perf_probe_swap — sample swap usage in platform-native units.
@@ -163,31 +299,39 @@ perf_probe_mem_pressure() {
 # the threshold percent from the record and apply DIAG_SWAP_PCT there
 # (see header comment).
 perf_probe_swap() {
-  if is_macos; then
-    local raw
-    raw=$(sysctl -n vm.swapusage 2>/dev/null || echo "")
-    echo "macos ${raw}"
-    return 0
+  # Memoized live record (issue #100): the first call per process parses
+  # the shared /proc/meminfo snapshot (or the macOS sysctl); later calls
+  # replay the same "<platform> ..." record — the swap value is derived
+  # once, not once per consumer.
+  if ! is_truthy "${_PERF_SWAP_DONE:-}"; then
+    if is_macos; then
+      local raw
+      raw=$(sysctl -n vm.swapusage 2>/dev/null || echo "")
+      _PERF_SWAP_LIVE="macos ${raw}"
+    else
+      _PERF_SWAP_LIVE=""
+      if perf_capture_meminfo; then
+        local swap_total_kb="" swap_free_kb="" swap_used_kb
+        local _mk _mv _mline
+        while IFS= read -r _mline; do
+          read -r _mk _mv _ <<< "$_mline"
+          case "$_mk" in
+            SwapTotal:) swap_total_kb="$_mv" ;;
+            SwapFree:)  swap_free_kb="$_mv" ;;
+          esac
+        done <<< "$_PERF_MEMINFO"
+        if [ -n "$swap_total_kb" ] && [ -n "$swap_free_kb" ]; then
+          swap_used_kb=$((swap_total_kb - swap_free_kb))
+          _PERF_SWAP_LIVE="linux ${swap_used_kb} ${swap_total_kb}"
+        fi
+      fi
+    fi
+    _PERF_SWAP_DONE=true
   fi
-
-  if [ ! -r /proc/meminfo ]; then
+  if [ -z "$_PERF_SWAP_LIVE" ]; then
     return 1
   fi
-  local swap_total_kb="" swap_free_kb="" swap_used_kb
-  # One in-shell pass over /proc/meminfo for both fields (issue #98).
-  local _mk _mv _mline
-  while IFS= read -r _mline; do
-    read -r _mk _mv _ <<< "$_mline"
-    case "$_mk" in
-      SwapTotal:) swap_total_kb="$_mv" ;;
-      SwapFree:)  swap_free_kb="$_mv" ;;
-    esac
-  done < /proc/meminfo
-  if [ -z "$swap_total_kb" ] || [ -z "$swap_free_kb" ]; then
-    return 1
-  fi
-  swap_used_kb=$((${swap_total_kb:-0} - ${swap_free_kb:-0}))
-  echo "linux ${swap_used_kb} ${swap_total_kb}"
+  echo "$_PERF_SWAP_LIVE"
 }
 
 # perf_probe_zombies — sample zombie processes.
