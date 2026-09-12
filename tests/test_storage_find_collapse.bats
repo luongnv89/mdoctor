@@ -212,7 +212,21 @@ _find_logger_stubbin() {
   MDOCTOR_REPORT_MIN_KB=0
   export MDOCTOR_REPORT_MIN_KB
 
+  # Keep the e2e hermetic (the suite's HOME-sandbox contract): on macOS
+  # the platform legs would walk the REAL /Applications — ~80s of
+  # timeout-capped du plus host-FS state that this assertion does not
+  # depend on. Only the depdirs pass and its two consumers are under
+  # test here.
+  _storage_scan_appdata() { :; }
+  _storage_scan_applications() { :; }
+  _storage_scan_devtools() { :; }
+  _storage_scan_cloud() { :; }
+
   out=$(check_storage 2>&1)
+
+  # Dump the captured output to the TAP stream so a failure is
+  # self-diagnosing in CI (the assertion alone hides what was printed).
+  printf '%s\n' "$out" >&3
 
   [[ "$out" == *"node_modules (1 found)"* ]]
   [[ "$out" == *"Python venv/ (1 found)"* ]]
