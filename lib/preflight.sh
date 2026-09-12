@@ -80,14 +80,45 @@ _preflight_find_printf_ok() {
   is_truthy "$_MDOCTOR_FIND_PRINTF_OK"
 }
 
+# _preflight_stat_blocks_flag — memoized stat-flavor probe for the
+# non-printf sizing arm of _preflight_find_size_kb. BSD stat (macOS)
+# takes the per-file 512-byte block count as `stat -f %b`; GNU and
+# busybox stat take `stat -c %b` — on both of those `-f` means
+# "filesystem status" (statfs) and swallows %b as a filename operand,
+# printing host-wide block totals instead of the file's. Probes each
+# spelling once per process on '.', keeps the flag letter that returns
+# a bare block count, and records "none" when neither does so the sizer
+# can fail closed rather than print a wrong total.
+_MDOCTOR_STAT_BLOCKS_FLAG=""
+_preflight_stat_blocks_flag() {
+  local out
+  case "$_MDOCTOR_STAT_BLOCKS_FLAG" in
+    f|c) return 0 ;;
+    none) return 1 ;;
+  esac
+  out="$(stat -f %b . 2>/dev/null)"
+  case "$out" in
+    ''|*[!0-9]*) ;;
+    *) _MDOCTOR_STAT_BLOCKS_FLAG=f; return 0 ;;
+  esac
+  out="$(stat -c %b . 2>/dev/null)"
+  case "$out" in
+    ''|*[!0-9]*) ;;
+    *) _MDOCTOR_STAT_BLOCKS_FLAG=c; return 0 ;;
+  esac
+  _MDOCTOR_STAT_BLOCKS_FLAG=none
+  return 1
+}
+
 # _preflight_find_size_kb PATH... — the sizing pass (Task 11.1): one find
 # invocation over the already-resolved match set, never a du per entry.
 # GNU find emits each entry's %k — allocated 1K blocks, the same figure
 # du_size_kb reported per entry; for a directory match the traversal
-# sums the whole subtree exactly like a recursive du did. BSD find
-# (macOS) has no -printf, so it batches `stat -f %b` (allocated 512-byte
-# blocks) over the set and awk applies the same per-entry round-up to KB
-# that du uses.
+# sums the whole subtree exactly like a recursive du did. Without
+# -printf (BSD/macOS find, busybox) it batches one `stat` exec pass —
+# `stat -f %b` on BSD, `stat -c %b` on GNU/busybox, picked by the
+# _preflight_stat_blocks_flag probe — over allocated 512-byte blocks,
+# and awk applies the same per-entry round-up to KB that du uses.
 # Prints the KB total on rc 0; a pass that measured nothing propagates
 # the find exit code and a timed-out pass the timeout code, while a
 # partially measured stream still prints its (genuine) total — entries
@@ -111,10 +142,15 @@ _preflight_find_size_kb() {
     printf '%s\n' "$stream" | awk '{ s += $1 } END { print s+0 }'
     return 0
   fi
+  if ! _preflight_stat_blocks_flag; then
+    # Neither -printf find nor a known stat flavour: fail closed rather
+    # than print a wrong total (MDOCTOR_SIZE_ERR_FAILED).
+    return "$MDOCTOR_SIZE_ERR_FAILED"
+  fi
   if command -v timeout >/dev/null 2>&1; then
-    stream=$(timeout "$MDOCTOR_FIND_TIMEOUT_S" find "$@" -exec stat -f %b {} + 2>/dev/null) || rc=$?
+    stream=$(timeout "$MDOCTOR_FIND_TIMEOUT_S" find "$@" -exec stat "-${_MDOCTOR_STAT_BLOCKS_FLAG}" %b {} + 2>/dev/null) || rc=$?
   else
-    stream=$(find "$@" -exec stat -f %b {} + 2>/dev/null) || rc=$?
+    stream=$(find "$@" -exec stat "-${_MDOCTOR_STAT_BLOCKS_FLAG}" %b {} + 2>/dev/null) || rc=$?
   fi
   if [ "$rc" -eq 124 ]; then
     return "$MDOCTOR_SIZE_ERR_TIMEOUT"

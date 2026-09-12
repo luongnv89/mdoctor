@@ -77,6 +77,44 @@ mdoctor_context_init
   [ "$got" = "$expected" ]
 }
 
+@test "preflight_find_kb falls back to stat when find lacks -printf" {
+  # The bash:3.2 CI lane (busybox find, no -printf) must reach the stat
+  # arm and still match the retired per-entry du total — the same arm
+  # macOS takes via `stat -f %b` (GNU/busybox take `-c %b`, picked by
+  # the _preflight_stat_blocks_flag probe).
+  source "$ROOT_DIR/lib/disk.sh"
+  source "$ROOT_DIR/lib/preflight.sh"
+  local dir="$BATS_TEST_TMPDIR/noprintf-fixture"
+  mkdir -p "$dir/sub"
+  printf 'x' > "$dir/a.bin"
+  head -c 5000 /dev/zero > "$dir/b.bin" 2>/dev/null || dd if=/dev/zero of="$dir/b.bin" bs=1000 count=5 2>/dev/null
+  printf 'x' > "$dir/sub/c.bin"
+
+  # Stub `find` to reject -printf like BSD/busybox find; every other
+  # call (matcher pass, -exec) delegates to the real binary.
+  local stubbin="$BATS_TEST_TMPDIR/noprintf-stubbin"
+  mkdir -p "$stubbin"
+  local real_find
+  real_find="$(command -v find)"
+  printf '#!/usr/bin/env bash\nfor a in "$@"; do if [ "$a" = "-printf" ]; then echo "find: unrecognized: -printf" >&2; exit 1; fi; done\nexec "%s" "$@"\n' "$real_find" > "$stubbin/find"
+  chmod +x "$stubbin/find"
+
+  # Both capability probes memoize per process — reset so the stubbed
+  # find drives the same probe outcome a busybox/macOS process gets.
+  _MDOCTOR_FIND_PRINTF_OK=""
+  _MDOCTOR_STAT_BLOCKS_FLAG=""
+
+  local expected=0 f sz
+  while IFS= read -r -d '' f; do
+    sz=$(du -sk "$f" | awk 'NR==1{print $1+0}')
+    expected=$((expected + sz))
+  done < <(find "$dir" -type f -print0)
+
+  local got
+  got=$(PATH="$stubbin:$PATH" preflight_find_kb "$dir" -type f)
+  [ "$got" = "$expected" ]
+}
+
 @test "preflight_find_kb sizes the match set in a bounded number of passes" {
   source "$ROOT_DIR/lib/disk.sh"
   source "$ROOT_DIR/lib/preflight.sh"
