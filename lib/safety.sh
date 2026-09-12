@@ -117,36 +117,51 @@ _safety_error() {
   fi
 }
 
+# _normalize_path PATH [OUTVAR] — collapse //, /./, trailing / and /.
+# Issue #99: with OUTVAR the result is assigned in place via printf -v
+# (pure parameter expansion, no command-substitution subshell — hot path
+# inside safe_remove). Called with one argument it still prints, kept for
+# install.sh/uninstall.sh cold-path callers. OUTVAR must be caller-scoped
+# and must not collide with the _np_* locals below.
 _normalize_path() {
-  local path="${1-}"
+  local _np_path="${1-}"
+  local _np_out="${2-}"
 
-  if [ -z "$path" ]; then
-    echo ""
+  if [ -z "$_np_path" ]; then
+    if [ -n "$_np_out" ]; then
+      printf -v "$_np_out" '%s' ""
+    else
+      echo ""
+    fi
     return 0
   fi
 
   # Collapse repeated slashes: // -> / (repeat until stable; Bash 3.2-safe)
-  while [[ "$path" == *"//"* ]]; do
-    path="${path//\/\//\/}"
+  while [[ "$_np_path" == *"//"* ]]; do
+    _np_path="${_np_path//\/\//\/}"
   done
 
   # Collapse /./ segments: /a/./b -> /a/b
-  while [[ "$path" == *"/./"* ]]; do
-    path="${path//\/.\//\/}"
+  while [[ "$_np_path" == *"/./"* ]]; do
+    _np_path="${_np_path//\/.\//\/}"
   done
 
   # Keep / intact; trim trailing slash and trailing /. otherwise
-  if [ "$path" != "/" ]; then
-    while [ "${path%/}" != "$path" ]; do
-      path="${path%/}"
+  if [ "$_np_path" != "/" ]; then
+    while [ "${_np_path%/}" != "$_np_path" ]; do
+      _np_path="${_np_path%/}"
     done
-    if [ "${path%/.}" != "$path" ]; then
-      path="${path%/.}"
-      [ -z "$path" ] && path="/"
+    if [ "${_np_path%/.}" != "$_np_path" ]; then
+      _np_path="${_np_path%/.}"
+      [ -z "$_np_path" ] && _np_path="/"
     fi
   fi
 
-  echo "$path"
+  if [ -n "$_np_out" ]; then
+    printf -v "$_np_out" '%s' "$_np_path"
+  else
+    echo "$_np_path"
+  fi
 }
 
 ensure_cleanup_whitelist_file() {
@@ -212,24 +227,34 @@ reload_cleanup_whitelist() {
 }
 
 is_whitelisted_cleanup_path() {
-  local path
-  path="$(_normalize_path "${1-}")"
-
-  [ -z "$path" ] && return 1
+  # Empty input was the original early-out (no whitelist-file side
+  # effects); normalization maps empty to empty, so test the raw arg.
+  [ -z "${1-}" ] && return 1
 
   load_cleanup_whitelist
+
+  # Empty whitelist (the common case) can never match — skip the
+  # normalization and the entry loop entirely (issue #99).
+  if [ "${#_MDOCTOR_WHITELIST[@]}" -eq 0 ]; then
+    return 1
+  fi
+
+  local path
+  _normalize_path "${1-}" path
+
+  [ -z "$path" ] && return 1
 
   local entry=""
   local entry_norm=""
   local base=""
   for entry in "${_MDOCTOR_WHITELIST[@]+"${_MDOCTOR_WHITELIST[@]}"}"; do
-    entry_norm="$(_normalize_path "$entry")"
+    _normalize_path "$entry" entry_norm
     [ -z "$entry_norm" ] && continue
 
     case "$entry_norm" in
       */\*)
         base="${entry_norm%/*}"
-        base="$(_normalize_path "$base")"
+        _normalize_path "$base" base
         if [ "$path" = "$base" ] || [[ "$path" == "$base/"* ]]; then
           return 0
         fi
@@ -249,34 +274,44 @@ is_whitelisted_cleanup_path() {
 # deletion must sit under one of these known cache/temp roots; the
 # denylist in is_protected_deletion_path remains as a backstop. The same
 # list is documented in docs/SAFETY.md ("Allowed deletion roots").
-# Prints one root per line, $HOME-resolved at call time so sandboxed
-# test runs (overridden HOME) get matching roots.
-_mdoctor_allowed_deletion_roots() {
+# The list assigns the _MDOCTOR_ALLOWED_ROOTS global, $HOME-resolved at
+# call time so sandboxed test runs (overridden HOME) get matching roots;
+# the printer wrapper keeps the line-per-root surface for callers/tests.
+_mdoctor_allowed_deletion_roots_list() {
   local home="${HOME:-}"
+  _MDOCTOR_ALLOWED_ROOTS=()
   [ -n "$home" ] || return 0
-  printf '%s\n' \
-    "${TMPDIR:-/tmp}" \
-    "/tmp" \
-    "/var/tmp" \
-    "/var/crash" \
-    "$home/.Trash" \
-    "$home/.cache" \
-    "$home/.npm" \
-    "$home/.yarn" \
-    "$home/.m2" \
-    "$home/.gradle" \
-    "$home/.cargo" \
-    "$home/.local/share/Trash" \
-    "$home/.local/share/mdoctor" \
-    "$home/.local/share/apport" \
-    "$home/.local/share/pnpm" \
-    "$home/Library/Caches" \
-    "$home/Library/Logs" \
-    "$home/Library/Developer" \
-    "$home/Library/Application Support/MobileSync" \
-    "$home/go" \
-    "$home/miniconda3" \
+  _MDOCTOR_ALLOWED_ROOTS=(
+    "${TMPDIR:-/tmp}"
+    "/tmp"
+    "/var/tmp"
+    "/var/crash"
+    "$home/.Trash"
+    "$home/.cache"
+    "$home/.npm"
+    "$home/.yarn"
+    "$home/.m2"
+    "$home/.gradle"
+    "$home/.cargo"
+    "$home/.local/share/Trash"
+    "$home/.local/share/mdoctor"
+    "$home/.local/share/apport"
+    "$home/.local/share/pnpm"
+    "$home/Library/Caches"
+    "$home/Library/Logs"
+    "$home/Library/Developer"
+    "$home/Library/Application Support/MobileSync"
+    "$home/go"
+    "$home/miniconda3"
     "$home/anaconda3"
+  )
+}
+
+_mdoctor_allowed_deletion_roots() {
+  _mdoctor_allowed_deletion_roots_list
+  if [ "${#_MDOCTOR_ALLOWED_ROOTS[@]}" -gt 0 ]; then
+    printf '%s\n' "${_MDOCTOR_ALLOWED_ROOTS[@]}"
+  fi
 }
 
 # Returns 0 when the (already normalized) path sits under an allowed root.
@@ -284,21 +319,24 @@ _is_under_allowed_root() {
   local path="${1-}"
   local root norm_root
 
-  while IFS= read -r root; do
+  # Array iteration instead of a process-substitution pipeline — one less
+  # subshell per safe_remove call (issue #99).
+  _mdoctor_allowed_deletion_roots_list
+  for root in "${_MDOCTOR_ALLOWED_ROOTS[@]+"${_MDOCTOR_ALLOWED_ROOTS[@]}"}"; do
     [ -z "$root" ] && continue
-    norm_root="$(_normalize_path "$root")"
+    _normalize_path "$root" norm_root
     [ -z "$norm_root" ] && continue
     if [ "$path" = "$norm_root" ] || [[ "$path" == "$norm_root/"* ]]; then
       return 0
     fi
-  done < <(_mdoctor_allowed_deletion_roots)
+  done
 
   # Stale node_modules cleanup (cleanups/dev_caches.sh) targets
   # "<project>/node_modules" at any depth under HOME. The basename rule
   # keeps this exception tight: only a directory literally named
   # node_modules, never its parents or siblings.
   local home_norm
-  home_norm="$(_normalize_path "${HOME:-}")"
+  _normalize_path "${HOME:-}" home_norm
   if [ -n "$home_norm" ]; then
     case "$path" in
       "$home_norm"/*/node_modules)
@@ -312,7 +350,7 @@ _is_under_allowed_root() {
 
 is_protected_deletion_path() {
   local path
-  path="$(_normalize_path "${1-}")"
+  _normalize_path "${1-}" path
 
   # Fail closed: an empty or unset HOME (legal in cron, launchd, systemd
   # and containers; not caught by `set -u`) collapses every computed
@@ -343,7 +381,7 @@ is_protected_deletion_path() {
   esac
 
   local home_norm
-  home_norm="$(_normalize_path "$HOME")"
+  _normalize_path "$HOME" home_norm
   case "$path" in
     "$home_norm"|"$home_norm/Desktop"|"$home_norm/Documents"|"$home_norm/Library"|"$home_norm/.ssh"|"$home_norm/.gnupg"|"$home_norm/.local"|"$home_norm/.local/share"|"$home_norm/.config")
       return 0
@@ -363,10 +401,17 @@ is_protected_deletion_path() {
   return 1
 }
 
+# validate_deletion_path PATH [CANON_OUT] — run every policy check against
+# the canonical target. With CANON_OUT, the canonical (normalized) path
+# computed mid-validation is assigned to that caller-scoped variable on
+# success, so safe_remove/safe_remove_children reuse it instead of paying
+# a second realpath fork per file (issue #99). CANON_OUT must not collide
+# with the locals below.
 validate_deletion_path() {
   local raw_path="${1-}"
+  local _vd_canon_out="${2-}"
   local path
-  path="$(_normalize_path "$raw_path")"
+  _normalize_path "$raw_path" path
 
   if [ -z "$path" ]; then
     _safety_error "$MDOCTOR_SAFE_ERR_INVALID_TARGET" "$raw_path" "invalid deletion target: empty path"
@@ -395,8 +440,8 @@ validate_deletion_path() {
   # run every policy check against the canonical path — validation and
   # deletion can never disagree on what the target is. Traversal is
   # rejected above, before resolution could hide it.
-  path="$(_canonical_path "$path")"
-  path="$(_normalize_path "$path")"
+  _canonical_path "$path" path
+  _normalize_path "$path" path
 
   if is_protected_deletion_path "$path"; then
     _safety_error "$MDOCTOR_SAFE_ERR_PROTECTED_TARGET" "$path" "blocked protected deletion target"
@@ -408,6 +453,9 @@ validate_deletion_path() {
     return "$MDOCTOR_SAFE_ERR_PROTECTED_TARGET"
   fi
 
+  if [ -n "$_vd_canon_out" ]; then
+    printf -v "$_vd_canon_out" '%s' "$path"
+  fi
   return 0
 }
 
@@ -419,7 +467,8 @@ safe_remove() {
     allow_symlink=true
   fi
 
-  validate_deletion_path "$path" || return $?
+  local canon_path=""
+  validate_deletion_path "$path" canon_path || return $?
 
   if is_whitelisted_cleanup_path "$path"; then
     _safety_log "[SAFE][SKIP:WHITELIST] $path"
@@ -436,9 +485,11 @@ safe_remove() {
 
   # Task 3.2: operate on the canonical path so validation and deletion
   # agree — except for the symlink itself: rm on a link removes the LINK,
-  # so resolving first would redirect deletion onto the TARGET.
-  if [ ! -L "$path" ]; then
-    path="$(_canonical_path "$path")"
+  # so resolving first would redirect deletion onto the TARGET. The
+  # canonical path validated above is reused verbatim (issue #99) — same
+  # input, same realpath result, and provably the path that was checked.
+  if [ ! -L "$path" ] && [ -n "$canon_path" ]; then
+    path="$canon_path"
   fi
 
   if [ ! -e "$path" ] && [ ! -L "$path" ]; then
@@ -483,18 +534,62 @@ safe_remove() {
   return 0
 }
 
-# _canonical_path PATH — resolve symlinks / . / .. to a canonical absolute
-# path (Task 3.1/3.2). Prefers realpath, falls back to readlink -f, then
-# to the (normalized) input when neither can resolve (e.g. missing path).
+# _mdoctor_path_link_free PATH — true only when PATH is absolute, already
+# normalized (no //, /./ or .. segment) AND no component is a symlink.
+# Only then is realpath's resolution provably the input string itself, so
+# the realpath exec can be skipped on the overwhelmingly common path
+# (issue #99). Any doubt falls back to the real exec below.
+_mdoctor_path_link_free() {
+  local rest="${1-}"
+  local next
+  case "$rest" in
+    /*) ;;                                          # absolute only
+    *) return 1 ;;
+  esac
+  case "$rest" in
+    *//*|*/./*|*/../*|*/.|*/..|../*|..) return 1 ;; # not normalized
+  esac
+  while [ "$rest" != "/" ] && [ -n "$rest" ]; do
+    if [ -L "$rest" ]; then
+      return 1
+    fi
+    next="${rest%/*}"
+    # Defensive stop for inputs without a further slash component.
+    [ "$next" = "$rest" ] && break
+    rest="$next"
+  done
+  return 0
+}
+
+# _canonical_path PATH [OUTVAR] — resolve symlinks / . / .. to a canonical
+# absolute path (Task 3.1/3.2). Prefers realpath, falls back to
+# readlink -f, then to the (normalized) input when neither can resolve
+# (e.g. missing path). With OUTVAR the result is assigned in place; with
+# one argument it prints (kept for external callers).
 _canonical_path() {
-  local p="${1-}"
-  [ -n "$p" ] || { echo ""; return 0; }
-  if command -v realpath >/dev/null 2>&1; then
-    realpath "$p" 2>/dev/null || printf '%s' "$p"
-  elif readlink -f "$p" >/dev/null 2>&1; then
-    readlink -f "$p"
+  local _cp_in="${1-}"
+  local _cp_out="${2-}"
+  local _cp_res
+
+  if [ -z "$_cp_in" ]; then
+    _cp_res=""
+  elif _mdoctor_path_link_free "$_cp_in"; then
+    # No symlink component: resolution is the identity on an already
+    # normalized path — same answer realpath would print, no exec.
+    _cp_res="$_cp_in"
+  elif command -v realpath >/dev/null 2>&1; then
+    _cp_res="$(realpath "$_cp_in" 2>/dev/null)" || _cp_res=""
+    [ -n "$_cp_res" ] || _cp_res="$_cp_in"
+  elif _cp_res="$(readlink -f "$_cp_in" 2>/dev/null)" && [ -n "$_cp_res" ]; then
+    :
   else
-    printf '%s' "$p"
+    _cp_res="$_cp_in"
+  fi
+
+  if [ -n "$_cp_out" ]; then
+    printf -v "$_cp_out" '%s' "$_cp_res"
+  else
+    printf '%s' "$_cp_res"
   fi
 }
 
@@ -514,12 +609,11 @@ safe_remove_children() {
     return "$MDOCTOR_SAFE_ERR_SYMLINK_BLOCKED"
   fi
 
-  validate_deletion_path "$dir" || return $?
-
   # Task 3.1: canonicalize (resolving any remaining indirection) and
-  # re-validate the canonical result before touching anything.
-  local canon_dir
-  canon_dir="$(_canonical_path "$dir")"
+  # re-validate the canonical result before touching anything. Validation
+  # already resolved it — take the exported canonical path (issue #99).
+  local canon_dir=""
+  validate_deletion_path "$dir" canon_dir || return $?
   if [ "$canon_dir" != "$dir" ]; then
     validate_deletion_path "$canon_dir" || return $?
     dir="$canon_dir"
@@ -590,9 +684,13 @@ safe_find_delete() {
   local rc=0
   local match=""
 
+  # Loop-invariant: evaluate the symlink allowance once, not per file.
+  local _allow_symlink_rc=0
+  is_truthy "$allow_symlink" || _allow_symlink_rc=$?
+
   while IFS= read -r -d '' match; do
     count=$((count + 1))
-    if is_truthy "$allow_symlink"; then
+    if [ "$_allow_symlink_rc" -eq 0 ]; then
       safe_remove "$match" --allow-symlink || rc=$?
     else
       safe_remove "$match" || rc=$?
