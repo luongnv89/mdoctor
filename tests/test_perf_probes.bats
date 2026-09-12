@@ -18,6 +18,15 @@ load 'helpers/fixture'
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
 
+# Host platform gate (sourced at load time like test_dry_run_semantics):
+# several fixture arms below pin platform-shaped output — memory pressure
+# is a kern.memorystatus level on macOS but a MemAvailable percent on
+# Linux; swap is a vm.swapusage line on macOS but used/total kb on Linux;
+# and the CPU+I/O contention correlation is Linux-only by design (the
+# check returns early on macOS). is_macos is the same lib/platform.sh
+# predicate the code under test branches on.
+source "$ROOT_DIR/lib/platform.sh"
+
 strip_ansi() {
   sed -e 's/\x1b\[[0-9;]*m//g' -e 's/\x1b(B//g' "$1"
 }
@@ -146,8 +155,14 @@ teardown_file() {
   ✅ Load average (0.10) within normal range for 8 cores [1%]
   ℹ️ Top 10 CPU-consuming processes:
   ✅ No process exceeds 80% CPU usage.
-  ✅ Memory pressure: normal (80% available)
 EOF
+  # macOS reports the pinned pressure level (DIAG_MEM_PRESSURE_LEVEL=1);
+  # only the Linux arm derives and prints a MemAvailable percent.
+  if is_macos; then
+    echo "  ✅ Memory pressure: normal" >>"$TEST_TMP/probe_healthy.expected.txt"
+  else
+    echo "  ✅ Memory pressure: normal (80% available)" >>"$TEST_TMP/probe_healthy.expected.txt"
+  fi
   diff "$TEST_TMP/probe_healthy.expected.txt" "$TEST_TMP/probe_healthy.excerpt.txt" \
     || fail "diagnose healthy probe output differs from the pre-extraction fixture"
 }
@@ -165,8 +180,14 @@ EOF
   ❌ Load average (99.0) is >2x core count (2) [4950% ratio]
   ℹ️ Top 10 CPU-consuming processes:
   ✅ No process exceeds 80% CPU usage.
-  ❌ Memory pressure: critical (2% available)
 EOF
+  # macOS reports the pinned pressure level (DIAG_MEM_PRESSURE_LEVEL=4);
+  # only the Linux arm derives and prints a MemAvailable percent.
+  if is_macos; then
+    echo "  ❌ Memory pressure: critical" >>"$TEST_TMP/probe_unhealthy.expected.txt"
+  else
+    echo "  ❌ Memory pressure: critical (2% available)" >>"$TEST_TMP/probe_unhealthy.expected.txt"
+  fi
   diff "$TEST_TMP/probe_unhealthy.expected.txt" "$TEST_TMP/probe_unhealthy.excerpt.txt" \
     || fail "diagnose unhealthy probe output differs from the pre-extraction fixture"
 }
@@ -193,18 +214,31 @@ EOF
   # the shared probes they now pin check_performance too, while its
   # threshold vocabulary (exceeds CPU core count / critical+elevated
   # bands) is unchanged.
+  # DIAG_MEM_PRESSURE_LEVEL pins the macOS sysctl arm the same way
+  # DIAG_MEM_AVAIL_PCT pins the Linux MemAvailable arm; both are set so
+  # the assertion below is deterministic on either platform.
   env DIAG_LOADAVG="99.0" DIAG_CORES="2" DIAG_MEM_AVAIL_PCT="2" \
+    DIAG_MEM_PRESSURE_LEVEL="4" \
     PATH="$TEST_TMP/stubbin:$PATH" \
     ./mdoctor check -m performance >"$TEST_TMP/probe_check_pinned.raw.txt" 2>&1
   strip_ansi "$TEST_TMP/probe_check_pinned.raw.txt" >"$TEST_TMP/probe_check_pinned.txt"
   assert_contains "$TEST_TMP/probe_check_pinned.txt" "Load average (99.0) exceeds CPU core count (2)"
-  assert_contains "$TEST_TMP/probe_check_pinned.txt" "Memory pressure: critical (2% available)"
+  if is_macos; then
+    assert_contains "$TEST_TMP/probe_check_pinned.txt" "Memory pressure: critical"
+  else
+    assert_contains "$TEST_TMP/probe_check_pinned.txt" "Memory pressure: critical (2% available)"
+  fi
   env DIAG_LOADAVG="0.10" DIAG_CORES="8" DIAG_MEM_AVAIL_PCT="80" \
+    DIAG_MEM_PRESSURE_LEVEL="1" \
     PATH="$TEST_TMP/stubbin:$PATH" \
     ./mdoctor check -m performance >"$TEST_TMP/probe_check_healthy.raw.txt" 2>&1
   strip_ansi "$TEST_TMP/probe_check_healthy.raw.txt" >"$TEST_TMP/probe_check_healthy.txt"
   assert_contains "$TEST_TMP/probe_check_healthy.txt" "Load average (0.10) within normal range for 8 cores."
-  assert_contains "$TEST_TMP/probe_check_healthy.txt" "Memory pressure: normal (80% available)"
+  if is_macos; then
+    assert_contains "$TEST_TMP/probe_check_healthy.txt" "Memory pressure: normal"
+  else
+    assert_contains "$TEST_TMP/probe_check_healthy.txt" "Memory pressure: normal (80% available)"
+  fi
 }
 
 @test "diagnose swap output matches the pre-extraction fixture" {
@@ -218,11 +252,22 @@ EOF
     PATH="$TEST_TMP/stubbin:$PATH" \
     ./mdoctor diagnose >"$TEST_TMP/probe_swap_healthy.raw.txt" 2>&1
   strip_ansi "$TEST_TMP/probe_swap_healthy.raw.txt" >"$TEST_TMP/probe_swap_healthy.txt"
-  grep -E "Swap: [0-9]+% used|SWAP THRASHING|Potential swap" "$TEST_TMP/probe_swap_healthy.txt" \
-    | sed -E 's/\([^)]*\)/(NORM)/' >"$TEST_TMP/probe_swap_healthy.excerpt.txt"
-  cat >"$TEST_TMP/probe_swap_healthy.expected.txt" <<'EOF'
+  if is_macos; then
+    # macOS prints the raw `sysctl vm.swapusage` line (or "unavailable"),
+    # never a "<pct>% used" line; normalize the payload like the check
+    # module's Swap test does.
+    grep -E "Swap: |SWAP THRASHING|Potential swap" "$TEST_TMP/probe_swap_healthy.txt" \
+      | sed -E 's/Swap: .*/Swap: NORM/' >"$TEST_TMP/probe_swap_healthy.excerpt.txt"
+    cat >"$TEST_TMP/probe_swap_healthy.expected.txt" <<'EOF'
+  ℹ️ Swap: NORM
+EOF
+  else
+    grep -E "Swap: [0-9]+% used|SWAP THRASHING|Potential swap" "$TEST_TMP/probe_swap_healthy.txt" \
+      | sed -E 's/\([^)]*\)/(NORM)/' >"$TEST_TMP/probe_swap_healthy.excerpt.txt"
+    cat >"$TEST_TMP/probe_swap_healthy.expected.txt" <<'EOF'
   ✅ Swap: 0% used (NORM)
 EOF
+  fi
   diff "$TEST_TMP/probe_swap_healthy.expected.txt" "$TEST_TMP/probe_swap_healthy.excerpt.txt" \
     || fail "diagnose healthy swap output differs from the pre-extraction fixture"
   env DIAG_LOADAVG="99.0" DIAG_CORES="2" DIAG_MEM_PCT="99" \
@@ -232,12 +277,26 @@ EOF
     PATH="$TEST_TMP/stubbin:$PATH" \
     ./mdoctor diagnose >"$TEST_TMP/probe_swap_unhealthy.raw.txt" 2>&1
   strip_ansi "$TEST_TMP/probe_swap_unhealthy.raw.txt" >"$TEST_TMP/probe_swap_unhealthy.txt"
-  grep -E "Swap: [0-9]+% used|SWAP THRASHING|Potential swap" "$TEST_TMP/probe_swap_unhealthy.txt" \
-    | sed -E 's/\([^)]*\)/(NORM)/' >"$TEST_TMP/probe_swap_unhealthy.excerpt.txt"
-  cat >"$TEST_TMP/probe_swap_unhealthy.expected.txt" <<'EOF'
+  if is_macos; then
+    # macOS swap arm prints the raw sysctl line; thrashing is still
+    # detected, but through the macOS proxy — pressure level 4 + swap
+    # over MDOCTOR_DIAG_PRESSURE_SWAP raises iowait to
+    # MDOCTOR_DIAG_IOWAIT_HIGH (30), so the pinned line reads
+    # "iowait=30%", not the Linux DIAG_LINUX_IOWAIT_PCT=50.
+    grep -E "Swap: |SWAP THRASHING|Potential swap" "$TEST_TMP/probe_swap_unhealthy.txt" \
+      | sed -E 's/Swap: .*/Swap: NORM/' >"$TEST_TMP/probe_swap_unhealthy.excerpt.txt"
+    cat >"$TEST_TMP/probe_swap_unhealthy.expected.txt" <<'EOF'
+  ℹ️ Swap: NORM
+  ❌ SWAP THRASHING DETECTED: swap=90% iowait=30%
+EOF
+  else
+    grep -E "Swap: [0-9]+% used|SWAP THRASHING|Potential swap" "$TEST_TMP/probe_swap_unhealthy.txt" \
+      | sed -E 's/\([^)]*\)/(NORM)/' >"$TEST_TMP/probe_swap_unhealthy.excerpt.txt"
+    cat >"$TEST_TMP/probe_swap_unhealthy.expected.txt" <<'EOF'
   ❌ Swap: 90% used (NORM) — critical
   ❌ SWAP THRASHING DETECTED: swap=90% iowait=50%
 EOF
+  fi
   diff "$TEST_TMP/probe_swap_unhealthy.expected.txt" "$TEST_TMP/probe_swap_unhealthy.excerpt.txt" \
     || fail "diagnose unhealthy swap output differs from the pre-extraction fixture"
 }
@@ -336,7 +395,14 @@ EOF
     PATH="$TEST_TMP/stubbin:$PATH" \
     ./mdoctor diagnose >"$TEST_TMP/probe_contention.raw.txt" 2>&1
   strip_ansi "$TEST_TMP/probe_contention.raw.txt" >"$TEST_TMP/probe_contention.txt"
-  assert_contains "$TEST_TMP/probe_contention.txt" "CPU+I/O contention: load=99.0 (2 cores), iowait=50%"
+  if is_macos; then
+    # macOS does not expose Linux-style CPU iowait, so
+    # check_cpu_io_contention returns before sampling: the correlation
+    # line is absent by design on this platform.
+    assert_not_contains "$TEST_TMP/probe_contention.txt" "contention:"
+  else
+    assert_contains "$TEST_TMP/probe_contention.txt" "CPU+I/O contention: load=99.0 (2 cores), iowait=50%"
+  fi
   env DIAG_LOADAVG="0.10" DIAG_CORES="8" DIAG_MEM_PCT="10" \
     DIAG_MEM_AVAIL_PCT="80" DIAG_MEM_PRESSURE_LEVEL="1" \
     DIAG_DISK_PCT="20" DIAG_SWAP_PCT="0" DIAG_LINUX_IOWAIT_PCT="0" \

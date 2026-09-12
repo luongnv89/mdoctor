@@ -82,6 +82,10 @@ export MDOCTOR_REPORT_WARN_KB="$MDOCTOR_KB_PER_GB"
 export MDOCTOR_DU_TIMEOUT_S=30
 export MDOCTOR_FIND_TIMEOUT_S=30
 export MDOCTOR_DEV_FIND_TIMEOUT_S=60
+# Max paths handed to one sizing find invocation in preflight_find_kb
+# (Task 11.1) — bounds exec argv so a huge match set can never hit
+# ARG_MAX (tightest on macOS, ~256 KB).
+export MDOCTOR_FIND_ARGV_CHUNK=2000
 
 ########################################
 # SIZE-PROBE ERROR CODES (Task 9.4)
