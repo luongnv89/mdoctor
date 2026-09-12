@@ -51,10 +51,18 @@ perf_probe_load() {
   local cores load1
   if is_macos; then
     cores=$(sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
-    load1=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}')
+    # vm.loadavg prints "{ 1.23 4.56 7.89 }" — field 2 is load1. In-shell
+    # split replaces sysctl|awk (issue #98).
+    local _la
+    _la=$(sysctl -n vm.loadavg 2>/dev/null || true)
+    load1=""
+    read -r _ load1 _ <<< "$_la"
   else
     cores=$(nproc 2>/dev/null || echo 4)
-    load1=$(awk '{print $1}' /proc/loadavg 2>/dev/null || echo "")
+    load1=""
+    if [ -r /proc/loadavg ]; then
+      read -r load1 _ < /proc/loadavg
+    fi
   fi
 
   # Fixed inputs for tests (see header comment).
@@ -118,9 +126,17 @@ perf_probe_mem_pressure() {
   if [ ! -r /proc/meminfo ]; then
     return 1
   fi
-  local mem_total_kb mem_avail_kb avail_pct
-  mem_total_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
-  mem_avail_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+  local mem_total_kb="" mem_avail_kb="" avail_pct
+  # One in-shell pass over /proc/meminfo for both fields (issue #98 —
+  # was two awk opens of the same file).
+  local _mk _mv _mline
+  while IFS= read -r _mline; do
+    read -r _mk _mv _ <<< "$_mline"
+    case "$_mk" in
+      MemTotal:)     mem_total_kb="$_mv" ;;
+      MemAvailable:) mem_avail_kb="$_mv" ;;
+    esac
+  done < /proc/meminfo
   if [ -z "$mem_total_kb" ] || [ -z "$mem_avail_kb" ]; then
     return 1
   fi
@@ -157,9 +173,16 @@ perf_probe_swap() {
   if [ ! -r /proc/meminfo ]; then
     return 1
   fi
-  local swap_total_kb swap_free_kb swap_used_kb
-  swap_total_kb=$(awk '/^SwapTotal:/ {print $2}' /proc/meminfo)
-  swap_free_kb=$(awk '/^SwapFree:/ {print $2}' /proc/meminfo)
+  local swap_total_kb="" swap_free_kb="" swap_used_kb
+  # One in-shell pass over /proc/meminfo for both fields (issue #98).
+  local _mk _mv _mline
+  while IFS= read -r _mline; do
+    read -r _mk _mv _ <<< "$_mline"
+    case "$_mk" in
+      SwapTotal:) swap_total_kb="$_mv" ;;
+      SwapFree:)  swap_free_kb="$_mv" ;;
+    esac
+  done < /proc/meminfo
   if [ -z "$swap_total_kb" ] || [ -z "$swap_free_kb" ]; then
     return 1
   fi
@@ -177,5 +200,12 @@ perf_probe_zombies() {
   if ! command -v ps >/dev/null 2>&1; then
     return 1
   fi
-  ps -eo pid,ppid,stat,comm 2>/dev/null | awk '$3 ~ /^Z/ {print $1, $2, $4}' || true
+  # In-shell row filter replaces the awk '$3 ~ /^Z/' stage (issue #98);
+  # the record shape is identical ("<pid> <ppid> <name>").
+  local _zp _zpp _zs _zc
+  ps -eo pid,ppid,stat,comm 2>/dev/null | while read -r _zp _zpp _zs _zc _; do
+    case "$_zs" in
+      Z*) printf '%s %s %s\n' "$_zp" "$_zpp" "$_zc" ;;
+    esac
+  done || true
 }

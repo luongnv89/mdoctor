@@ -41,12 +41,16 @@ check_apps() {
     local crashes
     crashes=$(find "$dir" -type f \( -name "*.crash" -o -name "*.ips" -o -name "*.diag" \) -mtime -7 2>/dev/null || true)
     if [ -n "$crashes" ]; then
-      local count
-      count=$(echo "$crashes" | wc -l | tr -d ' ')
+      local count=0 _cline
+      while IFS= read -r _cline; do
+        count=$((count + 1))
+      done <<< "$crashes"
       total_crashes=$((total_crashes + count))
 
       local app_names
-      app_names=$(echo "$crashes" | xargs -I{} basename {} 2>/dev/null | sed 's/[-_].*//' | sort | uniq -c | sort -rn | head -5)
+      # One batched sed replaces per-file xargs -I{} basename {} (issue
+      # #98): s|.*/|| strips the directory, s/[-_].*// the date suffix.
+      app_names=$(printf '%s\n' "$crashes" | sed 's|.*/||; s/[-_].*//' | sort | uniq -c | sort -rn | head -5)
       if [ -n "$app_names" ]; then
         crash_apps="${crash_apps}${app_names}"
       fi
@@ -64,29 +68,34 @@ check_apps() {
 
   if [ -n "$crash_apps" ]; then
     status_info "Top crashing apps:"
-    local line
-    while IFS= read -r line; do
-      line="${line#"${line%%[![:space:]]*}"}"
-      if [ -n "$line" ]; then
-        local cnt name
-        cnt=$(echo "$line" | awk '{print $1}')
-        name=$(echo "$line" | awk '{print $2}')
+    local cnt name _crest
+    while read -r cnt name _crest; do
+      if [ -n "$name" ]; then
         status_info "  ${name}: ${cnt} crashes"
       fi
     done <<< "$crash_apps"
   fi
 
-  # Application count
+  # Application count — in-shell line counts, no wc|tr / grep -c
+  # pipelines (issue #98).
   if is_macos; then
-    local app_count
-    app_count=$(mdfind "kMDItemContentType == 'com.apple.application-bundle'" 2>/dev/null | wc -l | tr -d ' ')
-    if [ -n "$app_count" ] && (( app_count > 0 )); then
+    local app_count=0 _md_out _mdl
+    _md_out=$(mdfind "kMDItemContentType == 'com.apple.application-bundle'" 2>/dev/null || true)
+    while IFS= read -r _mdl; do
+      [ -n "$_mdl" ] && app_count=$((app_count + 1))
+    done <<< "$_md_out"
+    if (( app_count > 0 )); then
       status_info "Installed applications: approximately ${app_count}"
     fi
   else
     if command -v dpkg >/dev/null 2>&1; then
-      local pkg_count
-      pkg_count=$(dpkg -l 2>/dev/null | grep -c '^ii' || true)
+      local pkg_count=0 _dp _dpl
+      _dp=$(dpkg -l 2>/dev/null || true)
+      while IFS= read -r _dpl; do
+        case "$_dpl" in
+          ii*) pkg_count=$((pkg_count + 1)) ;;
+        esac
+      done <<< "$_dp"
       status_info "Installed packages (dpkg): ${pkg_count}"
     fi
   fi

@@ -94,16 +94,22 @@ check_git_config() {
     status_info "No ~/.ssh directory found."
   fi
 
-  # SSH agent status
+  # SSH agent status — substring tests in-shell, no echo|grep (issue #98)
   local agent_keys
   agent_keys=$(ssh-add -l 2>/dev/null || echo "")
-  if echo "$agent_keys" | grep -q "no identities"; then
-    status_info "SSH agent: running, no keys loaded"
-  elif echo "$agent_keys" | grep -q "Could not open"; then
-    status_info "SSH agent: not running"
-  elif [ -n "$agent_keys" ]; then
-    local loaded
-    loaded=$(echo "$agent_keys" | wc -l | tr -d ' ')
-    status_ok "SSH agent: ${loaded} key(s) loaded"
-  fi
+  case "$agent_keys" in
+    *"no identities"*)
+      status_info "SSH agent: running, no keys loaded"
+      ;;
+    *"Could not open"*)
+      status_info "SSH agent: not running"
+      ;;
+    ?*)
+      local loaded=0 _kline
+      while IFS= read -r _kline; do
+        loaded=$((loaded + 1))
+      done <<< "$agent_keys"
+      status_ok "SSH agent: ${loaded} key(s) loaded"
+      ;;
+  esac
 }

@@ -43,17 +43,23 @@ check_startup() {
         count=$((count + 1))
         total_agents=$((total_agents + 1))
 
-        local basename
-        basename="$(basename "$f")"
-        if ! echo "$basename" | grep -q '^com\.apple\.'; then
-          non_apple=$((non_apple + 1))
-          non_apple_agents=$((non_apple_agents + 1))
-          if [ -n "$non_apple_list" ]; then
-            non_apple_list="${non_apple_list}, ${basename%.plist}"
-          else
-            non_apple_list="${basename%.plist}"
-          fi
-        fi
+        # ${f##*/} + case replace the per-plist basename subshell and
+        # echo|grep prefix test (issue #98 — was 4 forks per plist).
+        local plist_name
+        plist_name="${f##*/}"
+        case "$plist_name" in
+          com.apple.*)
+            ;;
+          *)
+            non_apple=$((non_apple + 1))
+            non_apple_agents=$((non_apple_agents + 1))
+            if [ -n "$non_apple_list" ]; then
+              non_apple_list="${non_apple_list}, ${plist_name%.plist}"
+            else
+              non_apple_list="${plist_name%.plist}"
+            fi
+            ;;
+        esac
       done
 
       local dir_label
@@ -81,13 +87,21 @@ check_startup() {
   else
     # Linux: systemd services
     if command -v systemctl >/dev/null 2>&1; then
-      local enabled_count
-      enabled_count=$(systemctl list-unit-files --state=enabled --type=service --no-pager --no-legend 2>/dev/null | wc -l | tr -d ' ')
+      # In-shell line counts replace three wc -l|tr -d ' ' pipelines
+      # (issue #98).
+      local enabled_count=0 _sc_out _scl
+      _sc_out=$(systemctl list-unit-files --state=enabled --type=service --no-pager --no-legend 2>/dev/null || true)
+      while IFS= read -r _scl; do
+        [ -n "$_scl" ] && enabled_count=$((enabled_count + 1))
+      done <<< "$_sc_out"
       status_info "Enabled systemd services: ${enabled_count}"
 
       # Failed services
-      local failed_count
-      failed_count=$(systemctl --failed --no-pager --no-legend 2>/dev/null | wc -l | tr -d ' ')
+      local failed_count=0
+      _sc_out=$(systemctl --failed --no-pager --no-legend 2>/dev/null || true)
+      while IFS= read -r _scl; do
+        [ -n "$_scl" ] && failed_count=$((failed_count + 1))
+      done <<< "$_sc_out"
       if (( failed_count > 0 )); then
         status_warn "Failed systemd services: ${failed_count}"
         add_action "Run 'systemctl --failed' to see failed services and fix or disable them."
@@ -96,8 +110,11 @@ check_startup() {
       fi
 
       # User services
-      local user_enabled
-      user_enabled=$(systemctl --user list-unit-files --state=enabled --type=service --no-pager --no-legend 2>/dev/null | wc -l | tr -d ' ')
+      local user_enabled=0
+      _sc_out=$(systemctl --user list-unit-files --state=enabled --type=service --no-pager --no-legend 2>/dev/null || true)
+      while IFS= read -r _scl; do
+        [ -n "$_scl" ] && user_enabled=$((user_enabled + 1))
+      done <<< "$_sc_out"
       if (( user_enabled > 0 )); then
         status_info "User-level enabled services: ${user_enabled}"
       fi

@@ -38,20 +38,31 @@ check_containers() {
 
   status_ok "Docker daemon is running."
 
-  # Disk usage summary
+  # Disk usage summary — one in-shell pass over the captured table
+  # (issue #98): fields 4-5 of each keyed row, same as the three
+  # retired echo|awk '{print $4, $5}' extractions.
   local disk_usage
   disk_usage=$(docker system df 2>/dev/null || true)
   if [ -n "$disk_usage" ]; then
-    local images_size containers_size volumes_size
-    images_size=$(echo "$disk_usage" | awk '/Images/ {print $4, $5}')
-    containers_size=$(echo "$disk_usage" | awk '/Containers/ {print $4, $5}')
-    volumes_size=$(echo "$disk_usage" | awk '/Local Volumes/ {print $4, $5}')
+    local images_size="" containers_size="" volumes_size=""
+    local _duline _du1 _du2 _du3 _du4 _du5 _durest
+    while IFS= read -r _duline; do
+      read -r _du1 _du2 _du3 _du4 _du5 _durest <<< "$_duline"
+      case "$_duline" in
+        *Images*)         images_size="${_du4} ${_du5}" ;;
+        *Containers*)     containers_size="${_du4} ${_du5}" ;;
+        *"Local Volumes"*) volumes_size="${_du4} ${_du5}" ;;
+      esac
+    done <<< "$disk_usage"
     status_info "Docker disk usage — Images: ${images_size:-?}, Containers: ${containers_size:-?}, Volumes: ${volumes_size:-?}"
   fi
 
-  # Dangling images
-  local dangling_images
-  dangling_images=$(docker images -f "dangling=true" -q 2>/dev/null | wc -l | tr -d ' ')
+  # Dangling images — count in-shell, no wc|tr pipeline (issue #98).
+  local dangling_images=0 _dc_out _dcline
+  _dc_out=$(docker images -f "dangling=true" -q 2>/dev/null || true)
+  while IFS= read -r _dcline; do
+    [ -n "$_dcline" ] && dangling_images=$((dangling_images + 1))
+  done <<< "$_dc_out"
   if (( dangling_images > 0 )); then
     status_warn "Dangling Docker images: ${dangling_images}"
     add_action "Clean dangling Docker images: docker image prune"
@@ -60,8 +71,11 @@ check_containers() {
   fi
 
   # Dangling volumes
-  local dangling_volumes
-  dangling_volumes=$(docker volume ls -f "dangling=true" -q 2>/dev/null | wc -l | tr -d ' ')
+  local dangling_volumes=0
+  _dc_out=$(docker volume ls -f "dangling=true" -q 2>/dev/null || true)
+  while IFS= read -r _dcline; do
+    [ -n "$_dcline" ] && dangling_volumes=$((dangling_volumes + 1))
+  done <<< "$_dc_out"
   if (( dangling_volumes > 0 )); then
     status_warn "Dangling Docker volumes: ${dangling_volumes}"
     add_action "Clean dangling Docker volumes: docker volume prune"
@@ -70,8 +84,11 @@ check_containers() {
   fi
 
   # Stopped containers
-  local stopped_containers
-  stopped_containers=$(docker ps -f "status=exited" -q 2>/dev/null | wc -l | tr -d ' ')
+  local stopped_containers=0
+  _dc_out=$(docker ps -f "status=exited" -q 2>/dev/null || true)
+  while IFS= read -r _dcline; do
+    [ -n "$_dcline" ] && stopped_containers=$((stopped_containers + 1))
+  done <<< "$_dc_out"
   if (( stopped_containers > 0 )); then
     status_info "Stopped Docker containers: ${stopped_containers}"
   else
