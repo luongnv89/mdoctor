@@ -34,19 +34,19 @@ check_usb() {
 
   current_device=""
 
+  # Case-insensitive skip set kept in a variable — Bash 3.2's =~ parser
+  # treats inline quoting differently (issue #98: replaces two
+  # echo|grep pipelines per line).
+  local skip_re='[Uu][Ss][Bb] [Bb]us|[Hh]ost [Cc]ontroller|[Hh][Uu][Bb]'
   while IFS= read -r line; do
     # Device name lines are indented and end with ":"
     local trimmed
     trimmed="${line#"${line%%[![:space:]]*}"}"
 
-    # Check for product name
-    if echo "$line" | grep -q "Product ID:"; then
-      # We found a device entry
-      true
-    fi
-
-    # Capture device names (non-Apple hub entries that have a colon at end)
-    if echo "$trimmed" | grep -qE '^[A-Za-z].*:$' && ! echo "$trimmed" | grep -qiE 'USB Bus|Host Controller|hub'; then
+    # Capture device names (non-Apple hub entries that have a colon at
+    # end): starts with a letter, ends with ':' — the old
+    # grep -E '^[A-Za-z].*:$' — and contains no bus/controller/hub word.
+    if [[ "$trimmed" =~ ^[A-Za-z].*:$ ]] && [[ ! "$trimmed" =~ $skip_re ]]; then
       current_device="${trimmed%:}"
       device_count=$((device_count + 1))
       if [ -n "$device_list" ]; then
@@ -56,9 +56,16 @@ check_usb() {
       fi
     fi
 
-    # Check power draw (in mA)
-    local power_ma
-    power_ma=$(echo "$line" | awk -F': ' '/Current Available \(mA\)/ {gsub(/[^0-9]/,"",$2); print $2}')
+    # Check power draw (in mA) — value after the 'Current Available
+    # (mA): ' label with non-digits stripped, same as the retired
+    # awk -F': ' gsub(/[^0-9]/) extraction.
+    local power_ma=""
+    case "$line" in
+      *"Current Available (mA): "*)
+        local _pv="${line#*"Current Available (mA): "}"
+        power_ma="${_pv//[!0-9]/}"
+        ;;
+    esac
     if [ -n "$power_ma" ] && (( power_ma > 500 )); then
       high_power_count=$((high_power_count + 1))
     fi

@@ -22,70 +22,95 @@ check_security() {
     # Firewall status
     local fw_status
     fw_status=$(/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null || true)
-    if echo "$fw_status" | grep -qi "enabled"; then
-      status_ok "Firewall: enabled"
-    elif echo "$fw_status" | grep -qi "disabled"; then
-      status_warn "Firewall: disabled"
-      add_action "Enable the macOS firewall: System Settings > Network > Firewall"
-    else
-      status_info "Firewall status: could not determine"
-    fi
+    # Case-insensitive substring tests via case globs — zero forks
+    # (issue #98: was echo|grep -qi per test).
+    case "$fw_status" in
+      *[Ee][Nn][Aa][Bb][Ll][Ee][Dd]*)
+        status_ok "Firewall: enabled"
+        ;;
+      *[Dd][Ii][Ss][Aa][Bb][Ll][Ee][Dd]*)
+        status_warn "Firewall: disabled"
+        add_action "Enable the macOS firewall: System Settings > Network > Firewall"
+        ;;
+      *)
+        status_info "Firewall status: could not determine"
+        ;;
+    esac
 
     # FileVault / disk encryption
     local fv_status
     fv_status=$(fdesetup status 2>/dev/null || true)
-    if echo "$fv_status" | grep -qi "On"; then
-      status_ok "FileVault: enabled"
-    elif echo "$fv_status" | grep -qi "Off"; then
-      status_warn "FileVault: disabled (disk not encrypted)"
-      add_action "Enable FileVault for disk encryption: System Settings > Privacy & Security > FileVault"
-    else
-      status_info "FileVault status: could not determine"
-    fi
+    case "$fv_status" in
+      *[Oo][Nn]*)
+        status_ok "FileVault: enabled"
+        ;;
+      *[Oo][Ff][Ff]*)
+        status_warn "FileVault: disabled (disk not encrypted)"
+        add_action "Enable FileVault for disk encryption: System Settings > Privacy & Security > FileVault"
+        ;;
+      *)
+        status_info "FileVault status: could not determine"
+        ;;
+    esac
 
     # System Integrity Protection
     local sip_status
     sip_status=$(csrutil status 2>/dev/null || true)
-    if echo "$sip_status" | grep -qi "enabled"; then
-      status_ok "System Integrity Protection (SIP): enabled"
-    elif echo "$sip_status" | grep -qi "disabled"; then
-      status_fail "System Integrity Protection (SIP): disabled"
-      add_action "SIP is disabled. This is a security risk. Re-enable via Recovery Mode: csrutil enable"
-    else
-      status_info "SIP status: could not determine"
-    fi
+    case "$sip_status" in
+      *[Ee][Nn][Aa][Bb][Ll][Ee][Dd]*)
+        status_ok "System Integrity Protection (SIP): enabled"
+        ;;
+      *[Dd][Ii][Ss][Aa][Bb][Ll][Ee][Dd]*)
+        status_fail "System Integrity Protection (SIP): disabled"
+        add_action "SIP is disabled. This is a security risk. Re-enable via Recovery Mode: csrutil enable"
+        ;;
+      *)
+        status_info "SIP status: could not determine"
+        ;;
+    esac
 
     # Gatekeeper
     local gk_status
     gk_status=$(spctl --status 2>/dev/null || true)
-    if echo "$gk_status" | grep -qi "enabled"; then
-      status_ok "Gatekeeper: enabled"
-    elif echo "$gk_status" | grep -qi "disabled"; then
-      status_warn "Gatekeeper: disabled"
-      add_action "Enable Gatekeeper: sudo spctl --master-enable"
-    else
-      status_info "Gatekeeper status: could not determine"
-    fi
+    case "$gk_status" in
+      *[Ee][Nn][Aa][Bb][Ll][Ee][Dd]*)
+        status_ok "Gatekeeper: enabled"
+        ;;
+      *[Dd][Ii][Ss][Aa][Bb][Ll][Ee][Dd]*)
+        status_warn "Gatekeeper: disabled"
+        add_action "Enable Gatekeeper: sudo spctl --master-enable"
+        ;;
+      *)
+        status_info "Gatekeeper status: could not determine"
+        ;;
+    esac
 
     # Remote Login (SSH)
     local remote_login
     remote_login=$(systemsetup -getremotelogin 2>/dev/null || true)
-    if echo "$remote_login" | grep -qi "On"; then
-      status_info "Remote Login (SSH): enabled"
-    elif echo "$remote_login" | grep -qi "Off"; then
-      status_ok "Remote Login (SSH): disabled"
-    fi
+    case "$remote_login" in
+      *[Oo][Nn]*)
+        status_info "Remote Login (SSH): enabled"
+        ;;
+      *[Oo][Ff][Ff]*)
+        status_ok "Remote Login (SSH): disabled"
+        ;;
+    esac
 
-    # Screen Sharing
-    local screen_sharing
-    screen_sharing=$(launchctl list 2>/dev/null | grep -c "com.apple.screensharing" || true)
+    # Screen Sharing + Remote Management — one launchctl snapshot counts
+    # both labels (issue #98: was a second launchctl|grep -c per label).
+    local screen_sharing=0 remote_mgmt=0
+    local _ll_out _lline
+    _ll_out=$(launchctl list 2>/dev/null || true)
+    while IFS= read -r _lline; do
+      case "$_lline" in
+        *com.apple.screensharing*)  screen_sharing=$((screen_sharing + 1)) ;;
+        *com.apple.RemoteDesktop*)  remote_mgmt=$((remote_mgmt + 1)) ;;
+      esac
+    done <<< "$_ll_out"
     if (( screen_sharing > 0 )); then
       status_info "Screen Sharing: active"
     fi
-
-    # Remote Management
-    local remote_mgmt
-    remote_mgmt=$(launchctl list 2>/dev/null | grep -c "com.apple.RemoteDesktop" || true)
     if (( remote_mgmt > 0 )); then
       status_info "Remote Management: active"
     fi
@@ -112,20 +137,35 @@ check_security() {
       fi
       # NOTE: "inactive" must be tested before "active" — the latter
       # is a substring of the former ("Status: inactive").
-      if echo "$ufw_status" | grep -qi "inactive"; then
-        status_warn "Firewall (ufw): inactive"
-        add_action "Enable the firewall: sudo ufw enable"
-      elif echo "$ufw_status" | grep -qi "active"; then
-        status_ok "Firewall (ufw): active"
-      elif [ -z "$ufw_status" ]; then
-        status_info "Firewall (ufw): requires sudo to verify"
-      else
-        status_info "Firewall (ufw): could not determine status"
-      fi
+      case "$ufw_status" in
+        *[Ii][Nn][Aa][Cc][Tt][Ii][Vv][Ee]*)
+          status_warn "Firewall (ufw): inactive"
+          add_action "Enable the firewall: sudo ufw enable"
+          ;;
+        *[Aa][Cc][Tt][Ii][Vv][Ee]*)
+          status_ok "Firewall (ufw): active"
+          ;;
+        "")
+          status_info "Firewall (ufw): requires sudo to verify"
+          ;;
+        *)
+          status_info "Firewall (ufw): could not determine status"
+          ;;
+      esac
     elif command -v iptables >/dev/null 2>&1; then
       local ipt_rules="" ipt_rules_raw
       if sudo -n true 2>/dev/null; then
-        ipt_rules_raw=$(sudo -n iptables -L -n 2>/dev/null | grep -cv '^$\|^Chain\|^target' || true)
+        # Count rule lines in-shell — the retired grep -cv skipped
+        # blank lines and Chain/target headers (issue #98).
+        local _ipt_out _iptl _ipt_n=0
+        _ipt_out=$(sudo -n iptables -L -n 2>/dev/null || true)
+        while IFS= read -r _iptl; do
+          case "$_iptl" in
+            ""|Chain*|target*) ;;
+            *) _ipt_n=$((_ipt_n + 1)) ;;
+          esac
+        done <<< "$_ipt_out"
+        ipt_rules_raw="$_ipt_n"
         ipt_rules=$(to_int "$ipt_rules_raw")
       fi
       if [ -z "$ipt_rules" ]; then
@@ -143,7 +183,14 @@ check_security() {
     # Disk encryption (LUKS)
     if command -v lsblk >/dev/null 2>&1; then
       local crypt_count crypt_count_raw
-      crypt_count_raw=$(lsblk -o TYPE 2>/dev/null | grep -c "crypt" || true)
+      local _lb_out _lbl _crypt_n=0
+      _lb_out=$(lsblk -o TYPE 2>/dev/null || true)
+      while IFS= read -r _lbl; do
+        case "$_lbl" in
+          *crypt*) _crypt_n=$((_crypt_n + 1)) ;;
+        esac
+      done <<< "$_lb_out"
+      crypt_count_raw="$_crypt_n"
       crypt_count=$(to_int "$crypt_count_raw")
       if (( crypt_count > 0 )); then
         status_ok "Disk encryption (LUKS): ${crypt_count} encrypted volume(s)"
@@ -161,29 +208,49 @@ check_security() {
       fi
     fi
 
-    # Unattended upgrades (Debian-family only)
+    # Unattended upgrades (Debian-family only) — the '^ii' line test
+    # runs in-shell (issue #98).
     if is_debian; then
-      if dpkg -l unattended-upgrades 2>/dev/null | grep -q '^ii'; then
-        status_ok "Unattended upgrades: installed"
-      else
-        status_warn "Unattended upgrades: not installed"
-        add_action "Consider installing unattended-upgrades for automatic security updates."
-      fi
+      local _dpkg_out
+      _dpkg_out=$(dpkg -l unattended-upgrades 2>/dev/null || true)
+      case "$_dpkg_out" in
+        ii*|*$'\n'ii*)
+          status_ok "Unattended upgrades: installed"
+          ;;
+        *)
+          status_warn "Unattended upgrades: not installed"
+          add_action "Consider installing unattended-upgrades for automatic security updates."
+          ;;
+      esac
     else
       status_info "Unattended upgrades: N/A on this distro."
     fi
   fi
 
-  # Cross-platform: processes listening on TCP ports
-  local listening_count
+  # Cross-platform: processes listening on TCP ports — in-shell line
+  # count over one snapshot (issue #98: was tail|wc -l|tr per probe).
+  # The first line is the header (the retired tail -n +2).
+  local listening_count=""
+  local _have_probe=0
+  local _listen_out="" _lstn_line _lstn_seen=0
   if is_macos; then
-    listening_count=$(lsof -iTCP -sTCP:LISTEN -P 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
+    _listen_out=$(lsof -iTCP -sTCP:LISTEN -P 2>/dev/null || true)
+    _have_probe=1
   elif ! command -v ss >/dev/null 2>&1; then
     # Task 2.5: guarded ss; absent ss reports a skip, never an error.
     status_info "Skipping listening-ports probe: ss not found."
-    listening_count=""
   else
-    listening_count=$(ss -tlnp 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
+    _listen_out=$(ss -tlnp 2>/dev/null || true)
+    _have_probe=1
+  fi
+  if (( _have_probe )); then
+    listening_count=0
+    while IFS= read -r _lstn_line; do
+      _lstn_seen=$((_lstn_seen + 1))
+      if (( _lstn_seen > 1 )); then
+        listening_count=$((listening_count + 1))
+      fi
+    done <<< "$_listen_out"
   fi
   if [ -n "$listening_count" ] && (( listening_count > 0 )); then
     status_info "Processes listening on TCP ports: ${listening_count}"

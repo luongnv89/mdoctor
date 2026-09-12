@@ -107,7 +107,11 @@ to_int() {
   local raw="${1:-0}"
   local first
 
-  first="$(printf '%s\n' "$raw" | head -n1 | tr -cd '0-9')"
+  # head -n1 + tr -cd '0-9' inlined: first line of $raw, digits only
+  # (issue #98 — zero-fork normalization).
+  local _first_line
+  IFS= read -r _first_line <<< "$raw"
+  first="${_first_line//[!0-9]/}"
   if [ -z "$first" ]; then
     echo 0
   else

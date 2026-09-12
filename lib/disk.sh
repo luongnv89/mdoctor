@@ -11,13 +11,27 @@ unset _MDOCTOR_DISK_DIR
 
 # On macOS APFS, df / reports the read-only system snapshot which shows
 # very little usage. The real user data lives on /System/Volumes/Data.
-_disk_root() {
-  # macOS APFS: real user data lives on the Data volume
-  if is_macos 2>/dev/null && [ -d /System/Volumes/Data ]; then
-    echo /System/Volumes/Data
-  else
-    echo /
+#
+# The answer is constant for the life of the process (platform identity
+# and the APFS Data-volume layout never change mid-run), so detection
+# runs once and is cached in _MDOCTOR_DISK_ROOT (issue #98). In-library
+# callers populate the cache with _disk_root_init and read the variable
+# directly, skipping the command-substitution fork entirely; _disk_root
+# stays the printing interface for external callers (checks/disk.sh).
+_MDOCTOR_DISK_ROOT=""
+_disk_root_init() {
+  if [ -z "$_MDOCTOR_DISK_ROOT" ]; then
+    # macOS APFS: real user data lives on the Data volume
+    if is_macos 2>/dev/null && [ -d /System/Volumes/Data ]; then
+      _MDOCTOR_DISK_ROOT="/System/Volumes/Data"
+    else
+      _MDOCTOR_DISK_ROOT="/"
+    fi
   fi
+}
+_disk_root() {
+  _disk_root_init
+  printf '%s\n' "$_MDOCTOR_DISK_ROOT"
 }
 
 kb_to_human() {
@@ -26,11 +40,29 @@ kb_to_human() {
 
 disk_used_pct_root() {
   local out rc=0 value
-  out=$(df -H "$(_disk_root)" 2>/dev/null) || rc=$?
+  _disk_root_init
+  out=$(df -H "$_MDOCTOR_DISK_ROOT" 2>/dev/null) || rc=$?
+  if { [ "$rc" -ne 0 ] || [ -z "$out" ]; } && [ "$_MDOCTOR_DISK_ROOT" != "/" ]; then
+    # Same fallback the retired caller spelled out: if the Data-volume
+    # probe yields nothing, measure / (issue #98).
+    rc=0
+    out=$(df -H / 2>/dev/null) || rc=$?
+  fi
   if [ "$rc" -ne 0 ] || [ -z "$out" ]; then
     return "$MDOCTOR_SIZE_ERR_FAILED"
   fi
-  value=$(printf '%s\n' "$out" | awk 'NR==2 {gsub("%","",$5); print $5}') || return "$MDOCTOR_SIZE_ERR_FAILED"
+  # Row 2 carries the counters; field 5 is the Use% column. The
+  # printf|awk extraction is now an in-shell split (issue #98).
+  local _dfrow="" _d1 _d2 _d3 _d4 _drest _dfh
+  {
+    IFS= read -r _dfh || true    # header row
+    IFS= read -r _dfrow || true  # data row (awk NR==2)
+  } <<< "$out"
+  value=""
+  if [ -n "$_dfrow" ]; then
+    read -r _d1 _d2 _d3 _d4 value _drest <<< "$_dfrow"
+    value="${value//%/}"
+  fi
   case "$value" in
     ''|*[!0-9]*) return "$MDOCTOR_SIZE_ERR_FAILED" ;;
   esac
@@ -38,16 +70,36 @@ disk_used_pct_root() {
 }
 
 disk_usage() {
-  df -h "$(_disk_root)" | awk 'NR==2 {print "Disk usage: "$3" used / "$2" total ("$5" used)"}'
+  _disk_root_init
+  local _df_out _dfrow="" _d1 _d2 _d3 _d4 _d5 _drest _dfh
+  _df_out=$(df -h "$_MDOCTOR_DISK_ROOT" || true)
+  {
+    IFS= read -r _dfh || true
+    IFS= read -r _dfrow || true
+  } <<< "$_df_out"
+  if [ -n "$_dfrow" ]; then
+    read -r _d1 _d2 _d3 _d4 _d5 _drest <<< "$_dfrow"
+    printf 'Disk usage: %s used / %s total (%s used)\n' "$_d3" "$_d2" "$_d5"
+  fi
 }
 
 disk_used_kb() {
   local out rc=0 value
-  out=$(df -k "$(_disk_root)" 2>/dev/null) || rc=$?
+  _disk_root_init
+  out=$(df -k "$_MDOCTOR_DISK_ROOT" 2>/dev/null) || rc=$?
   if [ "$rc" -ne 0 ] || [ -z "$out" ]; then
     return "$MDOCTOR_SIZE_ERR_FAILED"
   fi
-  value=$(printf '%s\n' "$out" | awk 'NR==2 {print $3}') || return "$MDOCTOR_SIZE_ERR_FAILED"
+  # Same in-shell NR==2 row split; field 3 is the Used column.
+  local _dfrow="" _d1 _d2 _drest _dfh
+  {
+    IFS= read -r _dfh || true
+    IFS= read -r _dfrow || true
+  } <<< "$out"
+  value=""
+  if [ -n "$_dfrow" ]; then
+    read -r _d1 _d2 value _drest <<< "$_dfrow"
+  fi
   case "$value" in
     ''|*[!0-9]*) return "$MDOCTOR_SIZE_ERR_FAILED" ;;
   esac
@@ -123,9 +175,13 @@ du_size_kb() {
     # No data at all: du died before printing anything (other failure).
     return "$MDOCTOR_SIZE_ERR_FAILED"
   fi
-  # NR==1 + numeric coercion: du prints the path after the size, and the
-  # path itself may contain newlines (Task 3.6) — only the first line
-  # carries the size.
-  printf '%s\n' "$kb_raw" | awk 'NR==1{print $1+0}'
+  # First line + numeric coercion: du prints the path after the size, and
+  # the path itself may contain newlines (Task 3.6) — only the first line
+  # carries the size. In-shell split replaces printf|awk (issue #98);
+  # truncating at the first non-digit mirrors awk's $1+0 coercion.
+  local _du_kb=""
+  read -r _du_kb _ <<< "$kb_raw"
+  _du_kb="${_du_kb%%[!0-9]*}"
+  printf '%s\n' "${_du_kb:-0}"
   return 0
 }

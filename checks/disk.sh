@@ -26,7 +26,18 @@ check_disk() {
   fi
 
   status_info "Root filesystem usage: ${used_pct}%"
-  df -h "$(_disk_root)" | awk 'NR==1 || NR==2 {print "  "$0}'
+  # _disk_root_init + _MDOCTOR_DISK_ROOT skips the $(_disk_root) subshell
+  # (issue #98); the df table is re-indented in-shell, first two rows
+  # only like the retired awk 'NR==1 || NR==2'.
+  _disk_root_init
+  local _dfn=0 _dfl
+  df -h "$_MDOCTOR_DISK_ROOT" | while IFS= read -r _dfl; do
+    _dfn=$((_dfn + 1))
+    if (( _dfn > 2 )); then
+      break
+    fi
+    printf '  %s\n' "$_dfl"
+  done
 
   if (( used_pct >= 90 )); then
     status_fail "Disk is almost full (>= 90%)."

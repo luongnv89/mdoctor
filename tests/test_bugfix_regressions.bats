@@ -147,7 +147,9 @@ teardown() {
 @test "bluetooth device list renders every connected device in-shell" {
   # regression for 83565173852d07a9a6556969539de659a3e6a20a (orphaned spinner from pipe subshell in bluetooth check)
   assert_not_contains "$ROOT_DIR/checks/bluetooth.sh" '| while IFS= read -r dline'
-  assert_contains "$ROOT_DIR/checks/bluetooth.sh" 'done <<< "$(printf'
+  # The render loop must stay in-shell (no pipe subshell): issue #98
+  # builds device_lines with real newlines and iterates it directly.
+  assert_contains "$ROOT_DIR/checks/bluetooth.sh" 'done <<< "$device_lines"'
   local t="$TEST_BASE/btloop"
   mkdir -p "$t/shim"
   cat >"$t/bt.txt" <<'EOF'
@@ -301,8 +303,10 @@ EOF
 
 @test "bluetooth parses the section-based Connected format with device types" {
   # regression for 9b32103d68950ce92fe1d04f9b6cb4c6149350ab (section-based Connected parsing with device types)
-  # Pin the section-header match (fixed-string: ^ and $ are regex anchors).
-  grep -qF -- "^      Connected:" "$ROOT_DIR/checks/bluetooth.sh" \
+  # Pin the section-header match — fixed-string search for the literal
+  # six-space "Connected:" header (issue #98 moved the test from
+  # grep -qE '^      Connected:$' to an exact string compare).
+  grep -qF -- '"      Connected:"' "$ROOT_DIR/checks/bluetooth.sh" \
     || fail "expected the section-based Connected: header match in checks/bluetooth.sh"
   local t="$TEST_BASE/btparse"
   mkdir -p "$t/shim"
@@ -339,4 +343,20 @@ EOF
   assert_contains "$t/out.txt" "Connected Bluetooth devices: 2"
   assert_not_contains "$t/out.txt" "Old Keyboard"
   assert_not_contains "$t/out.txt" "No Bluetooth devices connected."
+}
+
+@test "no forked echo|awk or echo|grep -q string pipelines remain (issue #98)" {
+  # regression for issue #98 (Task 11.4 — 49-site fork source): field
+  # extraction now uses read -r and parameter expansion, prefix tests
+  # use case/[[ =~ ]]. These are the task's acceptance greps.
+  local hits
+  hits=$(cd "$ROOT_DIR" && grep -rn 'echo "\$[a-z_]*" *| *awk' checks/ lib/ || true)
+  [ -z "$hits" ] || fail "echo|awk field pipelines remain: $hits"
+  hits=$(cd "$ROOT_DIR" && grep -rn 'echo .* | *grep -q' checks/ || true)
+  [ -z "$hits" ] || fail "echo|grep -q pipelines remain: $hits"
+  # plist loop keeps ${f##*/}; crash-file names batch through one sed.
+  grep -qF '${f##*/}' "$ROOT_DIR/checks/startup.sh" \
+    || fail "plist loop lost the \${f##*/} basename replacement"
+  grep -qF 's|.*/||' "$ROOT_DIR/checks/apps.sh" \
+    || fail "crash-name pipeline lost the batched sed"
 }

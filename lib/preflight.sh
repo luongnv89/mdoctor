@@ -344,7 +344,17 @@ _preflight_find_size_kb() {
       printf '0\n'
       return 0
     fi
-    printf '%s\n' "$stream" | awk '{ s += $1 } END { print s+0 }'
+    # In-shell sum of field 1 across the stream — replaces printf|awk
+    # (issue #98). Non-numeric fields coerce to 0 like awk's $1+0.
+    local _pf_sum=0 _pf_line _pf_v
+    while IFS= read -r _pf_line; do
+      read -r _pf_v _ <<< "$_pf_line"
+      case "$_pf_v" in
+        ''|*[!0-9]*) _pf_v=0 ;;
+      esac
+      _pf_sum=$((_pf_sum + _pf_v))
+    done <<< "$stream"
+    printf '%s\n' "$_pf_sum"
     return 0
   fi
   if ! _preflight_stat_blocks_flag; then
@@ -365,7 +375,21 @@ _preflight_find_size_kb() {
     printf '0\n'
     return 0
   fi
-  printf '%s\n' "$stream" | awk 'NF { s += int(($1+1)/2) } END { print s+0 }'
+  # In-shell equivalent of the retired awk 'NF { s += int(($1+1)/2) }':
+  # blank lines (NF==0) are skipped; stat %b 512-blocks convert to KB by
+  # integer division (issue #98).
+  local _pf_sum=0 _pf_line _pf_v
+  while IFS= read -r _pf_line; do
+    if [ -z "${_pf_line//[[:space:]]/}" ]; then
+      continue
+    fi
+    read -r _pf_v _ <<< "$_pf_line"
+    case "$_pf_v" in
+      ''|*[!0-9]*) _pf_v=0 ;;
+    esac
+    _pf_sum=$((_pf_sum + (_pf_v + 1) / 2))
+  done <<< "$stream"
+  printf '%s\n' "$_pf_sum"
   return 0
 }
 

@@ -38,14 +38,19 @@ expand_source_target_vars() {
     printf '%s' "$input"
     return 0
   fi
+  # Identifier-shaped reference patterns, kept in variables because
+  # Bash 3.2's =~ parser treats inline quoting edge cases differently.
+  local braced_re='\$\{[A-Za-z_][A-Za-z0-9_]*\}'
+  local bare_re='\$[A-Za-z_][A-Za-z0-9_]*'
   count=0
-  while echo "$output" | grep -qE '\$\{[A-Za-z_][A-Za-z0-9_]*\}'; do
+  while [[ "$output" =~ $braced_re ]]; do
     count=$((count + 1))
     if [ "$count" -gt 32 ]; then
       break
     fi
-    raw="$(echo "$output" | grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*\}' | head -n 1 || true)"
-    varname="$(echo "$raw" | sed -E 's/^\$\{//; s/\}$//' || true)"
+    raw="${BASH_REMATCH[0]}"
+    varname="${raw#\$\{}"
+    varname="${varname%\}}"
     case "$varname" in
       ""|*[!A-Za-z0-9_]*)
         break
@@ -60,12 +65,12 @@ expand_source_target_vars() {
     output="${prefix}${varvalue}${suffix}"
   done
   count=0
-  while echo "$output" | grep -qE '\$[A-Za-z_][A-Za-z0-9_]*'; do
+  while [[ "$output" =~ $bare_re ]]; do
     count=$((count + 1))
     if [ "$count" -gt 32 ]; then
       break
     fi
-    raw="$(echo "$output" | grep -oE '\$[A-Za-z_][A-Za-z0-9_]*' | head -n 1 || true)"
+    raw="${BASH_REMATCH[0]}"
     varname="${raw#\$}"
     case "$varname" in
       ""|*[!A-Za-z0-9_]*)
@@ -117,19 +122,35 @@ check_one_shell_file() {
   fi
 
   # Look for 'source' or '.' commands that reference missing files
+  # Bash 3.2-safe regex in a variable: [[ =~ ]] runs in-shell, so the
+  # per-line scan forks nothing (issue #98 — was echo|grep -q per line).
+  local source_re='^[[:space:]]*(source|\.)[[:space:]]+'
   while IFS= read -r line; do
     case "$line" in
       \#*|"") continue ;;
     esac
 
-    if echo "$line" | grep -qE '^\s*(source|\.)\s+'; then
+    if [[ "$line" =~ $source_re ]]; then
       local target expanded
 
-      # Portable whitespace class: BSD sed (macOS) does not match \s,
-      # which left the `source` keyword attached and warned on every line.
-      target=$(echo "$line" | sed -E 's/^[[:space:]]*(source|\.)[[:space:]]+//; s/[;&|].*//')
-      target=$(echo "$target" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
-      target=$(echo "$target" | sed -E 's/^["'\'']//; s/["'\'']$//')
+      # Same surgery the three retired echo|sed pipelines did: drop
+      # leading whitespace + 'source'|'.' + separator, cut at the first
+      # ; & | metacharacter, trim, then strip one surrounding quote.
+      target="${line#"${line%%[![:space:]]*}"}"
+      case "$target" in
+        source[[:space:]]*) target="${target#source}" ;;
+        .[[:space:]]*)      target="${target#.}" ;;
+      esac
+      target="${target#"${target%%[![:space:]]*}"}"
+      target="${target%%[;&|]*}"
+      target="${target#"${target%%[![:space:]]*}"}"
+      target="${target%"${target##*[![:space:]]}"}"
+      case "$target" in
+        [\"\']*) target="${target#?}" ;;
+      esac
+      case "$target" in
+        *[\"\']) target="${target%?}" ;;
+      esac
 
       # Expand shell variables first (e.g. $ZSH, $NVM_DIR, $HOME).
       # SAFE: env-value substitution only — no eval, so command

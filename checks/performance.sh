@@ -20,9 +20,10 @@ check_performance() {
 
   # Memory pressure level (sampling: lib/perf_probes.sh)
   if is_macos; then
-    local pressure_rec pressure
+    local pressure_rec pressure _pkey
     pressure_rec=$(perf_probe_mem_pressure 2>/dev/null || true)
-    pressure=$(echo "$pressure_rec" | awk '{print $2}')
+    # Record shape is "<platform> <level>" — field split, no fork.
+    read -r _pkey pressure _ <<< "$pressure_rec"
     if [ -n "$pressure" ]; then
       case "$pressure" in
         1) status_ok "Memory pressure: normal" ;;
@@ -35,16 +36,17 @@ check_performance() {
     fi
 
     # Swap usage (sampling: lib/perf_probes.sh)
-    local swap_total
-    swap_total=$(perf_probe_swap 2>/dev/null | sed 's/^macos //' || true)
+    local swap_rec swap_total
+    swap_rec=$(perf_probe_swap 2>/dev/null || true)
+    swap_total="${swap_rec#macos }"
     if [ -n "$swap_total" ]; then
       status_info "Swap: ${swap_total}"
     fi
   else
     # Linux: memory pressure via MemAvailable ratio (sampling: lib/perf_probes.sh)
-    local pressure_rec avail_pct
+    local pressure_rec avail_pct _pkey
     if pressure_rec=$(perf_probe_mem_pressure 2>/dev/null); then
-      avail_pct=$(echo "$pressure_rec" | awk '{print $2}')
+      read -r _pkey avail_pct _ <<< "$pressure_rec"
       if [ -n "$avail_pct" ]; then
         if (( avail_pct < 10 )); then
           status_fail "Memory pressure: critical (${avail_pct}% available)"
@@ -59,10 +61,9 @@ check_performance() {
     fi
 
     # Swap (sampling: lib/perf_probes.sh — "linux <used_kb> <total_kb>")
-    local swap_rec swap_total_kb swap_used_kb
+    local swap_rec swap_total_kb swap_used_kb _skey
     if swap_rec=$(perf_probe_swap 2>/dev/null); then
-      swap_used_kb=$(echo "$swap_rec" | awk '{print $2}')
-      swap_total_kb=$(echo "$swap_rec" | awk '{print $3}')
+      read -r _skey swap_used_kb swap_total_kb <<< "$swap_rec"
       if (( ${swap_total_kb:-0} > 0 )); then
         status_info "Swap: $(kb_to_human "$swap_used_kb") used / $(kb_to_human "$swap_total_kb") total"
       fi
@@ -79,12 +80,10 @@ check_performance() {
   fi
   if [ -n "${top_cpu:-}" ]; then
     status_info "Top CPU processes:"
-    local line
-    while IFS= read -r line; do
-      local pid pct name
-      pid=$(echo "$line" | awk '{print $1}')
-      pct=$(echo "$line" | awk '{print $2}')
-      name=$(echo "$line" | awk '{$1=""; $2=""; print}' | sed 's/^ *//')
+    # read splits each "pid %cpu comm" row in-shell (name keeps the rest
+    # of the line) — no echo|awk pipeline per field (issue #98).
+    local pid pct name
+    while read -r pid pct name; do
       if [ -n "$name" ]; then
         status_info "  PID ${pid}: ${pct}% — ${name}"
       fi
@@ -104,12 +103,8 @@ check_performance() {
   fi
   if [ -n "${top_mem:-}" ]; then
     status_info "Top memory processes:"
-    local line
-    while IFS= read -r line; do
-      local pid rss_kb name mem_hr
-      pid=$(echo "$line" | awk '{print $1}')
-      rss_kb=$(echo "$line" | awk '{print $2}')
-      name=$(echo "$line" | awk '{$1=""; $2=""; print}' | sed 's/^ *//')
+    local pid rss_kb name mem_hr
+    while read -r pid rss_kb name; do
       if [ -n "$name" ] && [ -n "$rss_kb" ] && (( rss_kb > 0 )); then
         mem_hr=$(human_readable_kb "$rss_kb")
         status_info "  PID ${pid}: ${mem_hr} — ${name}"
@@ -127,18 +122,20 @@ check_performance() {
     if [ -z "$zombie_list" ]; then
       zombie_count=0
     else
-      zombie_count=$(printf '%s\n' "$zombie_list" | grep -c . || true)
+      zombie_count=0
+      local _zl
+      while IFS= read -r _zl; do
+        # Non-empty lines only — same set the retired grep -c . counted.
+        [ -n "$_zl" ] && zombie_count=$((zombie_count + 1))
+      done <<< "$zombie_list"
     fi
     if (( zombie_count > 0 )); then
       status_warn "Zombie processes: ${zombie_count}"
       # List zombie processes with their parent PIDs
       status_info "Zombie process details (PID → Parent PID — Command):"
       local parent_pids=""
-      while IFS= read -r zline; do
-        local zpid zppid zname
-        zpid=$(echo "$zline" | awk '{print $1}')
-        zppid=$(echo "$zline" | awk '{print $2}')
-        zname=$(echo "$zline" | awk '{$1=""; $2=""; print}' | sed 's/^ *//')
+      local zpid zppid zname
+      while read -r zpid zppid zname; do
         status_info "  PID ${zpid} → Parent ${zppid} — ${zname}"
         if [ -n "$parent_pids" ]; then
           parent_pids="${parent_pids} ${zppid}"
@@ -146,9 +143,10 @@ check_performance() {
           parent_pids="${zppid}"
         fi
       done <<< "$zombie_list"
-      # Deduplicate parent PIDs
+      # Deduplicate parent PIDs (newline-split via expansion, one sort).
       local unique_parents
-      unique_parents=$(echo "$parent_pids" | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/ *$//')
+      unique_parents=$(printf '%s\n' "${parent_pids// /$'\n'}" | sort -u)
+      unique_parents="${unique_parents//$'\n'/ }"
       if [ -n "$unique_parents" ]; then
         add_action "Found ${zombie_count} zombie process(es). Kill their parent process(es) to clean up: kill -HUP ${unique_parents}"
       fi
@@ -160,11 +158,17 @@ check_performance() {
   # Load average assessment (sampling: lib/perf_probes.sh)
   local probe_load cores load1
   if probe_load=$(perf_probe_load 2>/dev/null); then
-    load1=$(echo "$probe_load" | awk '{print $1}')
-    cores=$(echo "$probe_load" | awk '{print $2}')
+    read -r load1 cores _ <<< "$probe_load"
     if [ -n "$load1" ] && [ -n "$cores" ]; then
       local load_int
-      load_int=$(awk -v l="$load1" 'BEGIN {printf "%d", l * 100}')
+      # trunc(load1*100) via string decimal shift — the retired awk
+      # printed %d (truncation), so hundredths come from concatenation,
+      # not %.0f rounding (issue #98).
+      local _li="${load1%%.*}" _lf=""
+      case "$load1" in *.*) _lf="${load1#*.}" ;; esac
+      _lf="${_lf%%[!0-9]*}00"
+      case "$_li" in ""|*[!0-9]*) _li=0 ;; esac
+      load_int=$((10#${_li}${_lf:0:2}))
       local threshold=$((cores * 100))
       if (( load_int > threshold )); then
         status_warn "Load average (${load1}) exceeds CPU core count (${cores})"
