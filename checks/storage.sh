@@ -448,10 +448,24 @@ _storage_scan_devcaches() {
 }
 
 # _storage_search_dirs — project roots that exist (node_modules/venv sweep).
+# Each physical directory is emitted once: on a case-insensitive
+# filesystem (default APFS) "${HOME}/projects" resolves to the same
+# directory as "${HOME}/Projects", and a doubled root would be traversed
+# once per spelling — double-counting and double-sizing every match.
+# device:inode keys are spelling- and symlink-proof.
 _storage_search_dirs() {
-  local d
+  local d key s
+  local -a seen=()
   for d in "${HOME}/Projects" "${HOME}/projects" "${HOME}/code" "${HOME}/workspace" "${HOME}/dev" "${HOME}/src"; do
-    [ -d "$d" ] && printf '%s\n' "$d"
+    [ -d "$d" ] || continue
+    key="$(stat -Lc '%d:%i' "$d" 2>/dev/null || stat -Lf '%d:%i' "$d" 2>/dev/null)"
+    if [ -n "$key" ]; then
+      for s in ${seen[@]+"${seen[@]}"}; do
+        [ "$s" = "$key" ] && continue 2
+      done
+      seen+=("$key")
+    fi
+    printf '%s\n' "$d"
   done
 }
 

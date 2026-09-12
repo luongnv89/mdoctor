@@ -232,6 +232,19 @@ _find_logger_stubbin() {
   [[ "$out" == *"Python venv/ (1 found)"* ]]
 }
 
+@test "search_dirs emits each physical root once across spelling aliases" {
+  # On case-insensitive filesystems (default APFS) ~/projects resolves
+  # to ~/Projects; emitting both spellings makes find traverse the same
+  # tree twice and double every count/size. A symlink alias is the same
+  # device:inode pair and exercises the dedupe portably.
+  export HOME="$BATS_TEST_TMPDIR/home"
+  mkdir -p "$HOME/Projects/p/node_modules"
+  ln -s "$HOME/Projects" "$HOME/projects"
+
+  out=$(_storage_search_dirs)
+  [ "$out" = "$HOME/Projects" ]
+}
+
 @test "empty search dirs produce zeroed buckets and rc 0" {
   _storage_scan_depdirs "$BATS_TEST_TMPDIR/does-not-exist"
   rc=$?
