@@ -147,6 +147,11 @@ clean_dev_caches() {
       # hand a fragment to safe_remove).
       # timeout(1) is GNU-only; where it is missing (e.g. macOS) run
       # find directly instead of silently scanning nothing.
+      # Task 11.3 (issue #97): `-name node_modules -prune` stops the
+      # descent into every matched node_modules — a nested one was
+      # already unreachable output (the old -not -path exclusion), and
+      # its subtree is removed with the parent anyway, so the traversal
+      # never walks inside a match.
       local find_cmd=(find)
       if command -v timeout >/dev/null 2>&1; then
         find_cmd=(timeout "$MDOCTOR_DEV_FIND_TIMEOUT_S" find)
@@ -180,7 +185,7 @@ clean_dev_caches() {
           nm_total_kb=$((nm_total_kb + nm_sz))
           nm_count=$((nm_count + 1))
         fi
-      done < <("${find_cmd[@]}" "${search_dir}" -maxdepth 5 -type d -name "node_modules" -not -path "*/node_modules/*/node_modules" -mtime "+${DAYS_OLD_NODE_MODULES}" -print0 2>/dev/null)
+      done < <("${find_cmd[@]}" "${search_dir}" -maxdepth 5 -type d -name "node_modules" -prune -mtime "+${DAYS_OLD_NODE_MODULES}" -print0 2>/dev/null)
     done
 
     if (( nm_count > 0 )); then

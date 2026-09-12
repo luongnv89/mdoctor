@@ -24,6 +24,20 @@ if ! is_truthy "${_MDOCTOR_CONTEXT_READY:-}"; then
   echo "${BASH_SOURCE[0]##*/}: module context not initialized (_MDOCTOR_CONTEXT_READY) — call mdoctor_context_init from lib/context.sh first" >&2
   return 1 2>/dev/null || exit 1
 fi
+
+# Shared scan machinery (Task 11.3): the combined dependency-dir scan
+# reuses lib/preflight.sh's NUL+sentinel find producer and chunked
+# single-pass sizer; pull it in when a standalone `source` (unit tests)
+# skipped it.
+if ! declare -f _preflight_find_entries >/dev/null 2>&1; then
+  _MDOCTOR_MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
+  # shellcheck source=/dev/null
+  source "${_MDOCTOR_MODULE_DIR}/../lib/disk.sh"
+  # shellcheck source=/dev/null
+  source "${_MDOCTOR_MODULE_DIR}/../lib/preflight.sh"
+  unset _MDOCTOR_MODULE_DIR
+fi
+
 _scan_dir_for_hogs() {
   local dir="$1"
   local limit="${2:-5}"
@@ -57,74 +71,6 @@ _dir_size_kb() {
   return 0
 }
 
-# _find_and_sum pattern dirs...
-# Finds all matching dirs and sums their sizes (KB). Timeout 30s per search
-# dir. Prints "<total> <count>" only on success (rc 0); a timed-out find
-# returns MDOCTOR_SIZE_ERR_TIMEOUT and prints nothing; matches whose own
-# size probe fails are skipped, never counted as 0 (Task 9.4).
-_find_and_sum() {
-  local pattern="$1"
-  shift
-
-  local total=0
-  local count=0
-  local dir
-  local match=""
-  local find_rc=0
-  local seen_rc=""
-  local sz=""
-  local sz_rc=0
-
-  for dir in "$@"; do
-    [ -d "$dir" ] || continue
-    while IFS= read -r -d '' match; do
-      case "$match" in
-        _MDOCTOR_FIND_RC_*)
-          seen_rc="${match#_MDOCTOR_FIND_RC_}"
-          if [ "$find_rc" -eq 0 ]; then
-            find_rc="$seen_rc"
-          fi
-          ;;
-        *)
-          sz_rc=0
-          sz=$(du_size_kb "$match") || sz_rc=$?
-          if [ "$sz_rc" -eq 0 ]; then
-            total=$((total + sz))
-            count=$((count + 1))
-          fi
-          ;;
-      esac
-    done < <( _find_entries_with_rc "$MDOCTOR_FIND_TIMEOUT_S" "$dir" -maxdepth 5 -type d -name "$pattern" )
-  done
-
-  case "$find_rc" in
-    0) ;;
-    124) return "$MDOCTOR_SIZE_ERR_TIMEOUT" ;;
-    1) return "$MDOCTOR_SIZE_ERR_DENIED" ;;
-    *) return "$MDOCTOR_SIZE_ERR_FAILED" ;;
-  esac
-
-  echo "${total} ${count}"
-  return 0
-}
-
-# _find_entries_with_rc TIMEOUT ARGS... — producer for _find_and_sum:
-# NUL-separated entries plus a final NUL-terminated
-# _MDOCTOR_FIND_RC_<n> sentinel carrying the find exit code (a process
-# substitution's rc is lost). Wraps the find in a timeout where available
-# (GNU-only).
-_find_entries_with_rc() {
-  local t="$1"
-  shift
-  if command -v timeout >/dev/null 2>&1; then
-    timeout "$t" find "$@" -print0 2>/dev/null
-    printf '%s\0' "_MDOCTOR_FIND_RC_$?"
-  else
-    find "$@" -print0 2>/dev/null
-    printf '%s\0' "_MDOCTOR_FIND_RC_$?"
-  fi
-}
-
 ########################################
 # MAIN CHECK
 ########################################
@@ -132,6 +78,130 @@ _find_entries_with_rc() {
 # Accumulators owned by check_storage and shared with the scan helpers.
 STORAGE_TOTAL_KB=0
 STORAGE_FOUND_ANY=false
+
+# Combined dependency-dir scan state (Task 11.3 / issue #97): one find
+# pass over the project roots resolves every node_modules/venv/.venv
+# match, then each name bucket is sized once by lib/preflight.sh's
+# chunked sizer — the three per-pattern traversals and the per-match
+# `du` re-walks are gone. The first consumer (nodedeps or devcaches)
+# triggers the scan; STORAGE_DEP_SCANNED makes every later call a no-op.
+STORAGE_DEP_SCANNED=false
+STORAGE_DEP_NM_KB=0
+STORAGE_DEP_NM_COUNT=0
+STORAGE_DEP_NM_RC=0
+STORAGE_DEP_VENV_KB=0
+STORAGE_DEP_VENV_COUNT=0
+STORAGE_DEP_VENV_RC=0
+STORAGE_DEP_DOTVENV_KB=0
+STORAGE_DEP_DOTVENV_COUNT=0
+STORAGE_DEP_DOTVENV_RC=0
+
+# _storage_scan_depdirs SEARCH_DIRS... — Task 11.3 (issue #97,
+# F-PERF-006/007): ONE find pass over the search roots resolves every
+# dependency dir — `-type d \( -name node_modules -o -name venv -o -name
+# .venv \) -prune` — so the traversal stops at each match instead of
+# descending into it, and the three per-pattern passes over identical
+# roots collapse into one. Sizes come from the shared chunked sizer
+# (find -printf '%k' where supported, a probed stat -exec elsewhere):
+# one sizing traversal per name bucket, never a `du` per match. Results
+# land in the STORAGE_DEP_* globals; a failure sets the bucket's _RC
+# with the distinct MDOCTOR_SIZE_ERR_* code (Task 9.4) so the report can
+# warn per label. Returns the first non-zero bucket code.
+_storage_scan_depdirs() {
+  (( $# > 0 )) || return 0
+  is_truthy "$STORAGE_DEP_SCANNED" && return 0
+  STORAGE_DEP_SCANNED=true
+  STORAGE_DEP_NM_KB=0
+  STORAGE_DEP_NM_COUNT=0
+  STORAGE_DEP_NM_RC=0
+  STORAGE_DEP_VENV_KB=0
+  STORAGE_DEP_VENV_COUNT=0
+  STORAGE_DEP_VENV_RC=0
+  STORAGE_DEP_DOTVENV_KB=0
+  STORAGE_DEP_DOTVENV_COUNT=0
+  STORAGE_DEP_DOTVENV_RC=0
+
+  # Keep only roots that still exist (a vanished dir must not fail the
+  # whole pass), then ONE find over all of them.
+  local -a roots=()
+  local d=""
+  for d in "$@"; do
+    [ -d "$d" ] && roots+=("$d")
+  done
+  (( ${#roots[@]} > 0 )) || return 0
+
+  local -a nm_matches=() venv_matches=() dotvenv_matches=()
+  local match="" base="" find_rc=0
+  while IFS= read -r -d '' match; do
+    case "$match" in
+      _MDOCTOR_FIND_RC_*)
+        find_rc="${match#_MDOCTOR_FIND_RC_}"
+        ;;
+      *)
+        base="${match##*/}"
+        case "$base" in
+          node_modules) nm_matches+=("$match") ;;
+          venv) venv_matches+=("$match") ;;
+          .venv) dotvenv_matches+=("$match") ;;
+        esac
+        ;;
+    esac
+  done < <(_preflight_find_entries "${roots[@]}" -maxdepth 5 -type d \( -name node_modules -o -name venv -o -name .venv \) -prune)
+
+  # A failed match pass marks every bucket failed — same outward result
+  # as the three old per-pattern passes each failing (Task 9.4).
+  if [ "$find_rc" -ne 0 ]; then
+    local err="$MDOCTOR_SIZE_ERR_FAILED"
+    case "$find_rc" in
+      124) err="$MDOCTOR_SIZE_ERR_TIMEOUT" ;;
+      1) err="$MDOCTOR_SIZE_ERR_DENIED" ;;
+    esac
+    STORAGE_DEP_NM_RC="$err"
+    STORAGE_DEP_VENV_RC="$err"
+    STORAGE_DEP_DOTVENV_RC="$err"
+    return "$err"
+  fi
+
+  # One sizing traversal per non-empty name bucket — name and size are
+  # resolved by the same scan, with no per-match du.
+  local kb="" sz_rc=0
+  if (( ${#nm_matches[@]} > 0 )); then
+    sz_rc=0
+    kb=$(preflight_size_paths_kb "${nm_matches[@]}") || sz_rc=$?
+    if [ "$sz_rc" -eq 0 ]; then
+      STORAGE_DEP_NM_KB="$kb"
+      STORAGE_DEP_NM_COUNT="${#nm_matches[@]}"
+    else
+      STORAGE_DEP_NM_RC="$sz_rc"
+    fi
+  fi
+  if (( ${#venv_matches[@]} > 0 )); then
+    sz_rc=0
+    kb=$(preflight_size_paths_kb "${venv_matches[@]}") || sz_rc=$?
+    if [ "$sz_rc" -eq 0 ]; then
+      STORAGE_DEP_VENV_KB="$kb"
+      STORAGE_DEP_VENV_COUNT="${#venv_matches[@]}"
+    else
+      STORAGE_DEP_VENV_RC="$sz_rc"
+    fi
+  fi
+  if (( ${#dotvenv_matches[@]} > 0 )); then
+    sz_rc=0
+    kb=$(preflight_size_paths_kb "${dotvenv_matches[@]}") || sz_rc=$?
+    if [ "$sz_rc" -eq 0 ]; then
+      STORAGE_DEP_DOTVENV_KB="$kb"
+      STORAGE_DEP_DOTVENV_COUNT="${#dotvenv_matches[@]}"
+    else
+      STORAGE_DEP_DOTVENV_RC="$sz_rc"
+    fi
+  fi
+
+  # Propagate the first bucket failure so direct callers see the same
+  # distinct code the old _find_and_sum returned.
+  [ "$STORAGE_DEP_NM_RC" -ne 0 ] && return "$STORAGE_DEP_NM_RC"
+  [ "$STORAGE_DEP_VENV_RC" -ne 0 ] && return "$STORAGE_DEP_VENV_RC"
+  return "$STORAGE_DEP_DOTVENV_RC"
+}
 
 # _storage_report LABEL KB [MIN_KB] [WARN_KB]
 # The single measure-compare-classify-report helper (Task 8.6): below MIN_KB
@@ -286,21 +356,19 @@ _storage_scan_cloud() {
 }
 
 # _storage_scan_nodedeps SEARCH_DIRS... — Category 5: node_modules sweep.
+# Consumes the combined dependency-dir scan (Task 11.3): the first caller
+# triggers the single OR-ed, pruned find pass and per-bucket sizing.
 _storage_scan_nodedeps() {
   status_info "Scanning for node_modules (this may take a moment)..."
   (( $# > 0 )) || return 0
 
-  local nm_result nm_total_kb nm_count
-  local nm_rc=0
-  nm_result=$(_find_and_sum "node_modules" "$@") || nm_rc=$?
-  if [ "$nm_rc" -ne 0 ]; then
+  _storage_scan_depdirs "$@" || true
+  if [ "$STORAGE_DEP_NM_RC" -ne 0 ]; then
     status_warn "node_modules: could not determine"
     return 0
   fi
-  nm_total_kb=$(echo "$nm_result" | awk '{print $1}')
-  nm_count=$(echo "$nm_result" | awk '{print $2}')
-  (( nm_total_kb > 0 )) || return 0
-  _storage_report "node_modules (${nm_count} found)" "$nm_total_kb" 0 || true
+  (( STORAGE_DEP_NM_KB > 0 )) || return 0
+  _storage_report "node_modules (${STORAGE_DEP_NM_COUNT} found)" "$STORAGE_DEP_NM_KB" 0 || true
 }
 
 # _storage_default_static_caches — single delimited label|path list for the
@@ -340,17 +408,26 @@ _storage_scan_devcaches() {
   status_info "Scanning development caches..."
 
   if (( $# > 0 )); then
+    _storage_scan_depdirs "$@" || true
     local venv_name
     for venv_name in "venv" ".venv"; do
-      local venv_result venv_kb venv_cnt
-      local venv_rc=0
-      venv_result=$(_find_and_sum "$venv_name" "$@") || venv_rc=$?
-      if [ "$venv_rc" -ne 0 ]; then
+      local venv_kb venv_cnt venv_brc
+      case "$venv_name" in
+        venv)
+          venv_kb="$STORAGE_DEP_VENV_KB"
+          venv_cnt="$STORAGE_DEP_VENV_COUNT"
+          venv_brc="$STORAGE_DEP_VENV_RC"
+          ;;
+        .venv)
+          venv_kb="$STORAGE_DEP_DOTVENV_KB"
+          venv_cnt="$STORAGE_DEP_DOTVENV_COUNT"
+          venv_brc="$STORAGE_DEP_DOTVENV_RC"
+          ;;
+      esac
+      if [ "$venv_brc" -ne 0 ]; then
         status_warn "Python ${venv_name}: could not determine"
         continue
       fi
-      venv_kb=$(echo "$venv_result" | awk '{print $1}')
-      venv_cnt=$(echo "$venv_result" | awk '{print $2}')
       _storage_report "Python ${venv_name}/ (${venv_cnt} found)" "$venv_kb" || true
     done
   fi
@@ -383,6 +460,7 @@ check_storage() {
 
   STORAGE_TOTAL_KB=0
   STORAGE_FOUND_ANY=false
+  STORAGE_DEP_SCANNED=false
 
   _storage_scan_appdata
   _storage_scan_applications

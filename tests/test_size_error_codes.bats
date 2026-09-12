@@ -137,7 +137,7 @@ teardown_file() {
   [[ "$out" =~ ^[0-9]+$ ]]
 }
 
-@test "_find_and_sum keeps first dir timeout when later dir succeeds" {
+@test "_storage_scan_depdirs reports the find timeout across all name buckets" {
   if [ "${BASH_VERSINFO[0]:-0}" -lt 4 ] || ! command -v timeout >/dev/null 2>&1; then
     skip "GNU timeout probe is unavailable in this shell"
   fi
@@ -152,10 +152,21 @@ teardown_file() {
   REAL_FIND="$(command -v find)"
   STUBBIN="$TMPHOME/find-sticky-stubbin"
   mkdir -p "$STUBBIN"
-  printf '#!/usr/bin/env bash\ncase "$*" in\n*first-timeout*) sleep 30 ;;\n*) exec "%s" "$@" ;;\nesac\n' "$REAL_FIND" > "$STUBBIN/find"
+  # exec sleep so timeout kills the stub itself — a plain `sleep 30`
+  # child would outlive it and hold the scan pipe open for 30s.
+  printf '#!/usr/bin/env bash\ncase "$*" in\n*first-timeout*) exec sleep 30 ;;\n*) exec "%s" "$@" ;;\nesac\n' "$REAL_FIND" > "$STUBBIN/find"
   chmod +x "$STUBBIN/find"
-  out=""; rc=0
-  out=$(PATH="$STUBBIN:$PATH" MDOCTOR_FIND_TIMEOUT_S=1 _find_and_sum "node_modules" "$TIMEOUT_DIR" "$OK2_DIR") || rc=$?
-  [ "$rc" -eq "$MDOCTOR_SIZE_ERR_TIMEOUT" ]
-  [ -z "$out" ]
+  # Run inside $( ) so the producer's sentinel survives: under bats'
+  # errexit the timeout's 124 would otherwise kill the process
+  # substitution before it prints _MDOCTOR_FIND_RC_124.
+  out=$(
+    fn_rc=0
+    PATH="$STUBBIN:$PATH" MDOCTOR_FIND_TIMEOUT_S=1 \
+      _storage_scan_depdirs "$TIMEOUT_DIR" "$OK2_DIR" || fn_rc=$?
+    printf 'fn_rc=%s nm=%s venv=%s dotvenv=%s\n' \
+      "$fn_rc" "$STORAGE_DEP_NM_RC" "$STORAGE_DEP_VENV_RC" "$STORAGE_DEP_DOTVENV_RC"
+  )
+  # The scan itself prints nothing; every name bucket carries the
+  # failure so the reports warn per label.
+  [ "$out" = "fn_rc=$MDOCTOR_SIZE_ERR_TIMEOUT nm=$MDOCTOR_SIZE_ERR_TIMEOUT venv=$MDOCTOR_SIZE_ERR_TIMEOUT dotvenv=$MDOCTOR_SIZE_ERR_TIMEOUT" ]
 }
