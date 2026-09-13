@@ -24,6 +24,7 @@ ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
 source "$ROOT_DIR/lib/context.sh"
 mdoctor_context_init
+source "$ROOT_DIR/lib/platform.sh"   # is_linux/is_macos for test-level platform gates
 
 # The library env a check module expects, as the mdoctor engine provides.
 # Sourced inside each `bash -c` driver below (each test's subshell gets a
@@ -334,11 +335,16 @@ EOF
 }
 
 @test "dry-run fix all exits 0 on a host with no resolver tools (Task 4.4 contract)" {
+  # Reproduces the bash:3.2 CI lane: a PATH without resolvectl/
+  # systemd-resolve. Linux-only — on macOS `fix all` also runs the
+  # brew-dependent modules, whose missing-tool rc-1 paths predate #111
+  # and are a separate question; and the no-resolver message is the
+  # Linux arm of fix_dns.
+  is_linux || skip "reproduces the Linux-only bash:3.2 CI lane"
   local t="$TEST_TMP/fixall-none"
   mkdir -p "$t/home"
-  # Reproduces the bash:3.2 CI lane: a PATH without resolvectl/
-  # systemd-resolve. helpers/bin keeps the apt-get/sudo stubs so the
-  # only missing fix tool is the DNS resolver pair.
+  # helpers/bin keeps the apt-get/sudo stubs so the only missing fix
+  # tool is the DNS resolver pair.
   local rc=0
   PATH="$TEST_TMP/farm:$ROOT_DIR/tests/helpers/bin" HOME="$t/home" \
     DRY_RUN=true bash "$ROOT_DIR/mdoctor" fix all \
