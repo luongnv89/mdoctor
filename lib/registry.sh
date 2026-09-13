@@ -58,8 +58,11 @@ register_all_modules() {
   register_module check network     System SAFE check_network       "Connectivity, DNS, Wi-Fi signal"
   register_module check performance System SAFE check_performance   "Memory pressure, CPU, processes"
   register_module check storage     System SAFE check_storage       "Large files & app storage analysis"
-  # Diagnose modules
-  register_module diagnose diagnose System HIGH check_diagnose_performance "Active performance diagnosis with bottleneck detection"
+  # Diagnose modules — read-only like check (issue #107): the diagnosis
+  # function only reads and appends advice strings; it never runs the
+  # remedies it prints, so [HIGH] was a mis-badge that trained users to
+  # discount the badge column.
+  register_module diagnose diagnose System SAFE check_diagnose_performance "Active performance diagnosis with bottleneck detection"
   # Check modules — Software
   if is_macos; then
     register_module check homebrew   Software SAFE check_homebrew    "Homebrew installation & packages"   # module probes are timeout-capped (#101)
@@ -111,6 +114,23 @@ register_all_modules() {
   fi
   _MDOCTOR_MODULES_REGISTERED=true
   registry_counts
+
+  # Command-class rows (issue #107) — registered here, after
+  # registry_counts, so the per-type totals interpolate into the
+  # descriptions. The badge reuses the module risk vocabulary from
+  # lib/metadata.sh (SAFE/LOW/MED/HIGH); command_class maps it onto the
+  # read-only / modifies / deletes classes the help output names.
+  register_command check     SAFE "Run system health audit (read-only, ${_REG_COUNT_CHECK} checks)"
+  register_command clean     HIGH "Run system cleanup (dry-run by default, ${_REG_COUNT_CLEANUP} modules)"
+  register_command fix       MED  "Apply common fixes (${_REG_COUNT_FIX} targets)"
+  register_command diagnose  SAFE "Run active performance diagnosis with bottleneck detection"
+  register_command info      SAFE "Show system information summary"
+  register_command list      SAFE "List all modules with category & risk level"
+  register_command history   SAFE "View health score trends over time"
+  register_command benchmark LOW  "Run disk, network, CPU benchmarks"
+  register_command update    MED  "Update mdoctor to latest stable release"
+  register_command version   SAFE "Show mdoctor version"
+  register_command help      SAFE "Show this help message"
 }
 
 # Cached per-type totals (issue #102): register_all_modules refreshes them
@@ -255,6 +275,73 @@ registry_target_lines() {
       printf '  %-14s [%s]  %s\n' \
         "${_MOD_NAMES[$i]}" "${_MOD_RISKS[$i]}" "${_MOD_DESCS[$i]}"
     fi
+    i=$((i + 1))
+  done
+}
+
+########################################
+# COMMAND REGISTRY (issue #107)
+########################################
+
+# One row per top-level command, classed with the same risk vocabulary as
+# modules (lib/metadata.sh): the badge in `mdoctor help` and the bare
+# `mdoctor` orientation block is rendered from this table, never
+# hand-maintained at the call site, so the marking can never drift from
+# the data. The three issue classes map onto the vocabulary:
+#   read-only → SAFE    modifies → LOW or MED    deletes → HIGH
+_CMD_NAMES=()
+_CMD_RISKS=()    # SAFE, LOW, MED, HIGH — same domain as _MOD_RISKS
+_CMD_DESCS=()
+_CMD_COUNT=0
+
+# register_command NAME RISK DESCRIPTION
+register_command() {
+  _CMD_NAMES[_CMD_COUNT]="$1"
+  _CMD_RISKS[_CMD_COUNT]="$2"
+  _CMD_DESCS[_CMD_COUNT]="$3"
+  _CMD_COUNT=$((_CMD_COUNT + 1))
+}
+
+# command_risk NAME → prints the command's risk badge level, or returns 1.
+command_risk() {
+  local name="$1"
+  local i=0
+  while (( i < _CMD_COUNT )); do
+    if [ "${_CMD_NAMES[$i]}" = "$name" ]; then
+      echo "${_CMD_RISKS[$i]}"
+      return 0
+    fi
+    i=$((i + 1))
+  done
+  return 1
+}
+
+# command_class RISK → prints the class word (read-only / modifies /
+# deletes) for a registry risk level and leaves it in _CMD_CLASS, so
+# renderers can pick it up without a per-row command substitution. Single
+# home of the badge→class mapping: tests pin the help legend against it.
+command_class() {
+  case "$1" in
+    SAFE)     _CMD_CLASS="read-only" ;;
+    LOW|MED)  _CMD_CLASS="modifies" ;;
+    HIGH)     _CMD_CLASS="deletes" ;;
+    *)        _CMD_CLASS="" ; return 1 ;;
+  esac
+  printf '%s\n' "$_CMD_CLASS"
+}
+
+# registry_command_lines — "  name  [RISK]  class  description" per
+# command, in registration order. Badge and class word are literal text:
+# every entry is marked read-only / modifies / deletes, and the three
+# classes stay distinguishable in a `cat -v` capture, never by color
+# alone.
+registry_command_lines() {
+  local i=0
+  while (( i < _CMD_COUNT )); do
+    command_class "${_CMD_RISKS[$i]}" >/dev/null || _CMD_CLASS="unknown"
+    printf '  %s%-12s%s %-7s %-9s %s\n' \
+      "${GREEN:-}" "${_CMD_NAMES[$i]}" "${RESET:-}" \
+      "[${_CMD_RISKS[$i]}]" "$_CMD_CLASS" "${_CMD_DESCS[$i]}"
     i=$((i + 1))
   done
 }

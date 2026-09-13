@@ -2,7 +2,7 @@
 #
 # checks/diagnose_performance.sh
 # Active performance diagnosis with bottleneck detection.
-# Category: System | Risk: HIGH (active checks only, no modifications)
+# Category: System | Risk: SAFE (read-only — prints remedies, never runs them)
 #
 # Sources: lib/platform.sh, lib/common.sh
 #

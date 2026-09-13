@@ -50,19 +50,25 @@ mdoctor <command> [options]
 
 ### Commands
 
-| Command | Description |
-|---------|-------------|
-| `mdoctor check` | Run full system health audit (21 checks, read-only) |
-| `mdoctor check --json` | JSON output for automation |
-| `mdoctor clean` | Run system cleanup (dry-run by default, 10 modules) |
-| `mdoctor fix <target>` | Apply common fixes (9 targets) |
-| `mdoctor info` | Show system information summary |
-| `mdoctor list` | List all modules with category & risk level |
-| `mdoctor history` | View health score trends over time |
-| `mdoctor benchmark` | Run disk, network, CPU speed tests |
-| `mdoctor update` | Update to latest stable release |
-| `mdoctor version` | Show version |
-| `mdoctor help` | Show help |
+Every command carries a safety badge from the same risk vocabulary as the
+module registry: `[SAFE]` read-only, `[LOW]`/`[MED]` modifies,
+`[HIGH]` deletes. Bare `mdoctor` prints the badged table plus a
+recommended first command.
+
+| Command | Badge | Description |
+|---------|-------|-------------|
+| `mdoctor check` | `[SAFE]` | Run full system health audit (21 checks, read-only) |
+| `mdoctor check --json` | `[SAFE]` | JSON output for automation |
+| `mdoctor clean` | `[HIGH]` | Run system cleanup (dry-run by default, 10 modules) |
+| `mdoctor fix <target>` | `[MED]` | Apply common fixes (9 targets) |
+| `mdoctor diagnose` | `[SAFE]` | Run active performance diagnosis (read-only — prints remedies, never runs them) |
+| `mdoctor info` | `[SAFE]` | Show system information summary |
+| `mdoctor list` | `[SAFE]` | List all modules with category & risk level |
+| `mdoctor history` | `[SAFE]` | View health score trends over time |
+| `mdoctor benchmark` | `[LOW]` | Run disk, network, CPU speed tests |
+| `mdoctor update` | `[MED]` | Update to latest stable release |
+| `mdoctor version` | `[SAFE]` | Show version |
+| `mdoctor help` | `[SAFE]` | Show help |
 
 ### Health Check
 
