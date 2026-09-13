@@ -41,17 +41,30 @@ check_apt() {
     status_info "Installed packages: ${installed_count}"
   fi
 
-  # Held-back packages
-  local held_count
-  held_count=$(apt-mark showhold 2>/dev/null | wc -l | tr -d ' ')
-  if (( held_count > 0 )); then
-    status_info "Held-back packages: ${held_count}"
+  # Held-back packages (all dpkg/apt queries below are timeout-capped with
+  # a distinct "timed out" report, #101)
+  local held_count _held_rc=0
+  tcap "$MDOCTOR_UPDATE_TIMEOUT_S" "apt-mark showhold probe" apt-mark showhold || _held_rc=$?
+  if [ "$_held_rc" -ne 124 ]; then
+    # In-shell line count (issue #98 convention): a printf|wc pipe would
+    # mis-count both empty (1) and newline-stripped (N-1) captures.
+    held_count=0
+    local _hline
+    while IFS= read -r _hline; do
+      [ -n "$_hline" ] && held_count=$((held_count + 1))
+    done <<< "$_TCAP_OUT"
+    if (( held_count > 0 )); then
+      status_info "Held-back packages: ${held_count}"
+    fi
   fi
 
   # Broken packages
-  local broken_output
-  broken_output=$(dpkg --audit 2>/dev/null || true)
-  if [ -n "$broken_output" ]; then
+  local broken_output _br_rc=0
+  tcap "$MDOCTOR_UPDATE_TIMEOUT_S" "dpkg audit probe" dpkg --audit || _br_rc=$?
+  broken_output="$_TCAP_OUT"
+  if [ "$_br_rc" -eq 124 ]; then
+    : # tcap already printed the distinct timed-out line — no verdict.
+  elif [ -n "$broken_output" ]; then
     status_warn "Broken packages detected"
     add_action "Fix broken packages: sudo dpkg --configure -a && sudo apt --fix-broken install"
   else
@@ -81,11 +94,14 @@ check_apt() {
   fi
 
   # Auto-removable packages
-  local autoremove_output autoremove_output_raw
-  autoremove_output_raw=$(apt-get -s autoremove 2>/dev/null | grep -c '^Remv' || true)
-  autoremove_output=$(to_int "$autoremove_output_raw")
-  if (( autoremove_output > 0 )); then
-    status_info "Auto-removable packages: ${autoremove_output}"
-    add_action "Remove unused packages: sudo apt autoremove"
+  local autoremove_output autoremove_output_raw _ar_rc=0
+  tcap "$MDOCTOR_UPDATE_TIMEOUT_S" "apt-get autoremove simulation" apt-get -s autoremove || _ar_rc=$?
+  if [ "$_ar_rc" -ne 124 ]; then
+    autoremove_output_raw=$(printf '%s\n' "$_TCAP_OUT" | grep -c '^Remv' || true)
+    autoremove_output=$(to_int "$autoremove_output_raw")
+    if (( autoremove_output > 0 )); then
+      status_info "Auto-removable packages: ${autoremove_output}"
+      add_action "Remove unused packages: sudo apt autoremove"
+    fi
   fi
 }

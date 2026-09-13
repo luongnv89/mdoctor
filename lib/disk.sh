@@ -7,6 +7,9 @@
 # Named size/timeout values (Task 8.7); guarded so isolated sourcing works.
 _MDOCTOR_DISK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
 source "${_MDOCTOR_DISK_DIR}/constants.sh"
+# mdoctor_timeout (issue #101): the du probe stays capped even where GNU
+# timeout is absent — the watchdog backend still reports 124.
+source "${_MDOCTOR_DISK_DIR}/timeout.sh"
 unset _MDOCTOR_DISK_DIR
 
 # On macOS APFS, df / reports the read-only system snapshot which shows
@@ -41,12 +44,17 @@ kb_to_human() {
 disk_used_pct_root() {
   local out rc=0 value
   _disk_root_init
-  out=$(df -H "$_MDOCTOR_DISK_ROOT" 2>/dev/null) || rc=$?
+  # df is timeout-capped (issue #101): a stale NFS mount can wedge df
+  # forever; the timeout code maps to MDOCTOR_SIZE_ERR_TIMEOUT.
+  out=$(mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" df -H "$_MDOCTOR_DISK_ROOT" 2>/dev/null) || rc=$?
   if { [ "$rc" -ne 0 ] || [ -z "$out" ]; } && [ "$_MDOCTOR_DISK_ROOT" != "/" ]; then
     # Same fallback the retired caller spelled out: if the Data-volume
     # probe yields nothing, measure / (issue #98).
     rc=0
-    out=$(df -H / 2>/dev/null) || rc=$?
+    out=$(mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" df -H / 2>/dev/null) || rc=$?
+  fi
+  if [ "$rc" -eq 124 ]; then
+    return "$MDOCTOR_SIZE_ERR_TIMEOUT"
   fi
   if [ "$rc" -ne 0 ] || [ -z "$out" ]; then
     return "$MDOCTOR_SIZE_ERR_FAILED"
@@ -72,7 +80,12 @@ disk_used_pct_root() {
 disk_usage() {
   _disk_root_init
   local _df_out _dfrow="" _d1 _d2 _d3 _d4 _d5 _drest _dfh
-  _df_out=$(df -h "$_MDOCTOR_DISK_ROOT" || true)
+  local _df_rc=0
+  _df_out=$(mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" df -h "$_MDOCTOR_DISK_ROOT" 2>/dev/null) || _df_rc=$?   # timeout-capped (NFS stall, issue #101)
+  if [ "$_df_rc" -eq 124 ]; then
+    printf 'Disk usage: timed out (timeout %ss)\n' "$MDOCTOR_CMD_TIMEOUT_S"
+    return 0
+  fi
   {
     IFS= read -r _dfh || true
     IFS= read -r _dfrow || true
@@ -86,7 +99,10 @@ disk_usage() {
 disk_used_kb() {
   local out rc=0 value
   _disk_root_init
-  out=$(df -k "$_MDOCTOR_DISK_ROOT" 2>/dev/null) || rc=$?
+  out=$(mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" df -k "$_MDOCTOR_DISK_ROOT" 2>/dev/null) || rc=$?   # timeout-capped (NFS stall, issue #101)
+  if [ "$rc" -eq 124 ]; then
+    return "$MDOCTOR_SIZE_ERR_TIMEOUT"
+  fi
   if [ "$rc" -ne 0 ] || [ -z "$out" ]; then
     return "$MDOCTOR_SIZE_ERR_FAILED"
   fi
@@ -163,11 +179,10 @@ du_size_kb() {
   fi
   local kb_raw=""
   local probe_rc=0
-  if command -v timeout >/dev/null 2>&1; then
-    kb_raw=$(timeout "$MDOCTOR_DU_TIMEOUT_S" du -sk "$path" 2>/dev/null) || probe_rc=$?
-  else
-    kb_raw=$(du -sk "$path" 2>/dev/null) || probe_rc=$?
-  fi
+  # Always capped (issue #101): mdoctor_timeout falls back to a builtin
+  # watchdog where GNU timeout is absent — the old else-branch ran `du -sk`
+  # uncapped on stock macOS, which is exactly the host that needs the cap.
+  kb_raw=$(mdoctor_timeout "$MDOCTOR_DU_TIMEOUT_S" du -sk "$path" 2>/dev/null) || probe_rc=$?
   if [ "$probe_rc" -eq 124 ]; then
     return "$MDOCTOR_SIZE_ERR_TIMEOUT"
   fi

@@ -202,11 +202,14 @@ teardown_file() {
   # the *_out capture variables name-drop the tool, so count the $(...)
   # call itself, not the bare name).
   local b="$ROOT_DIR/checks/battery.sh"
-  [ "$(grep -vE '^\s*#' "$b" | grep -cF '$(system_profiler' || true)" = "1" ] \
+  # Issue #101 routes every probe through the timeout wrappers
+  # (mdoctor_timeout/tcap), so count the wrapper invocation line instead
+  # of the old `$(tool` substitution shape.
+  [ "$(grep -vE '^\s*#' "$b" | grep -cE 'mdoctor_timeout .*system_profiler' || true)" = "1" ] \
     || fail "battery.sh must invoke system_profiler exactly once"
-  [ "$(grep -vE '^\s*#' "$b" | grep -cF '$(ioreg' || true)" = "1" ] \
+  [ "$(grep -vE '^\s*#' "$b" | grep -cE 'tcap .*ioreg ' || true)" = "1" ] \
     || fail "battery.sh must invoke ioreg exactly once"
-  [ "$(grep -vE '^\s*#' "$b" | grep -cF '$(pmset' || true)" = "1" ] \
+  [ "$(grep -vE '^\s*#' "$b" | grep -cE 'tcap .*pmset ' || true)" = "1" ] \
     || fail "battery.sh must invoke pmset exactly once"
 
   # No module invokes `dpkg -l` directly anymore — every consumer reads

@@ -625,8 +625,15 @@ cmd_info() {
   if is_macos; then
     [ -d /System/Volumes/Data ] && disk_root="/System/Volumes/Data"
   fi
-  local disk_info
-  disk_info=$(df -h "$disk_root" | awk 'NR==2 {print $3" used / "$2" total ("$5" used)"}')
+  local disk_info _dfo="" _df_rc=0
+  # df is timeout-capped (issue #101): a stale NFS mount can wedge df —
+  # and the 124 is kept distinct instead of collapsing into blank output.
+  _dfo=$(mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" df -h "$disk_root" 2>/dev/null) || _df_rc=$?
+  if [ "$_df_rc" -eq 124 ]; then
+    disk_info="timed out (timeout ${MDOCTOR_CMD_TIMEOUT_S}s)"
+  else
+    disk_info=$(printf '%s\n' "$_dfo" | awk 'NR==2 {print $3" used / "$2" total ("$5" used)"}')
+  fi
   printf "  %-20s %s\n" "Disk:" "${disk_info}"
 
   # Memory
@@ -722,19 +729,32 @@ cmd_info() {
   fi
   for tool in "${tools[@]}"; do
     if command -v "$tool" >/dev/null 2>&1; then
-      local ver
+      local ver="installed" _tout="" _tv_rc=0
+      # Every version probe is timeout-capped (issue #101): a shim or
+      # daemon-wrapped binary (docker/code/java) can otherwise wedge here.
+      # The capture runs before the field trim so the 124 is not lost to
+      # a head/awk pipeline.
       case "$tool" in
-        brew)    ver=$(brew --version 2>/dev/null | head -n1) ;;
-        git)     ver=$(git --version 2>/dev/null) ;;
-        node)    ver=$(node -v 2>/dev/null) ;;
-        npm)     ver=$(npm -v 2>/dev/null) ;;
-        python3) ver=$(python3 --version 2>/dev/null) ;;
-        pip3)    ver=$(pip3 --version 2>/dev/null | awk '{print $2}') ;;
-        docker)  ver=$(docker --version 2>/dev/null) ;;
-        code)    ver=$(code --version 2>/dev/null | head -n1) ;;
-        java)    ver=$(java -version 2>&1 | head -n1) ;;
-        *)       ver="installed" ;;
+        brew)    _tout=$(mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" brew --version 2>/dev/null) || _tv_rc=$? ;;
+        git)     _tout=$(mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" git --version 2>/dev/null) || _tv_rc=$? ;;
+        node)    _tout=$(mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" node -v 2>/dev/null) || _tv_rc=$? ;;
+        npm)     _tout=$(mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" npm -v 2>/dev/null) || _tv_rc=$? ;;
+        python3) _tout=$(mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" python3 --version 2>/dev/null) || _tv_rc=$? ;;
+        pip3)    _tout=$(mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" pip3 --version 2>/dev/null) || _tv_rc=$? ;;
+        docker)  _tout=$(mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" docker --version 2>/dev/null) || _tv_rc=$? ;;
+        code)    _tout=$(mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" code --version 2>/dev/null) || _tv_rc=$? ;;
+        java)    _tout=$(mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" java -version 2>&1) || _tv_rc=$? ;;
       esac
+      if [ "$_tv_rc" -eq 124 ]; then
+        ver="timed out (timeout ${MDOCTOR_CMD_TIMEOUT_S}s)"
+      elif [ -n "$_tout" ]; then
+        ver="${_tout%%$'\n'*}"   # first line — the retired head -n1
+        if [ "$tool" = "pip3" ]; then
+          local _pv1 _pv2 _pvrest
+          read -r _pv1 _pv2 _pvrest <<< "$ver"
+          ver="${_pv2:-$ver}"   # field 2 — the retired awk '{print $2}'
+        fi
+      fi
       printf "    ${GREEN}%-12s${RESET} %s\n" "${tool}" "${ver}"
     fi
   done
@@ -955,9 +975,16 @@ mdoctor_verify_tag() {
   fi
   local verify_out verify_rc
   set +e
-  verify_out="$(git -C "$MDOCTOR_DIR" verify-tag "$tag" 2>&1)"
+  # verify-tag spawns gpg → gpg-agent — a wedged agent could hang the
+  # call, so it runs behind the same portable cap as the check probes
+  # (issue #101). A timeout fails closed (treated as unverifiable).
+  verify_out="$(mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" git -C "$MDOCTOR_DIR" verify-tag "$tag" 2>&1)"
   verify_rc=$?
   set -e
+  if [ "$verify_rc" -eq 124 ]; then
+    error "Tag verification timed out (timeout ${MDOCTOR_CMD_TIMEOUT_S}s) — refusing to update."
+    return 1
+  fi
   if [ "$verify_rc" -eq 0 ]; then
     return 0
   fi
@@ -979,7 +1006,14 @@ update_from_tag() {
   local remote="$1" check_only="$2"
 
   echo "Checking release tags from ${remote}..."
-  if ! git -C "$MDOCTOR_DIR" fetch --quiet --tags "$remote"; then
+  # The fetch is a network call — timeout-capped (issue #101) with a
+  # distinct timed-out report.
+  local _fetch_rc=0
+  mdoctor_timeout "$MDOCTOR_UPDATE_TIMEOUT_S" git -C "$MDOCTOR_DIR" fetch --quiet --tags "$remote" || _fetch_rc=$?
+  if [ "$_fetch_rc" -eq 124 ]; then
+    error "Fetching tags from ${remote} timed out (timeout ${MDOCTOR_UPDATE_TIMEOUT_S}s)."
+    return 1
+  elif [ "$_fetch_rc" -ne 0 ]; then
     error "Failed to fetch tags from ${remote}."
     return 1
   fi
@@ -1034,7 +1068,13 @@ update_from_branch() {
 
   echo "Checking updates from ${remote_ref}..."
 
-  if ! git -C "$MDOCTOR_DIR" fetch --quiet "$remote" "$branch"; then
+  local _fetch_rc=0
+  # Network call — timeout-capped (issue #101), distinct timed-out error.
+  mdoctor_timeout "$MDOCTOR_UPDATE_TIMEOUT_S" git -C "$MDOCTOR_DIR" fetch --quiet "$remote" "$branch" || _fetch_rc=$?
+  if [ "$_fetch_rc" -eq 124 ]; then
+    error "Fetching ${remote_ref} timed out (timeout ${MDOCTOR_UPDATE_TIMEOUT_S}s)."
+    return 1
+  elif [ "$_fetch_rc" -ne 0 ]; then
     error "Failed to fetch updates from ${remote_ref}."
     return 1
   fi

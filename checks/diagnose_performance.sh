@@ -460,8 +460,13 @@ check_disk_hotspots() {
   for dir in "${fast_dirs[@]}"; do
     [ ! -d "$dir" ] && continue
     dir_size_rc=0
+    # du_size_kb is always capped via mdoctor_timeout (issue #101) — the
+    # old GNU-timeout-only guard let the du call run uncapped on stock
+    # macOS.
     dir_size=$(du_size_kb "$dir") || dir_size_rc=$?
-    if [ "$dir_size_rc" -ne 0 ]; then
+    if [ "$dir_size_rc" -eq "$MDOCTOR_SIZE_ERR_TIMEOUT" ]; then
+      status_info "Size of ${dir}: timed out (timeout ${MDOCTOR_DU_TIMEOUT_S}s)."
+    elif [ "$dir_size_rc" -ne 0 ]; then
       status_info "Size of ${dir}: could not determine."
     elif (( dir_size > MDOCTOR_DIAG_DIR_WARN_KB )); then
       dir_hr=$(kb_to_human "$dir_size")
@@ -592,10 +597,13 @@ check_open_connections() {
   local conn_detail=""
 
   # One socket-table snapshot per platform, counted in-shell (issue #98:
-  # the table used to be sampled once per counter).
+  # the table used to be sampled once per counter). The enumerator is now
+  # timeout-capped too (issue #101): tens of thousands of sockets on a
+  # wedged host used to stall the diagnosis it was meant to explain.
+  local _conn_rc=0
   if is_macos; then
     local conn_snap
-    conn_snap=$(netstat -an 2>/dev/null || true)
+    conn_snap=$(mdoctor_timeout "$MDOCTOR_NET_TIMEOUT_S" netstat -an 2>/dev/null) || _conn_rc=$?
     conn_count=0
     conn_detail=0
     local _cl
@@ -613,7 +621,7 @@ check_open_connections() {
       conn_detail=0
     else
       local conn_snap
-      conn_snap=$(ss -tun 2>/dev/null || true)
+      conn_snap=$(mdoctor_timeout "$MDOCTOR_NET_TIMEOUT_S" ss -tun 2>/dev/null) || _conn_rc=$?
       conn_count=0
       conn_detail=0
       local _cl
@@ -624,6 +632,11 @@ check_open_connections() {
         esac
       done <<< "$conn_snap"
     fi
+  fi
+
+  if [ "$_conn_rc" -eq 124 ]; then
+    status_info "Open connections: enumeration timed out (timeout ${MDOCTOR_NET_TIMEOUT_S}s) — counts unavailable."
+    return 0
   fi
 
   if (( conn_count > MDOCTOR_DIAG_CONN_HIGH )); then

@@ -22,8 +22,14 @@ check_battery() {
   # to re-invoke the same three slow binaries once per field —
   # system_profiler SPPowerDataType 3× (a sibling comment documents
   # system_profiler as "very slow (~30s)"), ioreg 2× and pmset -g batt 3×.
-  local sp_out _spline
-  sp_out=$(system_profiler SPPowerDataType 2>/dev/null || true)
+  local sp_out _spline _sp_rc=0
+  # timeout-capped (issue #101): system_profiler is documented as ~30s
+  # slow — a wedged run must not masquerade as "no battery".
+  sp_out=$(mdoctor_timeout "$MDOCTOR_SYSINFO_TIMEOUT_S" system_profiler SPPowerDataType 2>/dev/null) || _sp_rc=$?
+  if [ "$_sp_rc" -eq 124 ]; then
+    status_info "Battery probe timed out (timeout ${MDOCTOR_SYSINFO_TIMEOUT_S}s) — skipping battery checks."
+    return 0
+  fi
 
   # Detect if this is a desktop Mac (no battery) — count of lines
   # containing "Battery Information" in the single capture above.
@@ -93,7 +99,8 @@ check_battery() {
   # capture serves both fields; first matching line wins and the value
   # is its trailing digit run (the retired grep -o '[0-9]*$' | head -1).
   local ioreg_out _ioline
-  ioreg_out=$(ioreg -r -c AppleSmartBattery 2>/dev/null || true)
+  tcap "$MDOCTOR_CMD_TIMEOUT_S" "ioreg battery probe" ioreg -r -c AppleSmartBattery || true
+  ioreg_out="$_TCAP_OUT"
   local max_cap="" design_cap=""
   while IFS= read -r _ioline; do
     case "$_ioline" in
@@ -126,7 +133,8 @@ check_battery() {
   # Power source, charging status and percent — one `pmset -g batt`
   # capture serves all three fields.
   local pmset_out _pmline
-  pmset_out=$(pmset -g batt 2>/dev/null || true)
+  tcap "$MDOCTOR_CMD_TIMEOUT_S" "pmset battery probe" pmset -g batt || true
+  pmset_out="$_TCAP_OUT"
 
   # Power source: text between the first pair of quotes on the first
   # line (e.g. "Now drawing from 'Battery Power'"). The retired

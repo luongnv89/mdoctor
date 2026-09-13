@@ -60,6 +60,10 @@
 _MDOCTOR_TRUTHY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
 # shellcheck source=/dev/null
 source "${_MDOCTOR_TRUTHY_DIR}/constants.sh"
+# mdoctor_timeout (issue #101): every dispatched probe below is capped,
+# with the watchdog backend covering hosts without GNU timeout.
+# shellcheck source=/dev/null
+source "${_MDOCTOR_TRUTHY_DIR}/timeout.sh"
 unset _MDOCTOR_TRUTHY_DIR
 
 # Guard against double-sourcing.
@@ -85,6 +89,8 @@ perf_capture_reset() {
   _PERF_NPROC=""            _PERF_NPROC_DONE=""
   _PERF_VM_STAT=""          _PERF_VM_STAT_DONE=""
   _PERF_DPKG_L=""           _PERF_DPKG_L_DONE=""
+  _PERF_DOCKER_INFO=""      _PERF_DOCKER_INFO_DONE=""
+  _PERF_DOCKER_INFO_RC=1
   _PERF_LOAD_L1=""          _PERF_LOAD_CORES=""
   _PERF_LOAD_DONE=""
   _PERF_MEMPRESSURE_LIVE="" _PERF_MEMPRESSURE_DONE=""
@@ -120,7 +126,9 @@ perf_capture_nproc() {
   if ! is_truthy "${_PERF_NPROC_DONE:-}"; then
     _PERF_NPROC=""
     if command -v nproc >/dev/null 2>&1; then
-      _PERF_NPROC=$(nproc 2>/dev/null || true)
+      # Timeout-capped for uniformity (issue #101).
+      tcap "$MDOCTOR_CMD_TIMEOUT_S" "nproc probe" nproc || true
+      _PERF_NPROC="$_TCAP_OUT"
     fi
     _PERF_NPROC_DONE=true
   fi
@@ -132,7 +140,10 @@ perf_capture_vm_stat() {
   if ! is_truthy "${_PERF_VM_STAT_DONE:-}"; then
     _PERF_VM_STAT=""
     if command -v vm_stat >/dev/null 2>&1; then
-      _PERF_VM_STAT=$(vm_stat 2>/dev/null || true)
+      # Timeout-capped (issue #101): a wedged Mach call can stall the read;
+      # tcap keeps a 124 distinct rather than collapsing into empty output.
+      tcap "$MDOCTOR_CMD_TIMEOUT_S" "vm_stat probe" vm_stat || true
+      _PERF_VM_STAT="$_TCAP_OUT"
     fi
     _PERF_VM_STAT_DONE=true
   fi
@@ -147,7 +158,9 @@ perf_capture_dpkg_l() {
   if ! is_truthy "${_PERF_DPKG_L_DONE:-}"; then
     _PERF_DPKG_L=""
     if command -v dpkg >/dev/null 2>&1; then
-      _PERF_DPKG_L=$(dpkg -l 2>/dev/null || true)
+      # Package-db listing — timeout-capped with a distinct report (#101).
+      tcap "$MDOCTOR_UPDATE_TIMEOUT_S" "dpkg -l snapshot" dpkg -l || true
+      _PERF_DPKG_L="$_TCAP_OUT"
     fi
     _PERF_DPKG_L_DONE=true
   fi
@@ -352,4 +365,280 @@ perf_probe_zombies() {
       Z*) printf '%s %s %s\n' "$_zp" "$_zpp" "$_zc" ;;
     esac
   done || true
+}
+
+########################################
+# PARALLEL NETWORK/DAEMON PROBES (issue #101, Task 11.7)
+########################################
+# doctor.sh used to run every module — and inside them every slow registry
+# or daemon call — strictly back to back. The timeout-capped probes below
+# are mutually independent (a registry lookup never feeds a daemon check),
+# so perf_prefetch_begin launches them as background jobs writing
+# per-probe files in a private tmpdir, and each consumer joins lazily via
+# perf_probe_capture/perf_probe_out/perf_capture_docker_info: module order,
+# registration and printed output are completely unchanged — only the
+# wall-clock waits overlap.
+#
+# Every dispatch line is timeout-capped by construction (mdoctor_timeout
+# is literally on the line), so the census of uncapped blocking calls is 0
+# whether a probe ran prefetched or inline.
+#
+# Bash 3.2 notes: no `wait -n`, no co-processes, no associative arrays —
+# the probe table is three case statements and the pid set is a flat
+# "name:pid" word list.
+
+# _perf_probe_dispatch NAME — run probe NAME's argv under its named cap.
+# Timeout classes come from lib/constants.sh (MDOCTOR_*_TIMEOUT_S).
+_perf_probe_dispatch() {
+  case "$1" in
+    npm_doctor)          mdoctor_timeout "$MDOCTOR_REGISTRY_TIMEOUT_S" npm doctor ;;
+    npm_outdated)        mdoctor_timeout "$MDOCTOR_REGISTRY_TIMEOUT_S" npm outdated -g --depth=0 ;;
+    pip3_check)          mdoctor_timeout "$MDOCTOR_REGISTRY_TIMEOUT_S" pip3 check ;;
+    pip3_outdated)       mdoctor_timeout "$MDOCTOR_REGISTRY_TIMEOUT_S" pip3 list --outdated ;;
+    brew_doctor)         mdoctor_timeout "$MDOCTOR_REGISTRY_TIMEOUT_S" brew doctor ;;
+    brew_outdated)       mdoctor_timeout "$MDOCTOR_REGISTRY_TIMEOUT_S" brew outdated ;;
+    softwareupdate_list) mdoctor_timeout "$MDOCTOR_UPDATE_TIMEOUT_S" softwareupdate -l ;;
+    apt_upgradable)      mdoctor_timeout "$MDOCTOR_UPDATE_TIMEOUT_S" apt list --upgradable ;;
+    apt_sim_upgrade)     mdoctor_timeout "$MDOCTOR_UPDATE_TIMEOUT_S" apt-get -s upgrade ;;
+    docker_info)         mdoctor_timeout "$MDOCTOR_DOCKER_TIMEOUT_S" docker info ;;
+    *) return 1 ;;
+  esac
+}
+
+# _perf_probe_secs NAME — the cap the dispatch applies, for poll bounds.
+_perf_probe_secs() {
+  case "$1" in
+    npm_doctor|npm_outdated|pip3_check|pip3_outdated|brew_doctor|brew_outdated)
+      printf '%s' "$MDOCTOR_REGISTRY_TIMEOUT_S" ;;
+    softwareupdate_list|apt_upgradable|apt_sim_upgrade)   # timeout-capped probes (issue #101)
+      printf '%s' "$MDOCTOR_UPDATE_TIMEOUT_S" ;;
+    docker_info)
+      printf '%s' "$MDOCTOR_DOCKER_TIMEOUT_S" ;;
+    *) printf '%s' "$MDOCTOR_CMD_TIMEOUT_S" ;;
+  esac
+}
+
+# _perf_probe_errmode NAME — "merge" when the caller's historical capture
+# redirected stderr into the log file (`probe >log 2>&1`), "stdout" when
+# stderr was dropped (`2>/dev/null`).
+_perf_probe_errmode() {
+  case "$1" in
+    npm_doctor|pip3_check|brew_doctor|docker_info) printf 'merge' ;;
+    *) printf 'stdout' ;;
+  esac
+}
+
+# _perf_probe_prefetch_list — probe names worth warming for THIS platform
+# whose binary exists right now (the same `command -v` guard the consumer
+# modules apply; absent tools are never spawned).
+_perf_probe_prefetch_list() {
+  # Every listed probe runs behind mdoctor_timeout at dispatch (issue #101).
+  command -v npm >/dev/null 2>&1 && printf '%s\n' npm_doctor npm_outdated   # timeout-capped probes
+  command -v pip3 >/dev/null 2>&1 && printf '%s\n' pip3_check pip3_outdated # timeout-capped probes
+  if is_macos; then
+    command -v brew >/dev/null 2>&1 && printf '%s\n' brew_doctor brew_outdated   # timeout-capped probes
+    command -v softwareupdate >/dev/null 2>&1 && printf '%s\n' softwareupdate_list   # timeout-capped probe
+  elif is_linux; then
+    command -v apt >/dev/null 2>&1 && printf '%s\n' apt_upgradable   # timeout-capped probe
+    command -v apt-get >/dev/null 2>&1 && printf '%s\n' apt_sim_upgrade   # timeout-capped probe
+  fi
+  command -v docker >/dev/null 2>&1 && printf '%s\n' docker_info   # timeout-capped probe
+}
+
+_PERF_PREFETCH_DIR=""
+_PERF_PREFETCH_PIDS=""
+
+# perf_prefetch_begin — spawn every listed probe as a background job that
+# writes "$NAME.out" + "$NAME.rc" into a private 0700 tmpdir. Consumers
+# then only wait on files/pids — a probe that finished while earlier
+# modules ran costs zero extra wall time.
+perf_prefetch_begin() {
+  is_truthy "${MDOCTOR_PREFETCH:-true}" || return 0
+  [ -n "${_PERF_PREFETCH_DIR:-}" ] && return 0
+  local dir
+  # Prefetch is an optimization — never fail the caller when the scratch
+  # dir can't be created; probes simply run inline later.
+  dir="$(mktemp -d "${TMPDIR:-/tmp}/mdoctor-probes.XXXXXX" 2>/dev/null)" || return 0
+  _PERF_PREFETCH_DIR="$dir"
+  _PERF_PREFETCH_PIDS=""
+  local _pf_list name _em
+  # `|| true`: the list helper's last `command -v && printf` arm yields
+  # status 1 when that binary is absent — under an inherited `set -e`
+  # that aborts this function before `return 0`, and prefetch's contract
+  # is "never fail the caller".
+  _pf_list="$(_perf_probe_prefetch_list)" || true
+  for name in $_pf_list; do
+    [ -n "$name" ] || continue
+    _em="$(_perf_probe_errmode "$name")"
+    # `|| _prc=$?` (not `; $?`) keeps the rc write reachable under an
+    # inherited `set -e`: a failing probe must still drop its .rc file or
+    # consumers would poll to the bound and then re-run it inline.
+    # `trap 'exit 0' TERM` first: perf_prefetch_join disarms workers that
+    # are still running at join time — a clean exit (never a signal
+    # death) so no "Terminated" job notice can leak into a stream or the
+    # caller's stderr. The in-flight probe command orphans but is itself
+    # capped by mdoctor_timeout, so it still dies inside its own budget.
+    if [ "$_em" = "merge" ]; then
+      ( trap 'exit 0' TERM
+        _prc=0; _perf_probe_dispatch "$name" >"$dir/$name.out" 2>&1 || _prc=$?
+        printf '%s\n' "$_prc" >"$dir/$name.rc" ) &
+    else
+      ( trap 'exit 0' TERM
+        _prc=0; _perf_probe_dispatch "$name" >"$dir/$name.out" 2>/dev/null || _prc=$?
+        printf '%s\n' "$_prc" >"$dir/$name.rc" ) &
+    fi
+    _PERF_PREFETCH_PIDS="${_PERF_PREFETCH_PIDS}${name}:$! "
+  done
+  # Ordered-exit cleanup (Task 4.7) when the hook registry is loaded;
+  # standalone sourcers can call perf_prefetch_cleanup themselves.
+  if command -v register_exit_hook >/dev/null 2>&1; then
+    register_exit_hook perf_prefetch_cleanup
+  fi
+  return 0
+}
+
+# perf_prefetch_wait NAME — block until NAME's rc+out files exist.
+# Main-shell callers reap the job directly; subshell callers (anything
+# inside $(...), e.g. perf_probe_out consumers) cannot wait our pids, so
+# they poll for the rc file — bounded by the probe's own cap + grace.
+# Returns 0 only when both files exist; 1 when no such job was spawned.
+perf_prefetch_wait() {
+  local name="$1"
+  [ -n "${_PERF_PREFETCH_DIR:-}" ] || return 1
+  local dir="$_PERF_PREFETCH_DIR" pid="" entry
+  for entry in ${_PERF_PREFETCH_PIDS}; do
+    case "$entry" in
+      "$name":*) pid="${entry#*:}" ;;
+    esac
+  done
+  [ -n "$pid" ] || return 1
+  local rcf="$dir/$name.rc" outf="$dir/$name.out"
+  if [ ! -f "$rcf" ]; then
+    wait "$pid" 2>/dev/null || true
+  fi
+  if [ ! -f "$rcf" ]; then
+    local secs waited=0
+    secs="$(_perf_probe_secs "$name")"
+    case "$secs" in ''|*[!0-9]*) secs=30 ;; esac
+    while [ ! -f "$rcf" ] && [ "$waited" -lt $((secs + 5)) ]; do
+      sleep 1
+      waited=$((waited + 1))
+    done
+  fi
+  [ -f "$rcf" ] && [ -f "$outf" ]
+}
+
+# perf_prefetch_join — reap every prefetched job (idempotent; called
+# before the summary so an unconsumed probe can never outlive the run).
+# Workers still alive at join time have no remaining consumer, so they
+# are disarmed with TERM first: each worker subshell traps it to a clean
+# exit, and the orphaned probe command is still bounded by its own cap.
+# Without the disarm, a `wait` here would pay the full timeout budget
+# (e.g. a 60 s update-listing probe on macOS) on every check —
+# including single-module runs that never consume the probe.
+perf_prefetch_join() {
+  local entry pid name
+  local pids="${_PERF_PREFETCH_PIDS:-}"
+  # Consume the list up front: join is idempotent as a no-op on the
+  # second pass, but it must never re-signal pids — a disarmed worker
+  # exits without writing its rc, so its freed pid could already be
+  # recycled by the time cleanup calls us again via the exit hook.
+  _PERF_PREFETCH_PIDS=""
+  for entry in $pids; do
+    pid="${entry#*:}"
+    name="${entry%%:*}"
+    # rc file exists ⇒ the worker already finished and its pid is free to
+    # recycle — only a worker that never completed may still be signalled.
+    [ -f "${_PERF_PREFETCH_DIR:-/nonexistent}/$name.rc" ] \
+      || kill -TERM "$pid" 2>/dev/null || true
+  done
+  for entry in $pids; do
+    pid="${entry#*:}"
+    wait "$pid" 2>/dev/null || true
+  done
+}
+
+# perf_prefetch_cleanup — join + drop the tmpdir (exit-hook signature:
+# ignores the run's exit status argument).
+perf_prefetch_cleanup() {
+  perf_prefetch_join
+  if [ -n "${_PERF_PREFETCH_DIR:-}" ] && [ -d "$_PERF_PREFETCH_DIR" ]; then
+    rm -rf "$_PERF_PREFETCH_DIR" 2>/dev/null || true
+  fi
+  _PERF_PREFETCH_DIR=""
+  _PERF_PREFETCH_PIDS=""
+}
+
+# perf_probe_capture NAME [DEST] — print/copy probe NAME's stdout (+stderr
+# for merge-mode probes) to DEST, or to stdout when DEST is "-" or unset.
+# Serves the prefetch result when perf_prefetch_begin spawned the probe;
+# otherwise runs it inline — identical cap either way. Returns the probe's
+# real exit code (124 on timeout), never a synthesized 0.
+perf_probe_capture() {
+  local name="$1" dest="${2:--}" rc=0 _prc=""
+  local dir="${_PERF_PREFETCH_DIR:-}"
+  if [ -n "$dir" ] && perf_prefetch_wait "$name"; then
+    if [ "$dest" = "-" ]; then
+      cat "$dir/$name.out" 2>/dev/null || true
+    else
+      cat "$dir/$name.out" >"$dest" 2>/dev/null || true
+    fi
+    # cat — not `read` — so an rc file with no trailing newline still
+    # yields its digits (read returns non-zero on EOF-without-delimiter
+    # and the ||-fallback would clobber a real "0").
+    _prc=$(cat "$dir/$name.rc" 2>/dev/null || true)
+    case "$_prc" in ''|*[!0-9]*) _prc=1 ;; esac
+    return "$_prc"
+  fi
+  if [ "$(_perf_probe_errmode "$name")" = "merge" ]; then
+    if [ "$dest" = "-" ]; then
+      _perf_probe_dispatch "$name" 2>&1 || rc=$?
+    else
+      _perf_probe_dispatch "$name" >"$dest" 2>&1 || rc=$?
+    fi
+  else
+    if [ "$dest" = "-" ]; then
+      _perf_probe_dispatch "$name" 2>/dev/null || rc=$?
+    else
+      _perf_probe_dispatch "$name" >"$dest" 2>/dev/null || rc=$?
+    fi
+  fi
+  return "$rc"
+}
+
+# perf_probe_out NAME — print the captured stdout of probe NAME (for
+# consumers that grep/count the stream instead of keeping a log file).
+perf_probe_out() {
+  perf_probe_capture "$1" -
+}
+
+# perf_capture_docker_info — the run's single timeout-capped `docker info`
+# probe (issue #101): devtools and containers used to each run their own
+# uncapped `docker` `info`; now one capture — prefetched when possible —
+# serves both. stderr is merged like the historical timeout-capped
+# `docker` `info` `>log 2>&1` so error text still reaches the log file, and
+# the mdoctor_timeout 124 propagates so callers can report "timed out".
+# Returns the probe's exit code (0 = daemon answered), so callers can
+# distinguish "timed out" (124) from "daemon down" — unlike the other
+# captures an empty but successful report still counts as reachable.
+_PERF_DOCKER_INFO="" _PERF_DOCKER_INFO_DONE="" _PERF_DOCKER_INFO_RC=1
+perf_capture_docker_info() {
+  if ! is_truthy "${_PERF_DOCKER_INFO_DONE:-}"; then
+    _PERF_DOCKER_INFO=""
+    _PERF_DOCKER_INFO_RC=1
+    if command -v docker >/dev/null 2>&1; then
+      local _rc=0 _prc=""
+      if perf_prefetch_wait docker_info; then
+        _PERF_DOCKER_INFO=$(cat "${_PERF_PREFETCH_DIR}/docker_info.out" 2>/dev/null || true)
+        _prc=$(cat "${_PERF_PREFETCH_DIR}/docker_info.rc" 2>/dev/null || true)
+        case "$_prc" in ''|*[!0-9]*) _prc=1 ;; esac
+        _rc="$_prc"
+      else
+        _PERF_DOCKER_INFO=$(mdoctor_timeout "$MDOCTOR_DOCKER_TIMEOUT_S" docker info 2>&1) || _rc=$?
+      fi
+      _PERF_DOCKER_INFO_RC="$_rc"
+    fi
+    _PERF_DOCKER_INFO_DONE=true
+  fi
+  return "$_PERF_DOCKER_INFO_RC"
 }

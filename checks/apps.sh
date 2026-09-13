@@ -39,7 +39,10 @@ check_apps() {
   # `set -u` — the ${arr[@]+"${arr[@]}"} idiom expands to nothing instead.
   for dir in "${crash_dirs[@]+"${crash_dirs[@]}"}"; do
     local crashes
-    crashes=$(find "$dir" -type f \( -name "*.crash" -o -name "*.ips" -o -name "*.diag" \) -mtime -7 2>/dev/null || true)
+    # Traversal is timeout-capped (issue #101): a wedged fs used to stall
+    # the whole audit here — and a capped find now reports distinctly.
+    tcap "$MDOCTOR_FIND_TIMEOUT_S" "Crash-report scan of ${dir}" find "$dir" -type f \( -name "*.crash" -o -name "*.ips" -o -name "*.diag" \) -mtime -7 || true
+    crashes="$_TCAP_OUT"
     if [ -n "$crashes" ]; then
       local count=0 _cline
       while IFS= read -r _cline; do
@@ -80,7 +83,10 @@ check_apps() {
   # pipelines (issue #98).
   if is_macos; then
     local app_count=0 _md_out _mdl
-    _md_out=$(mdfind "kMDItemContentType == 'com.apple.application-bundle'" 2>/dev/null || true)
+    # mdfind queries the Spotlight index — timeout-capped with a distinct
+    # "timed out" report (issue #101).
+    tcap "$MDOCTOR_NET_TIMEOUT_S" "Spotlight app-listing probe" mdfind "kMDItemContentType == 'com.apple.application-bundle'" || true
+    _md_out="$_TCAP_OUT"
     while IFS= read -r _mdl; do
       [ -n "$_mdl" ] && app_count=$((app_count + 1))
     done <<< "$_md_out"

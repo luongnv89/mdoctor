@@ -8,6 +8,9 @@
 # Benchmark sizes (Task 8.7); guarded so isolated sourcing works.
 _MDOCTOR_BENCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
 source "${_MDOCTOR_BENCH_DIR}/constants.sh"
+# mdoctor_timeout (issue #101): the DNS + HTTP probes are capped even
+# without GNU timeout.
+source "${_MDOCTOR_BENCH_DIR}/timeout.sh"
 unset _MDOCTOR_BENCH_DIR
 
 # _bench_time → high-resolution timestamp in seconds (uses Perl's Time::HiRes)
@@ -81,23 +84,32 @@ run_benchmark() {
   ########################################
   echo "${BOLD}2. Network${RESET}"
 
-  # DNS resolution latency
-  local dns_start dns_end dns_ms
+  # DNS resolution latency — timeout-capped (issue #101)
+  local dns_start dns_end dns_ms _dns_rc=0
   dns_start=$(_bench_time)
-  nslookup google.com >/dev/null 2>&1
+  mdoctor_timeout "$MDOCTOR_DNS_TIMEOUT_S" nslookup google.com >/dev/null 2>&1 || _dns_rc=$?
   dns_end=$(_bench_time)
   dns_ms=$(awk -v s="$dns_start" -v e="$dns_end" 'BEGIN {printf "%.0f", (e-s)*1000}')
-  printf "  %-20s %s\n" "DNS resolution:" "${dns_ms}ms"
+  if [ "$_dns_rc" -eq 124 ]; then
+    printf "  %-20s %s\n" "DNS resolution:" "timed out (timeout ${MDOCTOR_DNS_TIMEOUT_S}s)"
+  else
+    printf "  %-20s %s\n" "DNS resolution:" "${dns_ms}ms"
+  fi
 
-  # Small file download speed (100KB test)
+  # Small file download speed (100KB test) — `curl -m 10` hard cap
+  # (issue #101): the fetch can never outlast 10s.
   if command -v curl >/dev/null 2>&1; then
-    local dl_start dl_end dl_elapsed
+    local dl_start dl_end dl_elapsed _dl_rc=0
     local dl_url="http://www.google.com"
     dl_start=$(_bench_time)
-    curl -sS -o /dev/null -w '' "$dl_url" 2>/dev/null || true
+    curl -m 10 -sS -o /dev/null -w '' "$dl_url" 2>/dev/null || _dl_rc=$?
     dl_end=$(_bench_time)
     dl_elapsed=$(_bench_elapsed "$dl_start" "$dl_end")
-    printf "  %-20s %s\n" "HTTP fetch:" "${dl_elapsed}s (google.com)"
+    if [ "$_dl_rc" -eq 28 ]; then
+      printf "  %-20s %s\n" "HTTP fetch:" "timed out (curl -m 10)"
+    else
+      printf "  %-20s %s\n" "HTTP fetch:" "${dl_elapsed}s (google.com)"
+    fi
   fi
   echo
 

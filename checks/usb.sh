@@ -18,8 +18,13 @@ fi
 check_usb() {
   step "USB Devices"
 
-  local usb_info
-  usb_info=$(system_profiler SPUSBDataType 2>/dev/null || true)
+  local usb_info _usb_rc=0
+  # timeout-capped (issue #101): system_profiler is ~30s slow.
+  usb_info=$(mdoctor_timeout "$MDOCTOR_SYSINFO_TIMEOUT_S" system_profiler SPUSBDataType 2>/dev/null) || _usb_rc=$?
+  if [ "$_usb_rc" -eq 124 ]; then
+    status_info "USB probe timed out (timeout ${MDOCTOR_SYSINFO_TIMEOUT_S}s) — skipping."
+    return 0
+  fi
 
   if [ -z "$usb_info" ]; then
     status_info "No USB information available."
