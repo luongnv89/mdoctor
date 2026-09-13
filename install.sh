@@ -66,7 +66,11 @@ esac
 # Colors
 ########################################
 
-if command -v tput >/dev/null 2>&1 && [ -t 1 ]; then
+# Colors only on a tty and only when the caller has not opted out —
+# NO_COLOR / MDOCTOR_NO_COLOR set to a non-empty value disables them
+# (issue #108, same convention as init_colors in lib/common.sh).
+if command -v tput >/dev/null 2>&1 && [ -t 1 ] \
+  && [ -z "${NO_COLOR:-}" ] && [ -z "${MDOCTOR_NO_COLOR:-}" ]; then
   RED="$(tput setaf 1)"
   GREEN="$(tput setaf 2)"
   YELLOW="$(tput setaf 3)"
