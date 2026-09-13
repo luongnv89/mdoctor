@@ -344,8 +344,11 @@ Ethernet Address: aa:bb:cc:dd:ee:ff"
   # Closing the loop on Task 1.2: run the real CLI (not the module function)
   # with force mode on, and assert the dispatch guard refuses before any
   # chown reaches the recording sudo stub. platform.sh re-detects the OS in
-  # the fresh ./mdoctor process, so a per-test uname shim forces Linux on
-  # every CI lane (macOS, Linux, Bash 3.2) identically.
+  # the fresh ./mdoctor process and reads $OSTYPE first (issue #102), so
+  # forcing a lane needs the env var — bash keeps an inherited OSTYPE — and
+  # the uname shim now covers only the fallback arm (a non-darwin/non-linux
+  # OSTYPE). Both stay so the test forces Linux on every CI lane (macOS,
+  # Linux, Bash 3.2) identically.
   local shim_dir="$TEST_TMP/$BATS_TEST_NUMBER/shim"
   mkdir -p "$shim_dir"
   printf '#!/usr/bin/env bash\necho Linux\n' >"$shim_dir/uname"
@@ -353,6 +356,7 @@ Ethernet Address: aa:bb:cc:dd:ee:ff"
   fix_lane_begin "$STUB_LOG"
   local rc=0
   DRY_RUN=false HOME="$SANDBOX_HOME" MDOCTOR_STUB_LOG="$STUB_LOG" \
+    OSTYPE="linux-gnu" \
     PATH="$shim_dir:$ROOT_DIR/tests/helpers/bin:$PATH" \
     "$ROOT_DIR/mdoctor" fix permissions >"$TEST_TMP/$BATS_TEST_NUMBER/out.txt" 2>&1 || rc=$?
   [ "$rc" -ne 0 ] || fail "Expected ./mdoctor fix permissions to refuse on Linux"

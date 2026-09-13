@@ -159,6 +159,9 @@ to_int() {
 SPINNER_PID=""
 _PROGRESS_LABEL=""
 _SPINNER_DIR=""
+# Worker-side only: the fifo dir the worker's own exit hook removes.
+# Set inside _mdoctor_spinner; in the parent it always stays empty.
+_SPINNER_WORKER_DIR=""
 
 # MDOCTOR_SPINNER_FORCE=1 — test seam: drive the real protocol with stdout
 # on a pipe (the suite is hermetic, no real ttys). Unset by default.
@@ -175,12 +178,18 @@ _spinner_wanted() {
 # status_* helper invoked in a capture falls back to a plain echo (its
 # output is captured by the caller, matching the old semantics) instead
 # of signalling a worker it does not own. BASHPID does not exist on Bash
-# 3.2, so the [ -t 1 ] clause covers it there: a capture's stdout is a
-# pipe, never a tty. (MDOCTOR_SPINNER_FORCE tests bypass the tty check —
-# their bash is modern, so BASHPID alone disambiguates.)
+# 3.2 — there a capture is detectable ONLY by its pipe stdout, so the
+# MDOCTOR_SPINNER_FORCE seam may not stand in for [ -t 1 ]: when BASHPID
+# is absent and stdout is not a tty we cannot rule out a capture, and
+# echoing is the only safe emit (a stolen capture is the failure the
+# guard exists to prevent — test_spinner_startup.bats exercises this on
+# the Bash 3.2/macOS lanes).
 _spinner_on() {
   [ -n "$SPINNER_PID" ] || return 1
   [ "${BASHPID:-$$}" = "$$" ] || return 1
+  if [ -z "${BASHPID:-}" ] && [ ! -t 1 ]; then
+    return 1
+  fi
   is_truthy "${MDOCTOR_SPINNER_FORCE:-}" || [ -t 1 ] || return 1
   kill -0 "$SPINNER_PID" 2>/dev/null || return 1
   return 0
@@ -195,10 +204,28 @@ _spinner_signal() {
   return 0
 }
 
+# _spinner_worker_exit — worker-side exit hook (registered inside the
+# worker subshell only): removes the fifo dir so a parent that died
+# first leaves nothing stale. The parent's own teardown removes it too;
+# a double `rm -rf` is a no-op.
+_spinner_worker_exit() {
+  [ -n "${_SPINNER_WORKER_DIR:-}" ] && rm -rf "$_SPINNER_WORKER_DIR" 2>/dev/null
+  return 0
+}
+
 # _mdoctor_spinner DIR PARENT_PID — the worker loop (backgrounded by
 # _spinner_spawn). Pure builtins: no fork anywhere in the loop.
 _mdoctor_spinner() {
   local dir="$1" parent="$2"
+
+  # A backgrounded subshell clones the parent's exit-hook list: left in
+  # place, the inherited _run_exit_hooks runner would fire on EVERY worker
+  # exit below and re-run hooks like _finish_cleanup_session inside the
+  # wrong process (a duplicated session-end record mid-run). Clearing the
+  # list disarms the runner — the inherited `trap _run_exit_hooks EXIT`
+  # line stays but iterates over nothing; the worker's own cleanup is
+  # registered through the same hook list once it owns the fifo dir.
+  _EXIT_HOOKS=""
 
   # Detach every fd we do not draw on (watchdog discipline): stdin and
   # stderr to /dev/null, then sweep 3-63 so nothing inherited stays open
@@ -209,9 +236,19 @@ _mdoctor_spinner() {
     eval "exec ${_fd}>&-" 2>/dev/null || true
     _fd=$((_fd + 1))
   done
-  # Parent holds both fifos open RDWR, so neither open can block.
-  exec 7<"$dir/ctl" 2>/dev/null || exit 0
-  exec 8>"$dir/ack" 2>/dev/null || exit 0
+  # Both channel opens are RDWR: a plain 7< / 8> blocks until the other
+  # end appears, and a parent that died between fork and open (and left
+  # no fd-9/8 inheritor) would park the worker in open() forever — before
+  # even the TERM trap exists. RDWR never blocks; the kill -0 poll below
+  # is the authoritative parent-death detector either way.
+  exec 7<>"$dir/ctl" 2>/dev/null || exit 0
+  exec 8<>"$dir/ack" 2>/dev/null || exit 0
+
+  # The worker owns its fifo dir on the way out: the parent also rm's it
+  # in _spinner_teardown_channel, but a parent that dies first (SIGKILL)
+  # never gets there — without this the tmpdir outlives both processes.
+  _SPINNER_WORKER_DIR="$dir"
+  register_exit_hook _spinner_worker_exit
 
   # Trapped TERM => clean exit 0: a signal death would print a
   # "Terminated" job notice at the caller's next command boundary.
@@ -230,15 +267,30 @@ _mdoctor_spinner() {
   local _code _l _c _t _filled _empty _j
 
   while :; do
+    # One 1 s read tick in every state: an untimed read would only end on
+    # a command or EOF — and the worker holds ctl RDWR, so ctl can NEVER
+    # reach EOF at all (it is itself a writer). The tick is what runs the
+    # orphan poll below every second, paused or running — a paused worker
+    # can never outlive its parent either. Commands are one atomic fifo
+    # write each (well under PIPE_BUF), so the timeout can never consume
+    # a partial line. rc 1 (read error; EOF is impossible here) is still
+    # a safe bail.
     if [ "$paused" -eq 1 ]; then
-      # Blocked on ctl until a command lands or the last writer closes
-      # (parent death => EOF => exit — never an orphan).
-      if ! IFS= read -r -u 7 msg; then
-        exit 0
+      msg=""
+      IFS= read -r -t 1 -u 7 msg || rc=$?
+      if [ "$rc" -eq 1 ]; then
+        exit 0        # read error — channel unusable, bail
       fi
+      if [ "$rc" -ne 0 ]; then
+        msg=""        # tick timeout (>128) — fall through to the poll
+      fi
+      rc=0
     else
       msg=""
       IFS= read -r -t 1 -u 7 msg || rc=$?
+      if [ "$rc" -eq 1 ]; then
+        exit 0        # read error — channel unusable, bail
+      fi
       if [ "$rc" -ne 0 ]; then
         msg=""
       fi
