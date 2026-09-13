@@ -43,8 +43,15 @@ _MDOCTOR_TIMEOUT_LOADED=true
 # (KILL after a 1 s grace for probes that ignore TERM). `wait` returns the
 # real exit code; the flag file is the only reliable "cap fired" signal —
 # checking whether the watchdog is still alive races with its own exit.
-# The watchdog's own TERM trap kills whichever `sleep` it is sitting in,
-# so a fast probe never leaves a detached sleep running to the deadline.
+#
+# The watchdog subshell detaches all three fds first: when the parent
+# disarms a fast probe, TERM can land while the subshell is mid-spawn —
+# the `sleep` then survives as an orphan, and if it still held the
+# caller's stdout fd a $(tcap ...) substitution would hang until the
+# deadline (reproduced under bash 3.2 + the CI bash:3.2 image). With
+# /dev/null fds the orphan is a free-floating sleep that dies quietly at
+# its own deadline — the TERM/KILL follow-ups below bound the probed
+# command itself regardless.
 # Costs one mktemp -d per call (macOS path only).
 _mdoctor_timeout_watchdog() {
   local secs="$1"
@@ -61,18 +68,13 @@ _mdoctor_timeout_watchdog() {
   "$@" &
   pid=$!
   (
-    sleeper=""
-    trap '[ -n "$sleeper" ] && kill -TERM "$sleeper" 2>/dev/null; exit 0' TERM
-    sleep "$secs" &
-    sleeper=$!
-    wait "$sleeper" 2>/dev/null
+    exec </dev/null >/dev/null 2>&1
+    sleep "$secs"
     : >"$dir/fired" 2>/dev/null
     kill -TERM "$pid" 2>/dev/null || true
     # Grace before the guaranteed kill: TERM lets well-behaved probes
     # flush and exit; KILL bounds even a wedged call to secs + 1.
-    sleep 1 &
-    sleeper=$!
-    wait "$sleeper" 2>/dev/null
+    sleep 1
     kill -KILL "$pid" 2>/dev/null || true
   ) &
   dog=$!
