@@ -473,11 +473,18 @@ perf_prefetch_begin() {
     # `|| _prc=$?` (not `; $?`) keeps the rc write reachable under an
     # inherited `set -e`: a failing probe must still drop its .rc file or
     # consumers would poll to the bound and then re-run it inline.
+    # `trap 'exit 0' TERM` first: perf_prefetch_join disarms workers that
+    # are still running at join time — a clean exit (never a signal
+    # death) so no "Terminated" job notice can leak into a stream or the
+    # caller's stderr. The in-flight probe command orphans but is itself
+    # capped by mdoctor_timeout, so it still dies inside its own budget.
     if [ "$_em" = "merge" ]; then
-      ( _prc=0; _perf_probe_dispatch "$name" >"$dir/$name.out" 2>&1 || _prc=$?
+      ( trap 'exit 0' TERM
+        _prc=0; _perf_probe_dispatch "$name" >"$dir/$name.out" 2>&1 || _prc=$?
         printf '%s\n' "$_prc" >"$dir/$name.rc" ) &
     else
-      ( _prc=0; _perf_probe_dispatch "$name" >"$dir/$name.out" 2>/dev/null || _prc=$?
+      ( trap 'exit 0' TERM
+        _prc=0; _perf_probe_dispatch "$name" >"$dir/$name.out" 2>/dev/null || _prc=$?
         printf '%s\n' "$_prc" >"$dir/$name.rc" ) &
     fi
     _PERF_PREFETCH_PIDS="${_PERF_PREFETCH_PIDS}${name}:$! "
@@ -523,8 +530,18 @@ perf_prefetch_wait() {
 
 # perf_prefetch_join — reap every prefetched job (idempotent; called
 # before the summary so an unconsumed probe can never outlive the run).
+# Workers still alive at join time have no remaining consumer, so they
+# are disarmed with TERM first: each worker subshell traps it to a clean
+# exit, and the orphaned probe command is still bounded by its own cap.
+# Without the disarm, a `wait` here would pay the full timeout budget
+# (e.g. a 60 s update-listing probe on macOS) on every check —
+# including single-module runs that never consume the probe.
 perf_prefetch_join() {
   local entry pid
+  for entry in ${_PERF_PREFETCH_PIDS:-}; do
+    pid="${entry#*:}"
+    kill -TERM "$pid" 2>/dev/null || true
+  done
   for entry in ${_PERF_PREFETCH_PIDS:-}; do
     pid="${entry#*:}"
     wait "$pid" 2>/dev/null || true

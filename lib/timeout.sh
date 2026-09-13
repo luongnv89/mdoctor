@@ -181,7 +181,20 @@ mdoctor_timeout() {
     # -k 1 gives the GNU path the watchdog's TERM→KILL parity: a probe
     # that ignores TERM is hard-killed 1 s past the cap instead of
     # letting `timeout` wait on it indefinitely.
-    *)        "$impl" -k 1 "$secs" "$@" ;;
+    #
+    # `timeout` runs as a background job + `wait`, never foreground:
+    # bash defers a trapped signal until a *foreground* external exits,
+    # but `wait` returns immediately — this is what lets
+    # perf_prefetch_join's TERM disarm actually disarm instead of
+    # blocking to the cap on every unconsumed probe. An orphaned
+    # `timeout` still self-bounds: it kills its own child at the cap.
+    *)
+      local _p=0 _rc=0
+      "$impl" -k 1 "$secs" "$@" &
+      _p=$!
+      wait "$_p" 2>/dev/null || _rc=$?
+      return "$_rc"
+      ;;
   esac
 }
 
