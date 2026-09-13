@@ -44,14 +44,16 @@ _MDOCTOR_TIMEOUT_LOADED=true
 # real exit code; the flag file is the only reliable "cap fired" signal —
 # checking whether the watchdog is still alive races with its own exit.
 #
-# The watchdog subshell detaches all three fds first: when the parent
-# disarms a fast probe, TERM can land while the subshell is mid-spawn —
-# the `sleep` then survives as an orphan, and if it still held the
-# caller's stdout fd a $(tcap ...) substitution would hang until the
-# deadline (reproduced under bash 3.2 + the CI bash:3.2 image). With
-# /dev/null fds the orphan is a free-floating sleep that dies quietly at
-# its own deadline — the TERM/KILL follow-ups below bound the probed
-# command itself regardless.
+# The watchdog subshell detaches EVERY inherited fd first: when the
+# parent disarms a fast probe, TERM can land while the subshell is
+# mid-spawn — the `sleep` then survives as an orphan, and any fd it still
+# holds keeps a caller's command substitution or pipe open until the
+# deadline (reproduced under bash 3.2 + the CI bash:3.2 image: bats holds
+# its TAP sync pipe on fd 3 and the per-test output on fd 4, so a single
+# 45 s orphan stalls the whole file). /dev/null for 0-2 plus closing 3-63
+# leaves the stray sleep holding nothing — it dies quietly at its own
+# deadline while the TERM/KILL follow-ups below still bound the probed
+# command itself.
 # Costs one mktemp -d per call (macOS path only).
 _mdoctor_timeout_watchdog() {
   local secs="$1"
@@ -69,6 +71,12 @@ _mdoctor_timeout_watchdog() {
   pid=$!
   (
     exec </dev/null >/dev/null 2>&1
+    _wfd=3
+    while [ "$_wfd" -le 63 ]; do
+      eval "exec ${_wfd}>&-" 2>/dev/null || true
+      _wfd=$((_wfd + 1))
+    done
+    unset _wfd
     sleep "$secs"
     : >"$dir/fired" 2>/dev/null
     kill -TERM "$pid" 2>/dev/null || true
