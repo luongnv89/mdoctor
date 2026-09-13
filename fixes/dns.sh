@@ -32,6 +32,9 @@ fix_dns() {
       run_cmd_args sudo systemd-resolve --flush-caches 2>/dev/null || step_rc=$?
     else
       echo "No systemd-resolved found. If using nscd: sudo systemctl restart nscd"
+      # Honest failure (issue #111): nothing ran, so nothing was flushed —
+      # the success line below must only follow a real flush command.
+      return 1
     fi
   fi
 

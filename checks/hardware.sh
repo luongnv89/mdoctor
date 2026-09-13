@@ -46,9 +46,10 @@ check_hardware() {
     # Total RAM via the single shared ladder (Task 8.2).
     local total_mem mem_hr
     total_mem=$(sysctl -n hw.memsize 2>/dev/null || true)
-    total_mem="${total_mem:-0}"
-    if (( total_mem > 0 )); then
-      mem_hr=$(human_readable_kb "$(( total_mem / 1024 ))")
+    # is_uint gate before arithmetic (issue #111): a non-numeric sysctl
+    # answer would coerce to 0 and silently skip the memory line.
+    if is_uint "$total_mem" && (( 10#$total_mem > 0 )); then
+      mem_hr=$(human_readable_kb "$(( 10#$total_mem / 1024 ))")
       status_info "Memory: ${mem_hr}"
     fi
 
@@ -56,7 +57,9 @@ check_hardware() {
     local thermal_level
     thermal_level=$(sysctl -n machdep.xcpm.cpu_thermal_level 2>/dev/null || echo "")
     if [ -n "$thermal_level" ]; then
-      if (( thermal_level > 0 )); then
+      if ! is_uint "$thermal_level"; then
+        status_info "CPU thermal level: could not determine"
+      elif (( 10#$thermal_level > 0 )); then
         status_warn "CPU thermal throttling level: ${thermal_level} (elevated)"
         add_action "CPU is thermally throttling (level ${thermal_level}). Check ventilation and running processes."
       else
@@ -69,7 +72,7 @@ check_hardware() {
     # CPU frequency (Intel only)
     local cpu_freq
     cpu_freq=$(sysctl -n hw.cpufrequency 2>/dev/null || echo "")
-    if [ -n "$cpu_freq" ] && (( cpu_freq > 0 )); then
+    if is_uint "$cpu_freq" && (( 10#$cpu_freq > 0 )); then
       local freq_ghz
       freq_ghz=$(awk -v f="$cpu_freq" 'BEGIN {printf "%.2f", f/1000000000}')
       status_info "CPU base frequency: ${freq_ghz} GHz"
@@ -103,30 +106,47 @@ check_hardware() {
         esac
       done <<< "$_PERF_MEMINFO"
     fi
-    total_mem_kb="${total_mem_kb:-0}"
-    if (( total_mem_kb > 0 )); then
+    if is_uint "$total_mem_kb" && (( 10#$total_mem_kb > 0 )); then
       status_info "Memory: $(human_readable_kb "$total_mem_kb")"
     fi
 
-    # Thermal zones
-    local tz_dir="/sys/class/thermal"
+    # Thermal zones — selected by each zone's `type` file, not glob
+    # order (issue #111): the first thermal_zone is frequently an ACPI
+    # or Wi-Fi sensor, so the old break-on-first-readable never reached
+    # the CPU package zone. MDOCTOR_THERMAL_ROOT keeps the probe
+    # testable off real sysfs.
+    local tz_dir="${MDOCTOR_THERMAL_ROOT:-/sys/class/thermal}"
     if [ -d "$tz_dir" ]; then
-      local tz
-      for tz in "$tz_dir"/thermal_zone*/temp; do
-        [ -r "$tz" ] || continue
+      local tz_try tz_first="" tz_pick=""
+      for tz_try in "$tz_dir"/thermal_zone*/temp; do
+        [ -r "$tz_try" ] || continue
+        [ -z "$tz_first" ] && tz_first="$tz_try"
+        local _tz_type
+        _tz_type=$(cat "${tz_try%/temp}/type" 2>/dev/null || true)
+        case "$_tz_type" in
+          x86_pkg_temp|k10temp|coretemp|*cpu*|*CPU*|*soc_thermal*|*SOC*)
+            tz_pick="$tz_try"
+            break
+            ;;
+        esac
+      done
+      local tz="${tz_pick:-$tz_first}"
+      if [ -n "$tz" ]; then
         local temp_milli tz_name temp_c
         temp_milli=$(cat "$tz" 2>/dev/null || true)
-        temp_milli="${temp_milli:-0}"
         tz_name=$(cat "$(dirname "$tz")/type" 2>/dev/null || echo "unknown")
-        temp_c=$((temp_milli / 1000))
-        if (( temp_c > 85 )); then
-          status_warn "Thermal zone ${tz_name}: ${temp_c}C (high)"
-          add_action "CPU temperature is high (${temp_c}C). Check cooling and running processes."
-        elif (( temp_c > 0 )); then
-          status_ok "Thermal zone ${tz_name}: ${temp_c}C"
+        if is_uint "$temp_milli"; then
+          temp_c=$((10#$temp_milli / 1000))
+          if (( temp_c > 85 )); then
+            status_warn "Thermal zone ${tz_name}: ${temp_c}C (high)"
+            add_action "CPU temperature is high (${temp_c}C). Check cooling and running processes."
+          elif (( temp_c > 0 )); then
+            status_ok "Thermal zone ${tz_name}: ${temp_c}C"
+          fi
+        else
+          status_info "Thermal zone ${tz_name}: could not determine"
         fi
-        break  # show first zone only
-      done
+      fi
     fi
   fi
 }

@@ -50,11 +50,16 @@ case "$_MDOCTOR_UNAME" in
     ;;
   Linux)
     MDOCTOR_PLATFORM="linux"
-    if [ -r /etc/os-release ]; then
+    _os_release="${MDOCTOR_OS_RELEASE:-/etc/os-release}"
+    if [ -r "$_os_release" ]; then
       # shellcheck source=/dev/null
-      . /etc/os-release
+      . "$_os_release"
       MDOCTOR_DISTRO="${ID:-unknown}"
-      MDOCTOR_DISTRO_VER="${VERSION_ID%%.*}"
+      # VERSION_ID is optional in the os-release spec — default it before
+      # the suffix strip or `set -u` aborts the whole CLI on distros that
+      # omit it (issue #111).
+      MDOCTOR_DISTRO_VER="${VERSION_ID:-}"
+      MDOCTOR_DISTRO_VER="${MDOCTOR_DISTRO_VER%%.*}"
       MDOCTOR_OS_NAME="${PRETTY_NAME:-Linux}"
     else
       MDOCTOR_DISTRO="unknown"
@@ -69,7 +74,7 @@ case "$_MDOCTOR_UNAME" in
     MDOCTOR_OS_NAME="Unknown OS ($_MDOCTOR_UNAME)"
     ;;
 esac
-unset _MDOCTOR_UNAME
+unset _MDOCTOR_UNAME _os_release
 
 export MDOCTOR_PLATFORM MDOCTOR_DISTRO MDOCTOR_DISTRO_VER MDOCTOR_OS_NAME
 

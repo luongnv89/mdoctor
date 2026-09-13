@@ -294,6 +294,10 @@ EOF
       source "$ROOT_DIR/lib/safety.sh"
       init_colors; MDOCTOR_DIR="$ROOT_DIR"; export MDOCTOR_DIR OPLOG_ENABLED=false
       source "$ROOT_DIR/lib/disk.sh"
+      # checks/system.sh reads the shared vm_stat/loadavg snapshots —
+      # perf_probes.sh must be in the module env or the issue #111 gate
+      # honestly reports "could not determine" instead of the totals.
+      source "$ROOT_DIR/lib/perf_probes.sh"
       source "$ROOT_DIR/checks/system.sh"
       check_system' >"$t/out.txt" 2>"$t/err.txt" || fail "check_system exited non-zero"
   # 34359738368 bytes = 32.00 GB: the pre-fix page-sum derivation reported

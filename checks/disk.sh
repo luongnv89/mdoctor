@@ -24,7 +24,10 @@ check_disk() {
     status_info "Disk usage: timed out (timeout ${MDOCTOR_CMD_TIMEOUT_S}s) — df did not answer."
     return 0
   fi
-  if [ "$used_rc" -ne 0 ] || [ -z "$used_pct" ]; then
+  # is_uint gate (issue #111): a non-numeric reading must report "could
+  # not determine" — never reach the (( )) thresholds below, where it
+  # would coerce to 0 and a full disk would report healthy.
+  if [ "$used_rc" -ne 0 ] || ! is_uint "$used_pct"; then
     status_warn "Disk usage: could not determine"
     return 0
   fi
@@ -50,10 +53,10 @@ check_disk() {
     done <<< "$_df_out"
   fi
 
-  if (( used_pct >= 90 )); then
+  if (( 10#$used_pct >= 90 )); then
     status_fail "Disk is almost full (>= 90%)."
     add_action "Free disk space on / (currently ${used_pct}% used): delete large files, clean caches, or move archives to external storage."
-  elif (( used_pct >= 80 )); then
+  elif (( 10#$used_pct >= 80 )); then
     status_warn "Disk is getting full (>= 80%)."
     add_action "Plan to free space on / soon (currently ${used_pct}% used)."
   else

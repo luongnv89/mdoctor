@@ -64,11 +64,15 @@ check_network() {
       add_action "DNS resolution timed out — check resolver and network configuration."
     elif [ -n "$dns_end" ]; then
       dns_ms=$(awk -v s="$dns_start" -v e="$dns_end" 'BEGIN {printf "%.0f", (e-s)*1000}')
-      if (( dns_ms > 500 )); then
-        status_warn "DNS resolution: ${dns_ms}ms (slow, >500ms)"
-        add_action "DNS resolution is slow (${dns_ms}ms). Consider switching to faster DNS (1.1.1.1 or 8.8.8.8)."
+      if is_uint "$dns_ms"; then
+        if (( 10#$dns_ms > 500 )); then
+          status_warn "DNS resolution: ${dns_ms}ms (slow, >500ms)"
+          add_action "DNS resolution is slow (${dns_ms}ms). Consider switching to faster DNS (1.1.1.1 or 8.8.8.8)."
+        else
+          status_ok "DNS resolution: ${dns_ms}ms"
+        fi
       else
-        status_ok "DNS resolution: ${dns_ms}ms"
+        status_info "DNS resolution: could not determine"
       fi
     fi
   fi
@@ -163,14 +167,20 @@ check_network() {
         fi
 
         if [ -n "$rssi" ] && [ -n "$noise" ]; then
-          local snr=$((rssi - noise))
-          if (( snr < 15 )); then
-            status_warn "Wi-Fi signal: RSSI ${rssi}dBm, Noise ${noise}dBm, SNR ${snr}dB (poor, <15dB)"
-            add_action "Wi-Fi signal quality is poor (SNR: ${snr}dB). Move closer to router or reduce interference."
-          elif (( snr < 25 )); then
-            status_ok "Wi-Fi signal: RSSI ${rssi}dBm, Noise ${noise}dBm, SNR ${snr}dB (fair)"
+          # Signed-integer gate (issue #111): non-numeric dBm fields used
+          # to coerce to 0 and read as a poor-signal warning.
+          if ! is_uint "${rssi#-}" || ! is_uint "${noise#-}"; then
+            status_info "Wi-Fi signal: could not determine"
           else
-            status_ok "Wi-Fi signal: RSSI ${rssi}dBm, Noise ${noise}dBm, SNR ${snr}dB (good)"
+            local snr=$((rssi - noise))
+            if (( snr < 15 )); then
+              status_warn "Wi-Fi signal: RSSI ${rssi}dBm, Noise ${noise}dBm, SNR ${snr}dB (poor, <15dB)"
+              add_action "Wi-Fi signal quality is poor (SNR: ${snr}dB). Move closer to router or reduce interference."
+            elif (( snr < 25 )); then
+              status_ok "Wi-Fi signal: RSSI ${rssi}dBm, Noise ${noise}dBm, SNR ${snr}dB (fair)"
+            else
+              status_ok "Wi-Fi signal: RSSI ${rssi}dBm, Noise ${noise}dBm, SNR ${snr}dB (good)"
+            fi
           fi
         fi
       fi
@@ -200,7 +210,10 @@ check_network() {
         [ -n "$ssid" ] && status_info "Wi-Fi network: ${ssid}"
         if [ -n "$signal" ]; then
           local sig_val="${signal%% *}"
-          if (( sig_val < -75 )); then
+          # Same signed-integer gate (issue #111).
+          if ! is_uint "${sig_val#-}"; then
+            status_info "Wi-Fi signal: could not determine"
+          elif (( sig_val < -75 )); then
             status_warn "Wi-Fi signal: ${signal} dBm (weak)"
           else
             status_ok "Wi-Fi signal: ${signal} dBm"
@@ -258,35 +271,66 @@ check_network() {
   # Network interface error/drop counters
   if [ -n "$active_service" ]; then
     if is_macos; then
-      # One netstat snapshot; row 2 carries the counters, fields 6 and 8
-      # are the same two columns the twin invocations used to extract.
-      local net_errors=0 net_drops=0
-      local netstat_out net_row=""
+      # One netstat snapshot (issue #111): the counters row is matched by
+      # interface name — never a fixed NR==2 position — and the Ierrs /
+      # Oerrs column indexes come from the header row, so a column-order
+      # change can never land Opkts in "Network drops" again.
+      local net_errors="" net_drops=""
+      local netstat_out _net_hdr=""
       tcap "$MDOCTOR_NET_TIMEOUT_S" "Interface-counters probe" netstat -I "$active_service" -b || true
       netstat_out="$_TCAP_OUT"
-      {
-        IFS= read -r _net_hdr || true   # header row
-        IFS= read -r net_row || true    # first data row (awk NR==2)
-      } <<< "$netstat_out"
-      if [ -n "$net_row" ]; then
-        read -r _n1 _n2 _n3 _n4 _n5 net_errors _n7 net_drops _nrest <<< "$net_row"
-        net_errors="${net_errors:-0}"
-        net_drops="${net_drops:-0}"
+      local _nname_i=0 _nierrs_i=0 _noerrs_i=0 _nh=0 _hf
+      IFS= read -r _net_hdr <<< "$netstat_out" || true
+      for _hf in $_net_hdr; do
+        _nh=$((_nh + 1))
+        case "$_hf" in
+          Name)  _nname_i="$_nh" ;;
+          Ierrs) _nierrs_i="$_nh" ;;
+          Oerrs) _noerrs_i="$_nh" ;;
+        esac
+      done
+      if [ "$_nname_i" -gt 0 ] && [ "$_nierrs_i" -gt 0 ] && [ "$_noerrs_i" -gt 0 ]; then
+        local _nrow _nf _nv
+        while IFS= read -r _nrow; do
+          _nf=0
+          local _rname="" _rierrs="" _roerrs=""
+          for _nv in $_nrow; do
+            _nf=$((_nf + 1))
+            [ "$_nf" -eq "$_nname_i" ]  && _rname="$_nv"
+            [ "$_nf" -eq "$_nierrs_i" ] && _rierrs="$_nv"
+            [ "$_nf" -eq "$_noerrs_i" ] && _roerrs="$_nv"
+          done
+          if [ "$_rname" = "$active_service" ]; then
+            net_errors="$_rierrs"
+            net_drops="$_roerrs"
+            break
+          fi
+        done <<< "$netstat_out"
       fi
-      if [ -n "$net_errors" ] && (( net_errors > 0 )); then
-        status_info "Network errors on ${active_service}: ${net_errors}"
-      fi
-      if [ -n "$net_drops" ] && (( net_drops > 0 )); then
-        status_info "Network drops on ${active_service}: ${net_drops}"
+      if is_uint "$net_errors" && is_uint "$net_drops"; then
+        if (( 10#$net_errors > 0 )); then
+          status_info "Network errors on ${active_service}: ${net_errors}"
+        fi
+        if (( 10#$net_drops > 0 )); then
+          status_info "Network drops on ${active_service}: ${net_drops}"
+        fi
+      elif [ -n "$netstat_out" ]; then
+        # netstat answered but no matching row or unreadable columns —
+        # report the failure honestly, never a coerced 0 (issue #111).
+        status_info "Network counters on ${active_service}: could not determine"
       fi
     else
       # Linux: /sys/class/net statistics
       local rx_errors tx_errors
       rx_errors=$(cat "/sys/class/net/${active_service}/statistics/rx_errors" 2>/dev/null || true)
       tx_errors=$(cat "/sys/class/net/${active_service}/statistics/tx_errors" 2>/dev/null || true)
-      local total_errors=$((${rx_errors:-0} + ${tx_errors:-0}))
-      if (( total_errors > 0 )); then
-        status_info "Network errors on ${active_service}: ${total_errors} (rx:${rx_errors} tx:${tx_errors})"
+      if is_uint "$rx_errors" && is_uint "$tx_errors"; then
+        local total_errors=$((10#$rx_errors + 10#$tx_errors))
+        if (( total_errors > 0 )); then
+          status_info "Network errors on ${active_service}: ${total_errors} (rx:${rx_errors} tx:${tx_errors})"
+        fi
+      else
+        status_info "Network errors on ${active_service}: could not determine"
       fi
     fi
   fi
