@@ -310,3 +310,17 @@ export MDOCTOR_PAGE_SIZE_FALLBACK=4096
 
 # Disk benchmark payload in MiB (bs=1M, count derived below).
 export MDOCTOR_BENCH_DISK_MB=256
+
+# External host the network benchmark resolves (DNS probe) and fetches
+# over HTTPS (issue #103). Env-overridable; default example.com — the
+# IANA documentation domain: stable, operated for exactly this kind of
+# probe, and reachable over HTTPS on every supported platform.
+export MDOCTOR_BENCH_HOST="${MDOCTOR_BENCH_HOST:-example.com}"
+
+# Directory the disk benchmark stages its test file in (issue #103).
+# Empty/unset = the per-user cache dir (platform_cache_dir()/mdoctor);
+# an override must be an existing writable directory that passes the
+# lib/safety.sh validators (absolute, non-traversal, non-protected).
+# The filesystem type is checked at run time either way — a RAM-backed
+# target (tmpfs/ramfs) is refused, never reported as disk I/O.
+export MDOCTOR_BENCH_DIR="${MDOCTOR_BENCH_DIR:-}"

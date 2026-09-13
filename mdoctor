@@ -1200,6 +1200,8 @@ cmd_help() {
   echo "  MDOCTOR_CLEANUP_SCOPE_FILE       Override cleanup scope config file path"
   echo "  MDOCTOR_UPDATE_REMOTE            Override update git remote (default: origin)"
   echo "  MDOCTOR_UPDATE_BRANCH            Override update git branch (default: main)"
+  echo "  MDOCTOR_BENCH_HOST               Host for the benchmark DNS + HTTPS probes (default: example.com)"
+  echo "  MDOCTOR_BENCH_DIR                Disk benchmark scratch dir (default: per-user cache dir)"
   echo
   echo "${DIM}Documentation: https://github.com/luongnv89/mdoctor${RESET}"
 }
