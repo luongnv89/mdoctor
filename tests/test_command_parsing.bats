@@ -114,6 +114,42 @@ teardown_file() {
   assert_contains "$TEST_TMP/check_unreg.txt" "Unknown check module"
 }
 
+@test "-m/--module with no value errors cleanly for check and clean" {
+  # Issue #105: under set -u a missing value crashed on
+  # "$2: unbound variable"; the guard must name the flag and list the
+  # platform-correct valid modules (registry-derived, like the
+  # unknown-module error).
+  local rc=0
+  ./mdoctor check -m >"$TEST_TMP/check_m_missing.txt" 2>&1 || rc=$?
+  [ "$rc" -ne 0 ] || fail "Expected non-zero exit for 'check -m'"
+  assert_contains "$TEST_TMP/check_m_missing.txt" "-m/--module requires a module name"
+  assert_contains "$TEST_TMP/check_m_missing.txt" "Available check modules"
+  assert_contains "$TEST_TMP/check_m_missing.txt" "system"
+  assert_not_contains "$TEST_TMP/check_m_missing.txt" "unbound variable"
+  assert_not_contains "$TEST_TMP/check_m_missing.txt" "line "
+
+  rc=0
+  ./mdoctor check --module >"$TEST_TMP/check_module_missing.txt" 2>&1 || rc=$?
+  [ "$rc" -ne 0 ] || fail "Expected non-zero exit for 'check --module'"
+  assert_contains "$TEST_TMP/check_module_missing.txt" "-m/--module requires a module name"
+  assert_not_contains "$TEST_TMP/check_module_missing.txt" "unbound variable"
+
+  rc=0
+  ./mdoctor clean -m >"$TEST_TMP/clean_m_missing.txt" 2>&1 || rc=$?
+  [ "$rc" -ne 0 ] || fail "Expected non-zero exit for 'clean -m'"
+  assert_contains "$TEST_TMP/clean_m_missing.txt" "-m/--module requires a module name"
+  assert_contains "$TEST_TMP/clean_m_missing.txt" "Available modules"
+  assert_contains "$TEST_TMP/clean_m_missing.txt" "trash"
+  assert_not_contains "$TEST_TMP/clean_m_missing.txt" "unbound variable"
+  assert_not_contains "$TEST_TMP/clean_m_missing.txt" "line "
+
+  rc=0
+  ./mdoctor clean --module >"$TEST_TMP/clean_module_missing.txt" 2>&1 || rc=$?
+  [ "$rc" -ne 0 ] || fail "Expected non-zero exit for 'clean --module'"
+  assert_contains "$TEST_TMP/clean_module_missing.txt" "-m/--module requires a module name"
+  assert_not_contains "$TEST_TMP/clean_module_missing.txt" "unbound variable"
+}
+
 @test "apt is accepted on Linux and listed in help and error text" {
   if [ "$(uname -s)" != "Linux" ]; then
     skip "Linux-only module"
