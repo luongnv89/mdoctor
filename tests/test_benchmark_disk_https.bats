@@ -156,9 +156,13 @@ _bench_run() {
   local _of
   _of="$(grep -o 'of=[^ ]*bench_disk' "$TMPHOME/t4.log" | head -1)"
   _of="${_of#of=}"
+  # platform_cache_dir: ~/Library/Caches on macOS, ~/.cache on Linux —
+  # resolve through the real helper so the assertion tracks the code.
+  local _cachebase
+  _cachebase="$(HOME="$TMPHOME" bash -c 'source lib/platform.sh; platform_cache_dir')"
   case "$_of" in
-    "$TMPHOME"/.cache/mdoctor/mdoctor-bench.*/*) ;;
-    *) fail "expected bench_disk under \$HOME/.cache/mdoctor/mdoctor-bench.*, got: $_of" ;;
+    "$_cachebase"/mdoctor/mdoctor-bench.*/*) ;;
+    *) fail "expected bench_disk under platform_cache_dir()/mdoctor/mdoctor-bench.*, got: $_of" ;;
   esac
   case "$_of" in
     /tmp/*|/var/tmp/*|"${TMPDIR:-/tmp}"/*) fail "benchmark file staged under a tmpfs-prone temp root: $_of" ;;
@@ -170,7 +174,7 @@ _bench_run() {
     fail "read pass ran without iflag=direct: $(cat "$TMPHOME/t4.log")"
   # scratch dir removed on the normal exit path
   local _left
-  _left="$(find "$TMPHOME/.cache/mdoctor" -name 'mdoctor-bench.*' 2>/dev/null)"
+  _left="$(find "$_cachebase/mdoctor" -name 'mdoctor-bench.*' 2>/dev/null)"
   [ -z "$_left" ] || fail "scratch dir not cleaned after run: $_left"
 }
 
