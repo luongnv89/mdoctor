@@ -24,9 +24,11 @@ clean_downloads_large_files() {
   # only ever lists matches. It is registered SAFE, runs no destructive
   # pre-flight, and is excluded from the engine's PROGRESS_TOTAL. The
   # find runs directly (not via dry-run-gated run_cmd_args) so the report
-  # is produced in every mode.
+  # is produced in every mode. -size uses the byte suffix: +524288000c is
+  # 500 MiB on GNU/BSD find AND BusyBox find (which rejects the M suffix,
+  # e.g. the bash:3.2 CI image) — issue #112 CI fix.
   if [ -d "${HOME}/Downloads" ]; then
-    find "${HOME}/Downloads" -type f -size +500M -mtime "+${days}" -print 2>/dev/null || rc=$?
+    find "${HOME}/Downloads" -type f -size +524288000c -mtime "+${days}" -print 2>/dev/null || rc=$?
   else
     log "No ~/Downloads directory found."
   fi
