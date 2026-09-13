@@ -310,6 +310,17 @@ cmd_check() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --module|-m)
+        # Issue #105: guard the arity before consuming $2 — under `set -u`
+        # a missing value crashed on "$2: unbound variable". The list
+        # reuses the same registry-derived render the unknown-module
+        # error below prints.
+        if [[ $# -lt 2 || -z "${2:-}" ]]; then
+          error "-m/--module requires a module name"
+          register_all_modules
+          echo "Available check modules:"
+          list_modules_by_category check
+          return 1
+        fi
         module="$2"
         shift 2
         ;;
@@ -465,7 +476,16 @@ cmd_clean() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --force|-f) force=true; shift ;;
-      --module|-m) module="$2"; shift 2 ;;
+      --module|-m)
+        # Issue #105: same arity guard as cmd_check — name the flag and
+        # reuse the unknown-module error's registry-derived list.
+        if [[ $# -lt 2 || -z "${2:-}" ]]; then
+          error "-m/--module requires a module name"
+          register_all_modules
+          registry_available_text cleanup "Available modules"
+          return 1
+        fi
+        module="$2"; shift 2 ;;
       --interactive|-i) interactive=true; shift ;;
       *) error "Unknown option: $1"; echo "Run 'mdoctor clean --help' for usage."; return 1 ;;
     esac
