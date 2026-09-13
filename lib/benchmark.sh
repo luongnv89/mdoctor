@@ -6,12 +6,25 @@
 #
 
 # Benchmark sizes (Task 8.7); guarded so isolated sourcing works.
-_MDOCTOR_BENCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
-source "${_MDOCTOR_BENCH_DIR}/constants.sh"
+# Zero-fork (issue #102): the lib dir is the literal directory part of
+# ${BASH_SOURCE[0]} — parameter expansion replaces the old
+# $(cd "$(dirname …)" && pwd) probe, and the declare -f guards skip the
+# sources entirely once the base libs are loaded.
+_mdoctor_lib_dir="${BASH_SOURCE[0]%/*}"
+if [ "$_mdoctor_lib_dir" = "${BASH_SOURCE[0]}" ]; then
+  _mdoctor_lib_dir="."
+fi
+if ! declare -f is_truthy >/dev/null 2>&1; then
+  # shellcheck source=/dev/null
+  source "${_mdoctor_lib_dir}/constants.sh"
+fi
 # mdoctor_timeout (issue #101): the DNS + HTTP probes are capped even
 # without GNU timeout.
-source "${_MDOCTOR_BENCH_DIR}/timeout.sh"
-unset _MDOCTOR_BENCH_DIR
+if ! declare -f mdoctor_timeout >/dev/null 2>&1; then
+  # shellcheck source=/dev/null
+  source "${_mdoctor_lib_dir}/timeout.sh"
+fi
+unset _mdoctor_lib_dir
 
 # _bench_time → high-resolution timestamp in seconds (uses Perl's Time::HiRes)
 _bench_time() {

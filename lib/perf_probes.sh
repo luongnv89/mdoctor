@@ -57,14 +57,25 @@
 # TRUTHY_BOOTSTRAP (Task 9.5): is_truthy lives in constants.sh, the
 # zero-dependency base lib. Source it before the guard so standalone
 # sourcing of this file still sees the predicate.
-_MDOCTOR_TRUTHY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
-# shellcheck source=/dev/null
-source "${_MDOCTOR_TRUTHY_DIR}/constants.sh"
+# Zero-fork (issue #102): the lib dir is the literal directory part of
+# ${BASH_SOURCE[0]} — parameter expansion replaces the old
+# $(cd "$(dirname …)" && pwd) probe, and the declare -f guards skip the
+# sources entirely once the base libs are loaded.
+_mdoctor_lib_dir="${BASH_SOURCE[0]%/*}"
+if [ "$_mdoctor_lib_dir" = "${BASH_SOURCE[0]}" ]; then
+  _mdoctor_lib_dir="."
+fi
+if ! declare -f is_truthy >/dev/null 2>&1; then
+  # shellcheck source=/dev/null
+  source "${_mdoctor_lib_dir}/constants.sh"
+fi
 # mdoctor_timeout (issue #101): every dispatched probe below is capped,
 # with the watchdog backend covering hosts without GNU timeout.
-# shellcheck source=/dev/null
-source "${_MDOCTOR_TRUTHY_DIR}/timeout.sh"
-unset _MDOCTOR_TRUTHY_DIR
+if ! declare -f mdoctor_timeout >/dev/null 2>&1; then
+  # shellcheck source=/dev/null
+  source "${_mdoctor_lib_dir}/timeout.sh"
+fi
+unset _mdoctor_lib_dir
 
 # Guard against double-sourcing.
 if is_truthy "${_MDOCTOR_PERF_PROBES_LOADED:-}"; then

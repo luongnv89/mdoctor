@@ -11,15 +11,26 @@
 
 # TRUTHY_BOOTSTRAP (Task 9.5): is_truthy lives in constants.sh, the
 # zero-dependency base lib. Source it before the guard so standalone
-# sourcing of this file still sees the predicate.
-_MDOCTOR_TRUTHY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
-# shellcheck source=/dev/null
-source "${_MDOCTOR_TRUTHY_DIR}/constants.sh"
+# sourcing of this file still sees the predicate. Zero-fork (issue #102):
+# the lib dir is the literal directory part of ${BASH_SOURCE[0]} — the
+# source line just reached this file through it — so parameter expansion
+# replaces the old $(cd "$(dirname …)" && pwd) probe, and the declare -f
+# guards skip even that once the base libs are loaded.
+_mdoctor_lib_dir="${BASH_SOURCE[0]%/*}"
+if [ "$_mdoctor_lib_dir" = "${BASH_SOURCE[0]}" ]; then
+  _mdoctor_lib_dir="."
+fi
+if ! declare -f is_truthy >/dev/null 2>&1; then
+  # shellcheck source=/dev/null
+  source "${_mdoctor_lib_dir}/constants.sh"
+fi
 # mdoctor_timeout (issue #101): every check module gets the portable cap
 # through this file, the one lib all entry points source first.
-# shellcheck source=/dev/null
-source "${_MDOCTOR_TRUTHY_DIR}/timeout.sh"
-unset _MDOCTOR_TRUTHY_DIR
+if ! declare -f mdoctor_timeout >/dev/null 2>&1; then
+  # shellcheck source=/dev/null
+  source "${_mdoctor_lib_dir}/timeout.sh"
+fi
+unset _mdoctor_lib_dir
 
 # Guard against double-sourcing (the is_dry_run loader in logging.sh and
 # lib/safety.sh pull this file in when is_dry_run is otherwise unavailable).
@@ -29,25 +40,11 @@ fi
 _MDOCTOR_COMMON_LOADED=true
 
 init_colors() {
-  # Each tput is failure-proofed: without TERM (CI, minimal envs) tput
-  # errors, and under `set -e` that would kill the caller silently.
-  # (Supersedes the Feb TERM-guard: per-command `|| true` also covers
-  # failing tput binaries, not just an unset TERM.)
-  if command -v tput >/dev/null 2>&1; then
-    RED="$(tput setaf 1 2>/dev/null || true)"
-    GREEN="$(tput setaf 2 2>/dev/null || true)"
-    YELLOW="$(tput setaf 3 2>/dev/null || true)"
-    BLUE="$(tput setaf 4 2>/dev/null || true)"
-    BOLD="$(tput bold 2>/dev/null || true)"
-    RESET="$(tput sgr0 2>/dev/null || true)"
-  else
-    RED=""
-    GREEN=""
-    YELLOW=""
-    BLUE=""
-    BOLD=""
-    RESET=""
-  fi
+  # All terminal sequences come from the single memoized `tput -S` batch
+  # in mdoctor_term_init (issue #102): at most one tput exec per process,
+  # zero when stdout is not a tty (the previous per-capability calls ran
+  # tput six times even on pipes, where colors are never wanted).
+  mdoctor_term_init
 
   CHECK="✅"
   WARN="⚠️"
@@ -126,85 +123,305 @@ to_int() {
 }
 
 ########################################
-# SPINNER / PROGRESS BAR
+# SPINNER / PROGRESS BAR (issue #102 rework)
 ########################################
+# One long-lived spinner per run, driven over a two-fifo control channel
+# instead of a kill+respawn per status line: the parent writes one-letter
+# commands to `ctl` ('r<TAB>label<TAB>cur<TAB>tot' resume/redraw,
+# 's<TAB>line' print a status line between frames, 'p' pause, 'q' quit)
+# and the worker acknowledges 'p'/'q' with 'a' on `ack`, so a parent's own
+# direct print never races a queued line. Status lines are handed to the
+# worker whole — the fifo serializes them between frames, so a per-line
+# status costs ONE builtin write: no ack round-trip, no collision window.
+# The old design forked a background subshell plus two `tput el` execs
+# around EVERY printed line (~1.3 ms each) and forked `sleep` every 0.1 s
+# inside the loop; the tick is now a builtin `read -t 1` (integer — Bash
+# 3.2 rejects fractional -t) and the per-line signal is one printf.
+#
+# Background-job discipline mirrors lib/timeout.sh's watchdog (the PR #210
+# review family):
+#  * never signal-killed on the normal path — 'q' makes the worker
+#    `exit 0`, so no "Terminated" job notice can leak into a stream; TERM
+#    is trapped to `exit 0` for the same reason on the forced path;
+#  * the worker detaches every inherited fd it does not draw on (stdin ←
+#    /dev/null, stderr → /dev/null, fds 3-63 closed) so an orphan can
+#    never hold a caller pipe open — exactly the bats-TAP-hang fix;
+#  * it polls `kill -0` on the spawning shell each tick and self-exits on
+#    parent death, so a leaked worker releases stdout within ~1 s;
+#  * 'p' is acknowledged before the parent prints — the synchronous point
+#    replacing the old kill+wait barrier;
+#  * the parent holds both fifos open RDWR, so a dead worker can never
+#    turn a control write into a SIGPIPE against this shell;
+#  * stop consumes the pid list once (SPINNER_PID cleared before the
+#    signal/wait phase) so an exit-hook second pass can never TERM a
+#    recycled pid.
 
 SPINNER_PID=""
 _PROGRESS_LABEL=""
+_SPINNER_DIR=""
 
-progress_start() {
-  # Skip spinner if not a terminal or no label
-  [ -t 1 ] || return 0
-  [ -n "${1:-}" ] || return 0
+# MDOCTOR_SPINNER_FORCE=1 — test seam: drive the real protocol with stdout
+# on a pipe (the suite is hermetic, no real ttys). Unset by default.
+_spinner_wanted() {
+  if is_truthy "${MDOCTOR_SPINNER_FORCE:-}"; then
+    return 0
+  fi
+  [ -t 1 ]
+}
 
-  local label="$1"
-  _PROGRESS_LABEL="$label"
-  local current="${STEP_CURRENT:-0}"
-  local total="${STEP_TOTAL:-1}"
+# _spinner_on — a live worker is attached (pid set + still running) and
+# THIS context may signal it. The BASHPID clause protects $() captures on
+# Bash 4+: inside a command substitution BASHPID differs from $$, so a
+# status_* helper invoked in a capture falls back to a plain echo (its
+# output is captured by the caller, matching the old semantics) instead
+# of signalling a worker it does not own. BASHPID does not exist on Bash
+# 3.2, so the [ -t 1 ] clause covers it there: a capture's stdout is a
+# pipe, never a tty. (MDOCTOR_SPINNER_FORCE tests bypass the tty check —
+# their bash is modern, so BASHPID alone disambiguates.)
+_spinner_on() {
+  [ -n "$SPINNER_PID" ] || return 1
+  [ "${BASHPID:-$$}" = "$$" ] || return 1
+  is_truthy "${MDOCTOR_SPINNER_FORCE:-}" || [ -t 1 ] || return 1
+  kill -0 "$SPINNER_PID" 2>/dev/null || return 1
+  return 0
+}
 
-  (
-    # Trap SIGTERM so the subshell exits cleanly without "Terminated" noise
-    trap 'exit 0' TERM
+# _spinner_signal LETTER — fire-and-forget command to the worker. Returns
+# 1 (and drops the handle) when the worker is already gone so callers can
+# fall through to a fresh spawn.
+_spinner_signal() {
+  kill -0 "$SPINNER_PID" 2>/dev/null || return 1
+  printf '%s\n' "$1" >&9 2>/dev/null || return 1
+  return 0
+}
 
-    local frames="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-    local bar_width=20
-    local i=0
+# _mdoctor_spinner DIR PARENT_PID — the worker loop (backgrounded by
+# _spinner_spawn). Pure builtins: no fork anywhere in the loop.
+_mdoctor_spinner() {
+  local dir="$1" parent="$2"
 
-    # Compute filled portion
-    local filled=0
-    if [ "$total" -gt 0 ]; then
-      filled=$(( current * bar_width / total ))
+  # Detach every fd we do not draw on (watchdog discipline): stdin and
+  # stderr to /dev/null, then sweep 3-63 so nothing inherited stays open
+  # behind our back — a caller pipe held past exit is the bats-TAP hang.
+  exec </dev/null 2>/dev/null
+  local _fd=3
+  while [ "$_fd" -le 63 ]; do
+    eval "exec ${_fd}>&-" 2>/dev/null || true
+    _fd=$((_fd + 1))
+  done
+  # Parent holds both fifos open RDWR, so neither open can block.
+  exec 7<"$dir/ctl" 2>/dev/null || exit 0
+  exec 8>"$dir/ack" 2>/dev/null || exit 0
+
+  # Trapped TERM => clean exit 0: a signal death would print a
+  # "Terminated" job notice at the caller's next command boundary.
+  trap 'exit 0' TERM
+
+  # Ready-ack: the spawn blocks on this byte, so by the time
+  # progress_start returns the trap is installed and both fifos are
+  # attached — a TERM sent immediately after start can never slip into
+  # the pre-trap window and kill the worker as a signal death.
+  printf 'a\n' >&8 2>/dev/null
+
+  local frames="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+  local el="${_MDOCTOR_EL:-}"
+  local i=0 paused=1 rc=0
+  local msg="" label="" bar="" pct=0
+  local _code _l _c _t _filled _empty _j
+
+  while :; do
+    if [ "$paused" -eq 1 ]; then
+      # Blocked on ctl until a command lands or the last writer closes
+      # (parent death => EOF => exit — never an orphan).
+      if ! IFS= read -r -u 7 msg; then
+        exit 0
+      fi
+    else
+      msg=""
+      IFS= read -r -t 1 -u 7 msg || rc=$?
+      if [ "$rc" -ne 0 ]; then
+        msg=""
+      fi
+      rc=0
     fi
-    local empty=$(( bar_width - filled ))
-    local pct=$(( current * 100 / (total > 0 ? total : 1) ))
 
-    # Build bar string once (it doesn't change within a step)
-    local bar=""
-    local j=0
-    while [ "$j" -lt "$filled" ]; do
-      bar="${bar}█"
-      j=$((j + 1))
-    done
-    j=0
-    while [ "$j" -lt "$empty" ]; do
-      bar="${bar}░"
-      j=$((j + 1))
-    done
+    case "$msg" in
+      p)
+        paused=1
+        printf 'a\n' >&8 2>/dev/null
+        ;;
+      q)
+        printf 'a\n' >&8 2>/dev/null
+        exit 0
+        ;;
+      r*)
+        IFS=$'\t' read -r _code _l _c _t <<< "$msg"
+        label="$_l"
+        case "$_c" in ''|*[!0-9]*) _c=0 ;; esac
+        case "$_t" in ''|*[!0-9]*) _t=1 ;; esac
+        [ "$_t" -gt 0 ] || _t=1
+        _filled=$(( _c * 20 / _t ))
+        _empty=$(( 20 - _filled ))
+        pct=$(( _c * 100 / _t ))
+        bar=""
+        _j=0
+        while [ "$_j" -lt "$_filled" ]; do bar="${bar}█"; _j=$((_j + 1)); done
+        _j=0
+        while [ "$_j" -lt "$_empty" ]; do bar="${bar}░"; _j=$((_j + 1)); done
+        paused=0
+        ;;
+      s*)
+        # A status line: \r + erase-to-eol clears the frame, then the line
+        # and its newline commit it. Queued on the same fifo as commands,
+        # so it can never interleave with a frame byte-wise.
+        printf '\r%s%s\n' "$el" "${msg#??}" 2>/dev/null
+        ;;
+      "")
+        ;;
+    esac
 
-    # Erase-to-EOL sequence
-    local el=""
-    if command -v tput >/dev/null 2>&1; then
-      el="$(tput el 2>/dev/null || true)"
-    fi
-
-    while true; do
-      local frame_char="${frames:$((i % 10)):1}"
-      printf "\r  %s [%s] %3d%% %s%s" "$frame_char" "$bar" "$pct" "$label" "$el" 2>/dev/null
+    # Draw a frame whenever running (fresh 'r' or a 1 s tick).
+    if [ "$paused" -eq 0 ]; then
+      printf '\r  %s [%s] %3d%% %s%s' \
+        "${frames:$((i % 10)):1}" "$bar" "$pct" "$label" "$el" 2>/dev/null
       i=$((i + 1))
-      sleep 0.1
-    done
-  ) &
+    fi
 
+    # Orphan check: $$ is the top-level shell's pid even inside this
+    # subshell — the argument is the spawning pid captured at fork time.
+    kill -0 "$parent" 2>/dev/null || exit 0
+  done
+}
+
+# _spinner_spawn — create the fifo pair + worker once per run.
+_spinner_spawn() {
+  local dir
+  dir="$(mktemp -d "${TMPDIR:-/tmp}/mdoctor-spin.XXXXXX" 2>/dev/null)" || return 1
+  if ! mkfifo "$dir/ctl" "$dir/ack" 2>/dev/null; then
+    rm -rf "$dir"
+    return 1
+  fi
+  # RDWR opens never block, and they make every later writer-side open in
+  # the worker succeed immediately — no open-ordering deadlock, and no
+  # SIGPIPE if the worker dies (the parent itself is still a reader).
+  if ! exec 9<>"$dir/ctl" 2>/dev/null; then
+    rm -rf "$dir"
+    return 1
+  fi
+  if ! exec 8<>"$dir/ack" 2>/dev/null; then
+    exec 9>&-
+    rm -rf "$dir"
+    return 1
+  fi
+  _SPINNER_DIR="$dir"
+  _mdoctor_spinner "$dir" "$$" &
   SPINNER_PID=$!
   # Spinner cleanup runs as an ordered exit hook — never a bare
   # `trap ... EXIT` here, which would clobber other handlers (Task 4.7).
   register_exit_hook progress_stop
+  # Wait for the worker's ready-ack (bounded — a failed spawn still lets
+  # the run continue, the next signal just finds a dead pid).
+  _spinner_await_ack || true
+  # First frame: announce label + step counters (worker starts paused).
+  _spinner_resume
+  return 0
+}
+
+# _spinner_resume — signal 'r': label + step counters, worker unpauses and
+# draws. Fire-and-forget (no ack needed — ordering with parent output is
+# only required on pause/quit, which do ack).
+_spinner_resume() {
+  printf 'r\t%s\t%s\t%s\n' \
+    "$_PROGRESS_LABEL" "${STEP_CURRENT:-0}" "${STEP_TOTAL:-1}" >&9 2>/dev/null
+}
+
+# _spinner_await_ack — block (≤1 s, bash 3.2 integer read -t) until the
+# worker confirms it has gone silent / exited. Returns 0 on the ack.
+_spinner_await_ack() {
+  local _ack=""
+  IFS= read -r -t 1 _ack <&8 2>/dev/null
+}
+
+progress_start() {
+  [ -n "${1:-}" ] || return 0
+  _spinner_wanted || return 0
+
+  # The control protocol is one line per command, tab-delimited — strip
+  # both characters out of a label before it can corrupt a message.
+  _PROGRESS_LABEL="${1//$'\t'/ }"
+  _PROGRESS_LABEL="${_PROGRESS_LABEL//$'\n'/ }"
+  if [ -n "$SPINNER_PID" ]; then
+    if kill -0 "$SPINNER_PID" 2>/dev/null; then
+      _spinner_resume
+      return 0
+    fi
+    # Worker gone — reap the zombie, drop the stale handle, respawn below.
+    wait "$SPINNER_PID" 2>/dev/null || true
+    SPINNER_PID=""
+    _spinner_teardown_channel
+  fi
+  _spinner_spawn || true
+  return 0
+}
+
+# progress_pause — signal the worker silent + ack-wait, then clear the
+# spinner line so a status line never shares the row with a frame. This is
+# the per-line barrier that replaced the old kill+respawn.
+progress_pause() {
+  _spinner_on || return 0
+  if ! _spinner_signal p; then
+    SPINNER_PID=""
+    _spinner_teardown_channel
+    return 0
+  fi
+  if ! _spinner_await_ack; then
+    # No ack — wedged or dead. Drop the handle so per-line work never
+    # stalls again; the next progress_start respawns a fresh worker.
+    if ! kill -0 "$SPINNER_PID" 2>/dev/null; then
+      SPINNER_PID=""
+      _spinner_teardown_channel
+    fi
+    return 0
+  fi
+  printf '\r%s' "$_MDOCTOR_EL" 2>/dev/null
+  return 0
+}
+
+# _spinner_teardown_channel — close the parent-side fds and drop the fifo
+# dir. Safe when the worker is already gone; never signals anything.
+_spinner_teardown_channel() {
+  exec 9>&- 2>/dev/null || true
+  exec 8>&- 2>/dev/null || true
+  if [ -n "$_SPINNER_DIR" ]; then
+    rm -rf "$_SPINNER_DIR" 2>/dev/null || true
+    _SPINNER_DIR=""
+  fi
+  return 0
 }
 
 progress_stop() {
-  if [ -n "$SPINNER_PID" ]; then
-    kill "$SPINNER_PID" 2>/dev/null
-    wait "$SPINNER_PID" 2>/dev/null || true
-    SPINNER_PID=""
-    # Clear the spinner line if stdout is a terminal
-    if [ -t 1 ]; then
-      local el=""
-      if command -v tput >/dev/null 2>&1; then
-        el="$(tput el 2>/dev/null || true)"
-      fi
-      printf "\r%s" "$el" 2>/dev/null
+  local pid="$SPINNER_PID"
+  # Consume the handle first: a second pass (ordered exit hook after an
+  # explicit stop) must not TERM a pid the kernel may have recycled.
+  SPINNER_PID=""
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    # 'q' asks the worker to exit 0 — it acks, then exits, so the ack
+    # read is the bounded wait and `wait` below is a pure zombie reap.
+    printf 'q\n' >&9 2>/dev/null || true
+    _spinner_await_ack || true
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -TERM "$pid" 2>/dev/null || true
     fi
   fi
+  if [ -n "$pid" ]; then
+    wait "$pid" 2>/dev/null || true
+  fi
+  _spinner_teardown_channel
+  # Clear the spinner line if stdout is a terminal
+  if [ -t 1 ] || is_truthy "${MDOCTOR_SPINNER_FORCE:-}"; then
+    printf '\r%s' "$_MDOCTOR_EL" 2>/dev/null
+  fi
+  return 0
 }
 
 ########################################
@@ -212,7 +429,7 @@ progress_stop() {
 ########################################
 
 step() {
-  progress_stop
+  progress_pause
 
   STEP_CURRENT=$((STEP_CURRENT + 1))
   local title="$1"
@@ -237,42 +454,57 @@ section_title() {
   md_append ""
 }
 
+# _status_emit LINE — the per-status-line output path (issue #102). When
+# the long-lived spinner owns stdout, the fully rendered line is handed to
+# the worker over the control fifo as one builtin write ('s<TAB>line') —
+# the worker prints it serially between frames, so no ack round-trip is
+# needed and a frame can never collide mid-line. Without a live worker
+# (non-tty, capture, dead channel) the line is echoed directly, exactly
+# where the old synchronous path put it.
+_status_emit() {
+  local line="${1//$'\t'/ }"
+  line="${line//$'\n'/ }"
+  if _spinner_on; then
+    printf 's\t%s\n' "$line" >&9 2>/dev/null && return 0
+    # Write failed (wedged channel) — drop the handle so later lines take
+    # the cheap direct path, then fall through to the plain echo.
+    SPINNER_PID=""
+    _spinner_teardown_channel
+  fi
+  printf '%s\n' "$line"
+}
+
+# The four status_* helpers: emit the line, append to the report, record
+# for --json. No more progress_stop/progress_start sandwich around every
+# line — the spinner worker stays up for the whole run.
 status_ok() {
   local msg="$1"
-  progress_stop
-  echo "  ${CHECK} ${GREEN}${msg}${RESET}"
+  _status_emit "  ${CHECK} ${GREEN}${msg}${RESET}"
   md_append "- ✅ ${msg}"
   _json_record_status "ok" "$msg"
-  progress_start "${_PROGRESS_LABEL:-}"
 }
 
 status_warn() {
   local msg="$1"
   WARN_COUNT=$((WARN_COUNT + 1))
-  progress_stop
-  echo "  ${WARN} ${YELLOW}${msg}${RESET}"
+  _status_emit "  ${WARN} ${YELLOW}${msg}${RESET}"
   md_append "- ⚠️ ${msg}"
   _json_record_status "warn" "$msg"
-  progress_start "${_PROGRESS_LABEL:-}"
 }
 
 status_fail() {
   local msg="$1"
   FAIL_COUNT=$((FAIL_COUNT + 1))
-  progress_stop
-  echo "  ${CROSS} ${RED}${msg}${RESET}"
+  _status_emit "  ${CROSS} ${RED}${msg}${RESET}"
   md_append "- ❌ ${msg}"
   _json_record_status "fail" "$msg"
-  progress_start "${_PROGRESS_LABEL:-}"
 }
 
 status_info() {
   local msg="$1"
-  progress_stop
-  echo "  ${INFO} ${msg}"
+  _status_emit "  ${INFO} ${msg}"
   md_append "- ℹ️ ${msg}"
   _json_record_status "info" "$msg"
-  progress_start "${_PROGRESS_LABEL:-}"
 }
 
 # _json_record_status STATUS MESSAGE — appends a check result to the JSON

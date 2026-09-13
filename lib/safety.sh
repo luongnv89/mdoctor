@@ -5,13 +5,21 @@
 #
 
 # safe_remove needs is_dry_run (Task 1.6). Engines load lib/common.sh
-# first, but standalone sourcing may not — pull it in.
+# first, but standalone sourcing may not — pull it in. Zero-fork
+# (issue #102): the lib dir is the literal directory part of
+# ${BASH_SOURCE[0]} — no $(dirname)/cd probe.
 if ! declare -f is_dry_run >/dev/null 2>&1; then
-  _MDOCTOR_SAFETY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
+  _mdoctor_lib_dir="${BASH_SOURCE[0]%/*}"
+  if [ "$_mdoctor_lib_dir" = "${BASH_SOURCE[0]}" ]; then
+    _mdoctor_lib_dir="."
+  fi
   # shellcheck source=/dev/null
-  source "${_MDOCTOR_SAFETY_DIR}/common.sh"
-  source "${_MDOCTOR_SAFETY_DIR}/constants.sh"
-  unset _MDOCTOR_SAFETY_DIR
+  source "${_mdoctor_lib_dir}/common.sh"
+  if ! declare -f is_truthy >/dev/null 2>&1; then
+    # shellcheck source=/dev/null
+    source "${_mdoctor_lib_dir}/constants.sh"
+  fi
+  unset _mdoctor_lib_dir
 fi
 
 # -----------------------------------------------------------------------------

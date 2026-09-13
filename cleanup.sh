@@ -100,7 +100,9 @@ export STEP_CURRENT=0
 export STEP_TOTAL=$PROGRESS_TOTAL
 
 step() {
-	progress_stop
+	# Pause the shared spinner (acknowledged) rather than kill+respawn it —
+	# one worker lives for the whole run (issue #102).
+	progress_pause
 
 	PROGRESS_CURRENT=$((PROGRESS_CURRENT + 1))
 	export STEP_CURRENT=$PROGRESS_CURRENT
