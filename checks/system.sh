@@ -110,7 +110,10 @@ check_system() {
       if is_uint "$total_bytes" && is_uint "$active_pages" \
         && is_uint "$inactive_pages" && is_uint "$wired_pages"; then
         total_kb=$(( 10#$total_bytes / 1024 ))
-        used_kb=$(( (10#$active_pages + 10#$inactive_pages + 10#$wired_pages) * page_size / 1024 ))
+        # page_size is is_uint-clean above but still needs 10# — a
+        # zero-padded reading like "04096" would otherwise be parsed
+        # as octal by (( )) and silently halve the used-memory figure.
+        used_kb=$(( (10#$active_pages + 10#$inactive_pages + 10#$wired_pages) * 10#$page_size / 1024 ))
         free_kb=$(( total_kb - used_kb ))
         status_info "Memory total: $(kb_to_human "$total_kb"), used: $(kb_to_human "$used_kb"), free: $(kb_to_human "$free_kb")"
       else

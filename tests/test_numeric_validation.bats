@@ -453,3 +453,76 @@ EOF
   assert_not_contains "$t/err.txt" "unbound variable"
   assert_contains "$t/out.txt" "Commands"
 }
+
+# ---------------------------------------------------------------------
+# Post-validation normalization (issue #111, review follow-up): a value
+# that PASSES is_uint can still be misread by (( )) — "04096" parses as
+# octal and "-08" is an octal error token. Validated readings are forced
+# through 10# (signed fields via the sign-strip/10#/reapply idiom).
+# ---------------------------------------------------------------------
+
+@test "system check normalizes a zero-padded hw.pagesize before arithmetic" {
+  local t="$TEST_TMP/sys-pagesize"
+  mkdir -p "$t/bin" "$t/home"
+  cat >"$t/bin/sysctl" <<'STUB'
+#!/usr/bin/env bash
+case "$2" in
+  hw.pagesize) echo "04096" ;;
+  hw.memsize) echo "34359738368" ;;
+  vm.loadavg) echo "{ 1.25 0.97 0.83 }" ;;
+  *) exit 1 ;;
+esac
+STUB
+  cat >"$t/bin/vm_stat" <<'STUB'
+#!/usr/bin/env bash
+cat <<'STAT'
+Mach Virtual Memory Statistics: (page size of 16384 bytes)
+Pages free:                               20000.
+Pages active:                            100000.
+Pages inactive:                           50000.
+Pages speculative:                         5000.
+Pages wired down:                         80000.
+STAT
+STUB
+  chmod +x "$t/bin/sysctl" "$t/bin/vm_stat"
+  PATH="$t/bin:$PATH" HOME="$t/home" bash -c '
+    '"$(_check_env)"'
+    export MDOCTOR_PLATFORM=macos
+    source "$ROOT_DIR/checks/system.sh"
+    check_system' >"$t/out.txt" 2>"$t/err.txt" \
+    || { cat "$t/err.txt" >&2; fail "check_system exited non-zero"; }
+  # 230000 pages x 4096 = 898.44 MB used; octal-parsed (2126) it would
+  # read ~466 MB — the assert pins the base-10 path.
+  assert_contains "$t/out.txt" "used: 898.44 MB"
+  assert_not_contains "$t/err.txt" "value too great"
+}
+
+@test "iw signal normalizes a zero-padded negative dBm before the threshold" {
+  local t="$TEST_TMP/net-sig"
+  mkdir -p "$t/home"
+  _make_net_stubs "$t/bin"
+  cat >"$t/bin/ip" <<'STUB'
+#!/usr/bin/env bash
+case "$1" in
+  route) printf 'default via 192.168.1.1 dev wlan0 proto dhcp metric 600\n' ;;
+  link)  printf '1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536\n2: wlan0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500\n' ;;
+  *)     printf '2: wlan0    inet 192.168.1.42/24 brd 192.168.1.255 scope global wlan0\n' ;;
+esac
+STUB
+  cat >"$t/bin/iw" <<'STUB'
+#!/usr/bin/env bash
+printf 'Connected to aa:bb:cc:dd:ee:ff (on wlan0)\n\tSSID: TestNet\n\tsignal: -0100 dBm\n\ttx bitrate: 144.4 MBit/s\n'
+STUB
+  chmod +x "$t/bin/ip" "$t/bin/iw"
+  PATH="$t/bin:$PATH" HOME="$t/home" bash -c '
+    '"$(_check_env)"'
+    export MDOCTOR_PLATFORM=linux
+    source "$ROOT_DIR/checks/network.sh"
+    check_network' >"$t/out.txt" 2>"$t/err.txt" \
+    || { cat "$t/err.txt" >&2; fail "check_network exited non-zero"; }
+  # -0100 is decimal -100 dBm (weak); octal-parsed it is -64 and the
+  # raw "-09"-style forms are error tokens — the verdict and a clean
+  # stderr together pin the normalized path.
+  assert_contains "$t/out.txt" "Wi-Fi signal: -0100 dBm (weak)"
+  assert_not_contains "$t/err.txt" "value too great"
+}

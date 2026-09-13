@@ -172,7 +172,14 @@ check_network() {
           if ! is_uint "${rssi#-}" || ! is_uint "${noise#-}"; then
             status_info "Wi-Fi signal: could not determine"
           else
-            local snr=$((rssi - noise))
+            # Base-10 normalize before arithmetic (issue #111): 10#
+            # cannot take a sign, and a bare "-08" would hit bash's
+            # octal parser (error token) while "-042" would silently
+            # misparse — strip the sign, 10# the magnitude, reapply.
+            local _rs=$((10#${rssi#-})) _ns=$((10#${noise#-}))
+            case "$rssi"  in -*) _rs=$((-_rs)) ;; esac
+            case "$noise" in -*) _ns=$((-_ns)) ;; esac
+            local snr=$((_rs - _ns))
             if (( snr < 15 )); then
               status_warn "Wi-Fi signal: RSSI ${rssi}dBm, Noise ${noise}dBm, SNR ${snr}dB (poor, <15dB)"
               add_action "Wi-Fi signal quality is poor (SNR: ${snr}dB). Move closer to router or reduce interference."
@@ -213,10 +220,17 @@ check_network() {
           # Same signed-integer gate (issue #111).
           if ! is_uint "${sig_val#-}"; then
             status_info "Wi-Fi signal: could not determine"
-          elif (( sig_val < -75 )); then
-            status_warn "Wi-Fi signal: ${signal} dBm (weak)"
           else
-            status_ok "Wi-Fi signal: ${signal} dBm"
+            # Same base-10 normalization: the sign is stripped for the
+            # gate, so it must be reapplied after 10# (a raw "-08" is an
+            # octal error token, "-042" a silent misparse).
+            local _sv=$((10#${sig_val#-}))
+            case "$sig_val" in -*) _sv=$((-_sv)) ;; esac
+            if (( _sv < -75 )); then
+              status_warn "Wi-Fi signal: ${signal} dBm (weak)"
+            else
+              status_ok "Wi-Fi signal: ${signal} dBm"
+            fi
           fi
         fi
       fi
