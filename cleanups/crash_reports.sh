@@ -39,8 +39,26 @@ clean_crash_reports() {
     fi
 
     attempted=$((attempted + 1))
-    log "Scanning ${dir} for .crash, .diag, .ips files older than ${days} days..."
-    safe_find_delete "$dir" -type f "(" -name "*.crash" -o -name "*.diag" -o -name "*.ips" ")" -mtime "+${days}" || rc=$?
+
+    # Platform-correct filters (issue #109): the name patterns come from
+    # platform_crash_name_patterns — .crash/.diag/.ips on macOS; on Linux
+    # apport dirs match *.crash and the systemd-coredump dir matches
+    # core.* files, so the module is no longer a no-op there.
+    local -a name_args=()
+    local _pattern _first=1
+    while IFS= read -r _pattern; do
+      [ -n "$_pattern" ] || continue
+      if [ "$_first" -eq 1 ]; then
+        name_args+=("(" -name "$_pattern")
+        _first=0
+      else
+        name_args+=(-o -name "$_pattern")
+      fi
+    done < <(platform_crash_name_patterns "$dir")
+    name_args+=(")")
+
+    log "Scanning ${dir} for crash files older than ${days} days..."
+    safe_find_delete "$dir" -type f "${name_args[@]}" -mtime "+${days}" || rc=$?
   done < <(platform_crash_dirs)
 
   if (( attempted == 0 && blocked > 0 )); then

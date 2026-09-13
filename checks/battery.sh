@@ -18,6 +18,119 @@ fi
 check_battery() {
   step "Battery Health"
 
+  # Platform split (issue #109): the report copy used to claim "desktop
+  # Mac" on every platform — on a Linux laptop with a battery that was
+  # both wrong and contradicted the hardware. macOS keeps the
+  # system_profiler/ioreg/pmset path; Linux reads sysfs power_supply.
+  if is_macos; then
+    _check_battery_macos
+  elif is_linux; then
+    _check_battery_linux
+  else
+    status_info "Battery checks are not supported on this platform. Skipping battery checks."
+  fi
+}
+
+# _sysfs_read FILE OUTVAR — first line of FILE into OUTVAR, empty when
+# absent/unreadable. Zero-fork (printf -v, same as _normalize_path); safe
+# under set -e because the read is guarded and ||-caught.
+_sysfs_read() {
+  local _sr_v=""
+  if [ -r "$1" ]; then
+    IFS= read -r _sr_v < "$1" || _sr_v=""
+  fi
+  printf -v "$2" '%s' "$_sr_v"
+}
+
+# _check_battery_linux — sysfs probe (issue #109). Reads
+# ${MDOCTOR_POWER_SUPPLY_ROOT:-/sys/class/power_supply}/*/ directories
+# whose `type` file says "Battery" (BAT* and friends; Mains/USB entries
+# are never batteries). The root is env-overridable so tests can stage a
+# fixture tree instead of touching real /sys.
+_check_battery_linux() {
+  local ps_root="${MDOCTOR_POWER_SUPPLY_ROOT:-/sys/class/power_supply}"
+  local bat found=0
+  for bat in "$ps_root"/*; do
+    [ -d "$bat" ] || continue
+    local btype="" bpresent=""
+    _sysfs_read "$bat/type"    btype
+    _sysfs_read "$bat/present" bpresent
+    [ "$btype" = "Battery" ] || continue
+    [ "$bpresent" = "0" ] && continue   # battery bay present but empty
+    found=$((found + 1))
+    _report_linux_battery "$bat"
+  done
+  if [ "$found" -eq 0 ]; then
+    status_info "No battery detected. Skipping battery checks."
+  fi
+  return 0
+}
+
+# _report_linux_battery DIR — emit status lines for one sysfs battery dir.
+_report_linux_battery() {
+  local bat="$1"
+  local bname="${bat##*/}"
+  local field model="" manuf="" capacity="" bstatus="" cycles=""
+  for field in model_name manufacturer capacity status cycle_count; do
+    local val=""
+    _sysfs_read "$bat/$field" val
+    case "$field" in
+      model_name)   model="$val" ;;
+      manufacturer) manuf="$val" ;;
+      capacity)     capacity="$val" ;;
+      status)       bstatus="$val" ;;
+      cycle_count)  cycles="$val" ;;
+    esac
+  done
+
+  if [ -n "${manuf}${model}" ]; then
+    status_info "Battery ${bname}: ${manuf:+${manuf} }${model}"
+  fi
+
+  # Charge level + state — the Linux analogue of the `pmset -g batt` line.
+  if [ -n "$capacity" ] && [ -n "$bstatus" ]; then
+    status_info "Battery: ${capacity}% (${bstatus})"
+  elif [ -n "$capacity" ]; then
+    status_info "Battery: ${capacity}%"
+  fi
+
+  # Health = full/design capacity — charge_* on some packs, energy_* on
+  # others. Numeric-guarded before the arithmetic (sysfs can echo "0").
+  local full="" design=""
+  if [ -r "$bat/charge_full" ] && [ -r "$bat/charge_full_design" ]; then
+    _sysfs_read "$bat/charge_full"        full
+    _sysfs_read "$bat/charge_full_design" design
+  elif [ -r "$bat/energy_full" ] && [ -r "$bat/energy_full_design" ]; then
+    _sysfs_read "$bat/energy_full"        full
+    _sysfs_read "$bat/energy_full_design" design
+  fi
+  case "$full"   in ""|*[!0-9]*) full="" ;; esac
+  case "$design" in ""|*[!0-9]*) design="" ;; esac
+  if [ -n "$full" ] && [ -n "$design" ] && [ "$design" -gt 0 ]; then
+    local health_pct=$(( full * 100 / design ))
+    if [ "$health_pct" -lt 80 ]; then
+      status_warn "Battery health: ${health_pct}% (below 80%)"
+      add_action "Battery health is at ${health_pct}%. Consider replacement for optimal performance."
+    else
+      status_ok "Battery health: ${health_pct}%"
+    fi
+  fi
+
+  # Cycle count — same >1000 warning threshold as the macOS report.
+  case "$cycles" in ""|*[!0-9]*) cycles="" ;; esac
+  if [ -n "$cycles" ]; then
+    if [ "$cycles" -gt 1000 ]; then
+      status_warn "Battery cycle count: ${cycles} (high — above 1000)"
+      add_action "Battery has ${cycles} cycles. Performance may degrade. Consider replacement."
+    else
+      status_ok "Battery cycle count: ${cycles}"
+    fi
+  fi
+}
+
+# _check_battery_macos — original macOS probe path (unchanged).
+_check_battery_macos() {
+
   # One capture per report, parsed in-shell (issue #100): this check used
   # to re-invoke the same three slow binaries once per field —
   # system_profiler SPPowerDataType 3× (a sibling comment documents

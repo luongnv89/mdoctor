@@ -41,7 +41,13 @@ check_containers() {
   fi
   if [ "$_di_rc" -ne 0 ]; then
     status_warn "Docker is installed but the daemon is not running."
-    add_action "Start Docker Desktop or run: open -a Docker"
+    # Platform-correct remediation (issue #109): `open -a` is a macOS-only
+    # launcher — on Linux the daemon starts via systemd.
+    if is_macos; then
+      add_action "Start Docker Desktop or run: open -a Docker"
+    else
+      add_action "Start the Docker daemon: sudo systemctl start docker"
+    fi
     return 0
   fi
 

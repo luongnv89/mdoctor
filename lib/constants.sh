@@ -333,3 +333,8 @@ export MDOCTOR_BENCH_HOST="${MDOCTOR_BENCH_HOST:-example.com}"
 # The filesystem type is checked at run time either way — a RAM-backed
 # target (tmpfs/ramfs) is refused, never reported as disk I/O.
 export MDOCTOR_BENCH_DIR="${MDOCTOR_BENCH_DIR:-}"
+
+# sysfs power-supply root the Linux battery probe reads (issue #109).
+# Overridable so tests can stage a fixture tree instead of touching real
+# /sys/class/power_supply.
+export MDOCTOR_POWER_SUPPLY_ROOT="${MDOCTOR_POWER_SUPPLY_ROOT:-/sys/class/power_supply}"

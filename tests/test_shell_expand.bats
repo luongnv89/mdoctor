@@ -108,7 +108,11 @@ setup() {
   export MDOCTOR_EXP_FOO="$TEST_BASE"
   mkdir -p "$TEST_BASE/real"
   : >"$TEST_BASE/real/ok.sh"
-  printf '%s\n' 'source $MDOCTOR_EXP_FOO/real/ok.sh' 'source $(touch "$TEST_BASE/e2e-sentinel")' >"$HOME/.zshrc"
+  # The $(...) line stays literal and unresolvable → skipped (issue #109);
+  # the missing .sh line is the resolvable-but-absent target that must warn.
+  printf '%s\n' 'source $MDOCTOR_EXP_FOO/real/ok.sh' \
+    'source $MDOCTOR_EXP_FOO/real/nope.sh' \
+    'source $(touch "$TEST_BASE/e2e-sentinel")' >"$HOME/.zshrc"
   : >"$TEST_BASE/status.log"
   check_one_shell_file ".zshrc" "sh"
   [ ! -e "$TEST_BASE/e2e-sentinel" ] || fail "rc payload executed during audit"

@@ -158,6 +158,11 @@ check_one_shell_file() {
       local expanded_raw
       expanded_raw="$(expand_source_target_vars "$target")"
 
+      # Only absolute and ~/ targets can be checked statically (issue
+      # #109): a bare relative target (`source foo.sh`, `source ./x`,
+      # `source sub/x`) is resolved by the shell against the runtime CWD
+      # — and for a bare name against $PATH first — never against $HOME,
+      # so resolving it here produced false warnings on real dotfiles.
       case "$expanded_raw" in
         /*)
           expanded="$expanded_raw"
@@ -166,7 +171,7 @@ check_one_shell_file() {
           expanded="${HOME}${expanded_raw#\~}"
           ;;
         *)
-          expanded="${HOME}/${expanded_raw}"
+          continue
           ;;
       esac
 

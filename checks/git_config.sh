@@ -18,10 +18,18 @@ fi
 check_git_config() {
   step "Git & SSH Configuration"
 
-  # Git availability
+  # Git availability — platform-correct install advice (issue #109):
+  # the Xcode CLT installer exists only on macOS; Linux installs via the
+  # package manager (same pattern as checks/devtools.sh).
   if ! command -v git >/dev/null 2>&1; then
     status_warn "Git is not installed."
-    add_action "Install Git: xcode-select --install"
+    if is_macos; then
+      add_action "Install Git: xcode-select --install"
+    elif is_debian; then
+      add_action "Install Git: sudo apt install git"
+    else
+      add_action "Install Git with your distribution's package manager (e.g. dnf install git, pacman -S git)."
+    fi
     return 0
   fi
 

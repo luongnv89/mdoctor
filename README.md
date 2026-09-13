@@ -96,7 +96,7 @@ mdoctor check --json | python3 -m json.tool
 
 | Category | macOS | Linux (Debian) |
 |----------|-------|----------------|
-| **Hardware** | `battery`, `hardware`, `bluetooth`, `usb` | `hardware` |
+| **Hardware** | `battery`, `hardware`, `bluetooth`, `usb` | `battery`, `hardware` |
 | **System** | `system`, `disk`, `updates`, `security`, `startup`, `network`, `performance`, `storage` | `system`, `disk`, `updates`, `security`, `startup`, `network`, `performance`, `storage` |
 | **Software** | `homebrew`, `node`, `python`, `devtools`, `shell`, `apps`, `git_config`, `containers` | `node`, `python`, `devtools`, `shell`, `apps`, `git_config`, `containers`, `apt` |
 

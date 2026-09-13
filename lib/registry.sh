@@ -41,9 +41,10 @@ register_all_modules() {
     return 0
   fi
   # Check modules — Hardware
-  if is_macos; then
-    register_module check battery    Hardware SAFE check_battery     "Battery health, cycle count, capacity"
-  fi
+  # battery is registered on every platform since issue #109 — the module
+  # self-gates: macOS uses system_profiler/ioreg/pmset, Linux reads
+  # /sys/class/power_supply.
+  register_module check battery    Hardware SAFE check_battery     "Battery health, cycle count, capacity"
   register_module check hardware   Hardware SAFE check_hardware    "CPU, RAM, model, thermals"
   if is_macos; then
     register_module check bluetooth  Hardware SAFE check_bluetooth   "Bluetooth power state & devices"
