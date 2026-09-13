@@ -472,7 +472,12 @@ EOF
       "$MDOCTOR_DISTRO" "$MDOCTOR_DISTRO_VER" "$MDOCTOR_OS_NAME"
   ' >"$t/out.txt" 2>"$t/err.txt" \
     || { cat "$t/err.txt" >&2; fail "platform.sh aborted without VERSION_ID"; }
-  assert_not_contains "$t/err.txt" "unbound variable"
+  # A real unbound $VERSION_ID aborts `bash -u` (rc!=0 above) and writes
+  # "VERSION_ID: unbound variable" to stderr. Match the variable name,
+  # not the generic phrase — instrumented runners (kcov --bash-parser
+  # injects a BASH_ENV helper) can emit unrelated "unbound variable"
+  # noise under `bash -u`, which must not fail this test.
+  assert_not_contains "$t/err.txt" "VERSION_ID"
   # VER=<>: grep-safe spelling of an empty, defaulted VERSION_ID.
   assert_contains "$t/out.txt" "DISTRO=noverdistro VER=<>"
 }
