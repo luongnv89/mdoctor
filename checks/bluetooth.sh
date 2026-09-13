@@ -18,8 +18,13 @@ fi
 check_bluetooth() {
   step "Bluetooth Status"
 
-  local bt_info
-  bt_info=$(system_profiler SPBluetoothDataType 2>/dev/null || true)
+  local bt_info _bt_rc=0
+  # timeout-capped (issue #101): system_profiler is ~30s slow.
+  bt_info=$(mdoctor_timeout "$MDOCTOR_SYSINFO_TIMEOUT_S" system_profiler SPBluetoothDataType 2>/dev/null) || _bt_rc=$?
+  if [ "$_bt_rc" -eq 124 ]; then
+    status_info "Bluetooth probe timed out (timeout ${MDOCTOR_SYSINFO_TIMEOUT_S}s) — skipping."
+    return 0
+  fi
 
   if [ -z "$bt_info" ]; then
     status_info "Bluetooth information not available."
@@ -46,7 +51,8 @@ check_bluetooth() {
   done <<< "$bt_info"
   if [ -z "$bt_state" ]; then
     # Try alternative: defaults read
-    bt_state=$(defaults read /Library/Preferences/com.apple.Bluetooth ControllerPowerState 2>/dev/null || echo "")
+    tcap "$MDOCTOR_CMD_TIMEOUT_S" "Bluetooth power-state probe" defaults read /Library/Preferences/com.apple.Bluetooth ControllerPowerState || true
+    bt_state="$_TCAP_OUT"
     if [ "$bt_state" = "1" ]; then
       bt_state="On"
     elif [ "$bt_state" = "0" ]; then

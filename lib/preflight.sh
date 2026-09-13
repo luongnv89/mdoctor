@@ -17,6 +17,10 @@
 _MDOCTOR_TRUTHY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
 # shellcheck source=/dev/null
 source "${_MDOCTOR_TRUTHY_DIR}/constants.sh"
+# mdoctor_timeout (issue #101): every find pass below stays capped even
+# without GNU timeout — the watchdog backend still reports 124.
+# shellcheck source=/dev/null
+source "${_MDOCTOR_TRUTHY_DIR}/timeout.sh"
 unset _MDOCTOR_TRUTHY_DIR
 
 if is_truthy "${_MDOCTOR_PREFLIGHT_LOADED:-}"; then
@@ -246,17 +250,13 @@ preflight_path_kb() {
 # preflight_find_kb: streams NUL-separated entry paths, then a final
 # _MDOCTOR_FIND_RC_<n> sentinel carrying the find exit code (the rc of a
 # process substitution is lost, and command substitution would drop the
-# NUL separators, Task 3.6). Wraps the find in a timeout where available
-# (GNU-only; macOS runs it directly). A path literally named
-# "_MDOCTOR_FIND_RC_<n>" would be mistaken for the sentinel.
+# NUL separators, Task 3.6). The find is always capped via mdoctor_timeout
+# (issue #101 — was GNU-timeout-only, with macOS running it uncapped).
+# A path literally named "_MDOCTOR_FIND_RC_<n>" would be mistaken for the
+# sentinel.
 _preflight_find_entries() {
-  if command -v timeout >/dev/null 2>&1; then
-    timeout "$MDOCTOR_FIND_TIMEOUT_S" find "$@" -print0 2>/dev/null
-    printf '%s\0' "_MDOCTOR_FIND_RC_$?"
-  else
-    find "$@" -print0 2>/dev/null
-    printf '%s\0' "_MDOCTOR_FIND_RC_$?"
-  fi
+  mdoctor_timeout "$MDOCTOR_FIND_TIMEOUT_S" find "$@" -print0 2>/dev/null
+  printf '%s\0' "_MDOCTOR_FIND_RC_$?"
 }
 
 # _preflight_find_printf_ok — memoized capability probe for
@@ -272,11 +272,9 @@ _preflight_find_printf_ok() {
     is_truthy "$_MDOCTOR_FIND_PRINTF_OK"
     return $?
   fi
-  if command -v timeout >/dev/null 2>&1; then
-    timeout "$MDOCTOR_FIND_TIMEOUT_S" find . -maxdepth 0 -printf '%k\n' >/dev/null 2>&1 || rc=$?
-  else
-    find . -maxdepth 0 -printf '%k\n' >/dev/null 2>&1 || rc=$?
-  fi
+  # Capped via mdoctor_timeout (issue #101) — same watchdog fallback as
+  # the scan it gates.
+  mdoctor_timeout "$MDOCTOR_FIND_TIMEOUT_S" find . -maxdepth 0 -printf '%k\n' >/dev/null 2>&1 || rc=$?
   if [ "$rc" -eq 0 ]; then
     _MDOCTOR_FIND_PRINTF_OK=true
   else
@@ -331,11 +329,7 @@ _preflight_stat_blocks_flag() {
 _preflight_find_size_kb() {
   local stream="" rc=0
   if _preflight_find_printf_ok; then
-    if command -v timeout >/dev/null 2>&1; then
-      stream=$(timeout "$MDOCTOR_FIND_TIMEOUT_S" find "$@" -printf '%k\n' 2>/dev/null) || rc=$?
-    else
-      stream=$(find "$@" -printf '%k\n' 2>/dev/null) || rc=$?
-    fi
+    stream=$(mdoctor_timeout "$MDOCTOR_FIND_TIMEOUT_S" find "$@" -printf '%k\n' 2>/dev/null) || rc=$?
     if [ "$rc" -eq 124 ]; then
       return "$MDOCTOR_SIZE_ERR_TIMEOUT"
     fi
@@ -362,11 +356,7 @@ _preflight_find_size_kb() {
     # than print a wrong total (MDOCTOR_SIZE_ERR_FAILED).
     return "$MDOCTOR_SIZE_ERR_FAILED"
   fi
-  if command -v timeout >/dev/null 2>&1; then
-    stream=$(timeout "$MDOCTOR_FIND_TIMEOUT_S" find "$@" -exec stat "-${_MDOCTOR_STAT_BLOCKS_FLAG}" %b {} + 2>/dev/null) || rc=$?
-  else
-    stream=$(find "$@" -exec stat "-${_MDOCTOR_STAT_BLOCKS_FLAG}" %b {} + 2>/dev/null) || rc=$?
-  fi
+  stream=$(mdoctor_timeout "$MDOCTOR_FIND_TIMEOUT_S" find "$@" -exec stat "-${_MDOCTOR_STAT_BLOCKS_FLAG}" %b {} + 2>/dev/null) || rc=$?
   if [ "$rc" -eq 124 ]; then
     return "$MDOCTOR_SIZE_ERR_TIMEOUT"
   fi

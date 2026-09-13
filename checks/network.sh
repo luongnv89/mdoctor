@@ -49,15 +49,20 @@ check_network() {
     fi
   fi
 
-  # DNS resolution speed
+  # DNS resolution speed — the lookup is timeout-capped (issue #101): a
+  # wedged resolver used to hang this module until the DNS probe gave up.
   local dns_start dns_end dns_ms
   dns_start=$(perl -MTime::HiRes=time -e 'printf "%.3f\n", time()' 2>/dev/null || echo "")
-  if ! command -v nslookup >/dev/null 2>&1; then
-    status_info "Skipping DNS timing probe: nslookup not found."
+  if ! command -v nslookup >/dev/null 2>&1; then   # presence probe — the lookup below is timeout-capped
+    status_info "Skipping DNS timing probe: nslookup not found."   # timeout-capped when present
   elif [ -n "$dns_start" ]; then
-    nslookup google.com >/dev/null 2>&1
+    local _ns_rc=0
+    mdoctor_timeout "$MDOCTOR_DNS_TIMEOUT_S" nslookup google.com >/dev/null 2>&1 || _ns_rc=$?
     dns_end=$(perl -MTime::HiRes=time -e 'printf "%.3f\n", time()' 2>/dev/null || echo "")
-    if [ -n "$dns_end" ]; then
+    if [ "$_ns_rc" -eq 124 ]; then
+      status_warn "DNS resolution timed out (timeout ${MDOCTOR_DNS_TIMEOUT_S}s)"
+      add_action "DNS resolution timed out — check resolver and network configuration."
+    elif [ -n "$dns_end" ]; then
       dns_ms=$(awk -v s="$dns_start" -v e="$dns_end" 'BEGIN {printf "%.0f", (e-s)*1000}')
       if (( dns_ms > 500 )); then
         status_warn "DNS resolution: ${dns_ms}ms (slow, >500ms)"
@@ -73,7 +78,8 @@ check_network() {
   local active_service=""
   if is_macos; then
     local _rt_out _rtl _rk _rv
-    _rt_out=$(route get default 2>/dev/null || true)
+    tcap "$MDOCTOR_NET_TIMEOUT_S" "Default-route probe" route get default || true
+    _rt_out="$_TCAP_OUT"
     while IFS= read -r _rtl; do
       read -r _rk _rv _ <<< "$_rtl"
       if [ "$_rk" = "interface:" ]; then
@@ -82,7 +88,8 @@ check_network() {
     done <<< "$_rt_out"
   else
     local _ipr _i1 _i2 _i3 _i4
-    _ipr=$(ip route show default 2>/dev/null || true)
+    tcap "$MDOCTOR_NET_TIMEOUT_S" "Default-route probe" ip route show default || true
+    _ipr="$_TCAP_OUT"
     # First row only — the retired awk '{print $5; exit}'.
     read -r _i1 _i2 _i3 _i4 active_service _ <<< "$_ipr"
   fi
@@ -92,10 +99,12 @@ check_network() {
     # Local IP address on the active interface
     local local_ip=""
     if is_macos; then
-      local_ip=$(ipconfig getifaddr "$active_service" 2>/dev/null || echo "")
+      tcap "$MDOCTOR_NET_TIMEOUT_S" "Interface-address probe" ipconfig getifaddr "$active_service" || true
+      local_ip="$_TCAP_OUT"
     else
       local _ia_out _ial _iaf1 _iaf2
-      _ia_out=$(ip -4 addr show "$active_service" 2>/dev/null || true)
+      tcap "$MDOCTOR_NET_TIMEOUT_S" "Interface-address probe" ip -4 addr show "$active_service" || true
+      _ia_out="$_TCAP_OUT"
       while IFS= read -r _ial; do
         case "$_ial" in
           *"inet "*)
@@ -123,7 +132,8 @@ check_network() {
     local airport_path="/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport"
     if [ -x "$airport_path" ]; then
       local wifi_info
-      wifi_info=$("$airport_path" -I 2>/dev/null || true)
+      tcap "$MDOCTOR_NET_TIMEOUT_S" "AirPort info probe" "$airport_path" -I || true
+      wifi_info="$_TCAP_OUT"
       if [ -n "$wifi_info" ] && [[ "$wifi_info" != *"AirPort: Off"* ]]; then
         # Keyed field extraction in-shell — one pass, no echo|awk (issue
         # #98). agrCtl* fields split on whitespace like awk's default FS;
@@ -169,7 +179,8 @@ check_network() {
     # Linux: Wi-Fi via iw or iwconfig
     if command -v iw >/dev/null 2>&1 && [ -n "$active_service" ]; then
       local wifi_info
-      wifi_info=$(iw dev "$active_service" link 2>/dev/null || true)
+      tcap "$MDOCTOR_NET_TIMEOUT_S" "iw link probe" iw dev "$active_service" link || true
+      wifi_info="$_TCAP_OUT"
       if [ -n "$wifi_info" ] && [[ "$wifi_info" != *"Not connected"* ]]; then
         # Same in-shell keyed extraction as the airport arm (issue #98).
         local ssid="" signal="" wline _wv
@@ -199,17 +210,21 @@ check_network() {
     fi
   fi
 
-  # VPN connection status
+  # VPN connection status (scutil talks to configd — capped, issue #101)
   if is_macos; then
-    local vpn_active
-    vpn_active=$(scutil --nc list 2>/dev/null | grep -c "Connected" || true)
-    if (( vpn_active > 0 )); then
-      status_info "VPN: ${vpn_active} connection(s) active"
+    local vpn_active _vpn_rc=0
+    tcap "$MDOCTOR_NET_TIMEOUT_S" "VPN status probe" scutil --nc list || _vpn_rc=$?
+    if [ "$_vpn_rc" -ne 124 ]; then
+      vpn_active=$(printf '%s\n' "$_TCAP_OUT" | grep -c "Connected" || true)
+      if (( vpn_active > 0 )); then
+        status_info "VPN: ${vpn_active} connection(s) active"
+      fi
     fi
   else
     # Linux: check for tun/tap interfaces or active VPN connections
     local vpn_ifaces
-    vpn_ifaces=$(ip link show 2>/dev/null | grep -c 'tun\|tap\|wg' || true)
+    tcap "$MDOCTOR_NET_TIMEOUT_S" "VPN interface probe" ip link show || true
+    vpn_ifaces=$(printf '%s\n' "$_TCAP_OUT" | grep -c 'tun\|tap\|wg' || true)
     if (( vpn_ifaces > 0 )); then
       status_info "VPN: ${vpn_ifaces} tunnel interface(s) active"
     fi
@@ -222,7 +237,8 @@ check_network() {
   if is_macos; then
     local http_proxy="" https_proxy=""
     local proxy_info pline pkey _pcolon pval
-    proxy_info=$(scutil --proxy 2>/dev/null || true)
+    tcap "$MDOCTOR_NET_TIMEOUT_S" "Proxy configuration probe" scutil --proxy || true
+    proxy_info="$_TCAP_OUT"
     while IFS= read -r pline; do
       read -r pkey _pcolon pval <<< "$pline"
       case "$pkey" in
@@ -246,7 +262,8 @@ check_network() {
       # are the same two columns the twin invocations used to extract.
       local net_errors=0 net_drops=0
       local netstat_out net_row=""
-      netstat_out=$(netstat -I "$active_service" -b 2>/dev/null || true)
+      tcap "$MDOCTOR_NET_TIMEOUT_S" "Interface-counters probe" netstat -I "$active_service" -b || true
+      netstat_out="$_TCAP_OUT"
       {
         IFS= read -r _net_hdr || true   # header row
         IFS= read -r net_row || true    # first data row (awk NR==2)

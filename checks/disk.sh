@@ -20,6 +20,10 @@ check_disk() {
   local used_pct
   local used_rc=0
   used_pct=$(disk_used_pct_root) || used_rc=$?
+  if [ "$used_rc" -eq "$MDOCTOR_SIZE_ERR_TIMEOUT" ]; then
+    status_info "Disk usage: timed out (timeout ${MDOCTOR_CMD_TIMEOUT_S}s) — df did not answer."
+    return 0
+  fi
   if [ "$used_rc" -ne 0 ] || [ -z "$used_pct" ]; then
     status_warn "Disk usage: could not determine"
     return 0
@@ -30,14 +34,21 @@ check_disk() {
   # (issue #98); the df table is re-indented in-shell, first two rows
   # only like the retired awk 'NR==1 || NR==2'.
   _disk_root_init
-  local _dfn=0 _dfl
-  df -h "$_MDOCTOR_DISK_ROOT" | while IFS= read -r _dfl; do
-    _dfn=$((_dfn + 1))
-    if (( _dfn > 2 )); then
-      break
-    fi
-    printf '  %s\n' "$_dfl"
-  done
+  local _dfn=0 _dfl _df_out="" _df_rc=0
+  # df is timeout-capped (issue #101): a stale NFS mount can wedge df;
+  # capture first so the pipeline's 124 isn't swallowed by the loop.
+  _df_out=$(mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" df -h "$_MDOCTOR_DISK_ROOT" 2>/dev/null) || _df_rc=$?
+  if [ "$_df_rc" -eq 124 ]; then
+    status_info "df table: timed out (timeout ${MDOCTOR_CMD_TIMEOUT_S}s) — mount table unavailable."
+  else
+    while IFS= read -r _dfl; do
+      _dfn=$((_dfn + 1))
+      if (( _dfn > 2 )); then
+        break
+      fi
+      printf '  %s\n' "$_dfl"
+    done <<< "$_df_out"
+  fi
 
   if (( used_pct >= 90 )); then
     status_fail "Disk is almost full (>= 90%)."

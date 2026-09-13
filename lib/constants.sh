@@ -76,12 +76,65 @@ export MDOCTOR_REPORT_MIN_KB=102400
 export MDOCTOR_REPORT_WARN_KB="$MDOCTOR_KB_PER_GB"
 
 ########################################
-# TIMEOUTS (seconds; GNU timeout only)
+# TIMEOUTS (seconds)
 ########################################
+# Every blocking external call runs behind mdoctor_timeout (lib/timeout.sh):
+# GNU timeout where available, else gtimeout, else a pure-Bash watchdog that
+# still kills the probe and still reports 124 — so these caps hold on stock
+# macOS too. The *_TIMEOUT_S values are env-overridable (same convention as
+# the MDOCTOR_DIAG_* thresholds) so tests can shrink them without stubs
+# racing real timeouts.
 
 export MDOCTOR_DU_TIMEOUT_S=30
 export MDOCTOR_FIND_TIMEOUT_S=30
 export MDOCTOR_DEV_FIND_TIMEOUT_S=60
+
+# Issue #101 — time-capped network/daemon probes. Any call that can block
+# on a network round trip, a package registry, or a daemon socket gets one
+# of these caps; the default bucket is MDOCTOR_CMD_TIMEOUT_S.
+#
+#   MDOCTOR_REGISTRY_TIMEOUT_S .. timeout for package-registry probes that
+#                                 can stall on the network (timeout-capped
+#                                 at every call site): 'npm' 'doctor',
+#                                 'npm' 'outdated' '-g', 'pip3' 'check',
+#                                 'pip3' 'list' '--outdated', 'brew'
+#                                 'doctor', 'brew' 'outdated'
+#   MDOCTOR_UPDATE_TIMEOUT_S .... timeout for OS update listings (each
+#                                 timeout-capped): 'softwareupdate' '-l',
+#                                 'apt' 'list' '--upgradable',
+#                                 'apt-get' '-s' 'upgrade'
+#   MDOCTOR_DOCKER_TIMEOUT_S .... timeout for the 'docker' 'info' probe +
+#                                 the docker CLI calls in check_containers
+#                                 (per the issue: the daemon liveness
+#                                 probe is `timeout 5`)
+#   MDOCTOR_DNS_TIMEOUT_S ....... timeout for the nslookup DNS probes
+#                                 (check + benchmark)
+#   MDOCTOR_NET_TIMEOUT_S ....... timeout for network enumerators:
+#                                 netstat/ss/lsof, scutil, mdfind
+#   MDOCTOR_CMD_TIMEOUT_S ....... default cap for other daemon/IPC calls:
+#                                 systemctl, osascript, mdutil, ufw, the
+#                                 macOS security IPC tools, ioreg/pmset
+#   MDOCTOR_SYSINFO_TIMEOUT_S ... system_profiler (documented ~30s slow)
+export MDOCTOR_REGISTRY_TIMEOUT_S="${MDOCTOR_REGISTRY_TIMEOUT_S:-30}"
+export MDOCTOR_UPDATE_TIMEOUT_S="${MDOCTOR_UPDATE_TIMEOUT_S:-60}"
+export MDOCTOR_DOCKER_TIMEOUT_S="${MDOCTOR_DOCKER_TIMEOUT_S:-5}"
+export MDOCTOR_DNS_TIMEOUT_S="${MDOCTOR_DNS_TIMEOUT_S:-5}"
+export MDOCTOR_NET_TIMEOUT_S="${MDOCTOR_NET_TIMEOUT_S:-15}"
+export MDOCTOR_CMD_TIMEOUT_S="${MDOCTOR_CMD_TIMEOUT_S:-10}"
+export MDOCTOR_SYSINFO_TIMEOUT_S="${MDOCTOR_SYSINFO_TIMEOUT_S:-45}"
+
+# mdoctor_timeout backend override (issue #101): unset/empty = auto
+# (timeout → gtimeout → builtin watchdog); "watchdog" forces the builtin
+# path (tests exercise it on hosts that do ship GNU timeout).
+export MDOCTOR_TIMEOUT_IMPL="${MDOCTOR_TIMEOUT_IMPL:-}"
+
+# Parallel probe prefetch (issue #101): doctor.sh launches the independent
+# slow registry/daemon captures in background jobs before the module loop
+# and each consumer joins lazily, so module registration and output order
+# are unchanged. MDOCTOR_PREFETCH=false runs every probe inline (still
+# time-capped) — the kill switch exists so the PR can record both numbers.
+export MDOCTOR_PREFETCH="${MDOCTOR_PREFETCH:-true}"
+
 # Max paths handed to one sizing find invocation in preflight_find_kb
 # (Task 11.1) — bounds exec argv so a huge match set can never hit
 # ARG_MAX (tightest on macOS, ~256 KB).

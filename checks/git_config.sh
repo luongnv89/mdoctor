@@ -25,11 +25,11 @@ check_git_config() {
     return 0
   fi
 
-  status_ok "Git: $(git --version 2>/dev/null)"
+  status_ok "Git: $(tcap_or "$MDOCTOR_CMD_TIMEOUT_S" "unknown" git --version)"   # timeout-capped probe
 
   # Git user.name
   local git_name
-  git_name=$(git config --global user.name 2>/dev/null || echo "")
+  git_name=$(tcap_or "$MDOCTOR_CMD_TIMEOUT_S" "" git config --global user.name)   # timeout-capped probe
   if [ -n "$git_name" ]; then
     status_ok "Git user.name: ${git_name}"
   else
@@ -39,7 +39,7 @@ check_git_config() {
 
   # Git user.email
   local git_email
-  git_email=$(git config --global user.email 2>/dev/null || echo "")
+  git_email=$(tcap_or "$MDOCTOR_CMD_TIMEOUT_S" "" git config --global user.email)   # timeout-capped probe
   if [ -n "$git_email" ]; then
     status_ok "Git user.email: ${git_email}"
   else
@@ -49,7 +49,7 @@ check_git_config() {
 
   # Git credential helper
   local cred_helper
-  cred_helper=$(git config --global credential.helper 2>/dev/null || echo "")
+  cred_helper=$(tcap_or "$MDOCTOR_CMD_TIMEOUT_S" "" git config --global credential.helper)   # timeout-capped probe
   if [ -n "$cred_helper" ]; then
     status_ok "Git credential helper: ${cred_helper}"
   else
@@ -94,9 +94,15 @@ check_git_config() {
     status_info "No ~/.ssh directory found."
   fi
 
-  # SSH agent status — substring tests in-shell, no echo|grep (issue #98)
-  local agent_keys
-  agent_keys=$(ssh-add -l 2>/dev/null || echo "")
+  # SSH agent status — substring tests in-shell, no echo|grep (issue #98).
+  # ssh-add talks to the agent over a socket and is timeout-capped (issue
+  # #101): a dead forwarded agent could otherwise hang the module.
+  local agent_keys _sa_rc=0
+  agent_keys=$(mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" ssh-add -l 2>/dev/null) || _sa_rc=$?
+  if [ "$_sa_rc" -eq 124 ]; then
+    status_info "SSH agent: probe timed out (timeout ${MDOCTOR_CMD_TIMEOUT_S}s) — key count unknown."
+    return 0
+  fi
   case "$agent_keys" in
     *"no identities"*)
       status_info "SSH agent: running, no keys loaded"

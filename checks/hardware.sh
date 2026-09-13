@@ -19,9 +19,15 @@ check_hardware() {
   step "Hardware Overview & Thermals"
 
   if is_macos; then
-    # Model name
-    local model_name
-    model_name=$(system_profiler SPHardwareDataType 2>/dev/null | awk -F': ' '/Model Name/ {print $2; exit}')
+    # Model name (system_profiler is ~30s slow — timeout-capped, #101;
+    # capture first so a 124 doesn't look like "no model line")
+    local model_name _hw_rc=0
+    tcap "$MDOCTOR_SYSINFO_TIMEOUT_S" "Hardware model probe" system_profiler SPHardwareDataType || _hw_rc=$?
+    if [ "$_hw_rc" -eq 124 ]; then
+      model_name=""
+    else
+      model_name=$(printf '%s\n' "$_TCAP_OUT" | awk -F': ' '/Model Name/ {print $2; exit}')
+    fi
     if [ -n "$model_name" ]; then
       status_info "Model: ${model_name}"
     fi

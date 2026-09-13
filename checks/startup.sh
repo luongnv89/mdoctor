@@ -76,47 +76,65 @@ check_startup() {
       status_ok "Only Apple startup items found (${total_agents} total)."
     fi
 
-    # Login items (via osascript)
-    local login_items
-    login_items=$(osascript -e 'tell application "System Events" to get the name of every login item' 2>/dev/null || echo "")
-    if [ -n "$login_items" ] && [ "$login_items" != "" ]; then
-      status_info "Login items: ${login_items}"
-    else
-      status_info "No legacy login items detected."
+    # Login items (via osascript — an AppleEvent IPC call that can hang;
+    # timeout-capped with a distinct "timed out" report, issue #101)
+    local login_items _li_rc=0
+    tcap "$MDOCTOR_CMD_TIMEOUT_S" "Login-items probe" osascript -e 'tell application "System Events" to get the name of every login item' || _li_rc=$?
+    login_items="$_TCAP_OUT"
+    if [ "$_li_rc" -ne 124 ]; then
+      if [ -n "$login_items" ] && [ "$login_items" != "" ]; then
+        status_info "Login items: ${login_items}"
+      else
+        status_info "No legacy login items detected."
+      fi
     fi
   else
     # Linux: systemd services
     if command -v systemctl >/dev/null 2>&1; then
       # In-shell line counts replace three wc -l|tr -d ' ' pipelines
       # (issue #98).
-      local enabled_count=0 _sc_out _scl
-      _sc_out=$(systemctl list-unit-files --state=enabled --type=service --no-pager --no-legend 2>/dev/null || true)
-      while IFS= read -r _scl; do
-        [ -n "$_scl" ] && enabled_count=$((enabled_count + 1))
-      done <<< "$_sc_out"
-      status_info "Enabled systemd services: ${enabled_count}"
+      local enabled_count=0 _sc_out _scl _sc_rc=0
+      # systemctl calls are dbus IPC — timeout-capped with a distinct
+      # "timed out" report (issue #101); a capped-out probe never prints
+      # a bogus "0 services" line.
+      tcap "$MDOCTOR_CMD_TIMEOUT_S" "Enabled-services probe" systemctl list-unit-files --state=enabled --type=service --no-pager --no-legend || _sc_rc=$?
+      _sc_out="$_TCAP_OUT"
+      if [ "$_sc_rc" -ne 124 ]; then
+        while IFS= read -r _scl; do
+          [ -n "$_scl" ] && enabled_count=$((enabled_count + 1))
+        done <<< "$_sc_out"
+        status_info "Enabled systemd services: ${enabled_count}"
+      fi
 
       # Failed services
       local failed_count=0
-      _sc_out=$(systemctl --failed --no-pager --no-legend 2>/dev/null || true)
-      while IFS= read -r _scl; do
-        [ -n "$_scl" ] && failed_count=$((failed_count + 1))
-      done <<< "$_sc_out"
-      if (( failed_count > 0 )); then
-        status_warn "Failed systemd services: ${failed_count}"
-        add_action "Run 'systemctl --failed' to see failed services and fix or disable them."
-      else
-        status_ok "No failed systemd services."
+      _sc_rc=0
+      tcap "$MDOCTOR_CMD_TIMEOUT_S" "Failed-services probe" systemctl --failed --no-pager --no-legend || _sc_rc=$?
+      _sc_out="$_TCAP_OUT"
+      if [ "$_sc_rc" -ne 124 ]; then
+        while IFS= read -r _scl; do
+          [ -n "$_scl" ] && failed_count=$((failed_count + 1))
+        done <<< "$_sc_out"
+        if (( failed_count > 0 )); then
+          status_warn "Failed systemd services: ${failed_count}"
+          add_action "Run 'systemctl --failed' to see failed services and fix or disable them."
+        else
+          status_ok "No failed systemd services."
+        fi
       fi
 
       # User services
       local user_enabled=0
-      _sc_out=$(systemctl --user list-unit-files --state=enabled --type=service --no-pager --no-legend 2>/dev/null || true)
-      while IFS= read -r _scl; do
-        [ -n "$_scl" ] && user_enabled=$((user_enabled + 1))
-      done <<< "$_sc_out"
-      if (( user_enabled > 0 )); then
-        status_info "User-level enabled services: ${user_enabled}"
+      _sc_rc=0
+      tcap "$MDOCTOR_CMD_TIMEOUT_S" "User-services probe" systemctl --user list-unit-files --state=enabled --type=service --no-pager --no-legend || _sc_rc=$?
+      _sc_out="$_TCAP_OUT"
+      if [ "$_sc_rc" -ne 124 ]; then
+        while IFS= read -r _scl; do
+          [ -n "$_scl" ] && user_enabled=$((user_enabled + 1))
+        done <<< "$_sc_out"
+        if (( user_enabled > 0 )); then
+          status_info "User-level enabled services: ${user_enabled}"
+        fi
       fi
     else
       status_info "systemd not available; startup check skipped."

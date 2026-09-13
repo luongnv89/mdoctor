@@ -108,6 +108,13 @@ main() {
   init_colors
   debug_log "doctor.sh start json=${JSON_ENABLED:-false}"
 
+  # Parallel probe prefetch (issue #101): the independent slow network/
+  # daemon captures (registry listings, OS update lists, the shared
+  # docker-info probe) start as background jobs here; each module joins
+  # lazily on its own probe, so registration order and printed output are
+  # unchanged — only the waits overlap.
+  perf_prefetch_begin
+
   local json_mode=false
   if [ "${JSON_ENABLED:-false}" = true ]; then
     json_mode=true
@@ -189,6 +196,10 @@ main() {
 
   # Stop spinner from last check step
   progress_stop
+
+  # Reap any prefetched probe no module consumed (issue #101) — each is
+  # bounded by its own cap, so this can never hang the summary.
+  perf_prefetch_join
 
   # Summary
   if [ "$json_mode" = false ]; then

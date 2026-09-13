@@ -15,6 +15,10 @@
 _MDOCTOR_TRUTHY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
 # shellcheck source=/dev/null
 source "${_MDOCTOR_TRUTHY_DIR}/constants.sh"
+# mdoctor_timeout (issue #101): every check module gets the portable cap
+# through this file, the one lib all entry points source first.
+# shellcheck source=/dev/null
+source "${_MDOCTOR_TRUTHY_DIR}/timeout.sh"
 unset _MDOCTOR_TRUTHY_DIR
 
 # Guard against double-sourcing (the is_dry_run loader in logging.sh and

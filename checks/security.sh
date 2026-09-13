@@ -19,9 +19,11 @@ check_security() {
   step "Security & Privacy"
 
   if is_macos; then
-    # Firewall status
+    # Firewall status (all the macOS probes below are daemon IPC calls —
+    # timeout-capped via tcap so a 124 prints a distinct line, issue #101)
     local fw_status
-    fw_status=$(/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null || true)
+    tcap "$MDOCTOR_CMD_TIMEOUT_S" "Firewall status probe" /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate || true
+    fw_status="$_TCAP_OUT"
     # Case-insensitive substring tests via case globs — zero forks
     # (issue #98: was echo|grep -qi per test).
     case "$fw_status" in
@@ -39,7 +41,8 @@ check_security() {
 
     # FileVault / disk encryption
     local fv_status
-    fv_status=$(fdesetup status 2>/dev/null || true)
+    tcap "$MDOCTOR_CMD_TIMEOUT_S" "FileVault status probe" fdesetup status || true
+    fv_status="$_TCAP_OUT"
     case "$fv_status" in
       *[Oo][Nn]*)
         status_ok "FileVault: enabled"
@@ -55,7 +58,8 @@ check_security() {
 
     # System Integrity Protection
     local sip_status
-    sip_status=$(csrutil status 2>/dev/null || true)
+    tcap "$MDOCTOR_CMD_TIMEOUT_S" "SIP status probe" csrutil status || true
+    sip_status="$_TCAP_OUT"
     case "$sip_status" in
       *[Ee][Nn][Aa][Bb][Ll][Ee][Dd]*)
         status_ok "System Integrity Protection (SIP): enabled"
@@ -71,7 +75,8 @@ check_security() {
 
     # Gatekeeper
     local gk_status
-    gk_status=$(spctl --status 2>/dev/null || true)
+    tcap "$MDOCTOR_CMD_TIMEOUT_S" "Gatekeeper status probe" spctl --status || true
+    gk_status="$_TCAP_OUT"
     case "$gk_status" in
       *[Ee][Nn][Aa][Bb][Ll][Ee][Dd]*)
         status_ok "Gatekeeper: enabled"
@@ -87,7 +92,8 @@ check_security() {
 
     # Remote Login (SSH)
     local remote_login
-    remote_login=$(systemsetup -getremotelogin 2>/dev/null || true)
+    tcap "$MDOCTOR_CMD_TIMEOUT_S" "Remote Login probe" systemsetup -getremotelogin || true
+    remote_login="$_TCAP_OUT"
     case "$remote_login" in
       *[Oo][Nn]*)
         status_info "Remote Login (SSH): enabled"
@@ -101,7 +107,8 @@ check_security() {
     # both labels (issue #98: was a second launchctl|grep -c per label).
     local screen_sharing=0 remote_mgmt=0
     local _ll_out _lline
-    _ll_out=$(launchctl list 2>/dev/null || true)
+    tcap "$MDOCTOR_CMD_TIMEOUT_S" "launchctl services probe" launchctl list || true
+    _ll_out="$_TCAP_OUT"
     while IFS= read -r _lline; do
       case "$_lline" in
         *com.apple.screensharing*)  screen_sharing=$((screen_sharing + 1)) ;;
@@ -117,7 +124,8 @@ check_security() {
 
     # Automatic login
     local auto_login
-    auto_login=$(defaults read /Library/Preferences/com.apple.loginwindow autoLoginUser 2>/dev/null || echo "")
+    tcap "$MDOCTOR_CMD_TIMEOUT_S" "Automatic-login probe" defaults read /Library/Preferences/com.apple.loginwindow autoLoginUser || true
+    auto_login="$_TCAP_OUT"
     if [ -n "$auto_login" ]; then
       status_warn "Automatic login enabled for user: ${auto_login}"
       add_action "Disable automatic login: System Settings > Users & Groups > Automatic login"
@@ -131,9 +139,11 @@ check_security() {
     # fails instead of prompting); otherwise report "requires sudo to verify".
     if command -v ufw >/dev/null 2>&1; then
       local ufw_status
-      ufw_status=$(ufw status 2>/dev/null || echo "")
+      tcap "$MDOCTOR_CMD_TIMEOUT_S" "ufw status probe" ufw status || true
+      ufw_status="$_TCAP_OUT"
       if [ -z "$ufw_status" ] && sudo -n true 2>/dev/null; then
-        ufw_status=$(sudo -n ufw status 2>/dev/null || echo "")
+        tcap "$MDOCTOR_CMD_TIMEOUT_S" "ufw status probe (sudo)" sudo -n ufw status || true
+        ufw_status="$_TCAP_OUT"
       fi
       # NOTE: "inactive" must be tested before "active" — the latter
       # is a substring of the former ("Status: inactive").
@@ -158,7 +168,8 @@ check_security() {
         # Count rule lines in-shell — the retired grep -cv skipped
         # blank lines and Chain/target headers (issue #98).
         local _ipt_out _iptl _ipt_n=0
-        _ipt_out=$(sudo -n iptables -L -n 2>/dev/null || true)
+        tcap "$MDOCTOR_CMD_TIMEOUT_S" "iptables rules probe" sudo -n iptables -L -n || true
+        _ipt_out="$_TCAP_OUT"
         while IFS= read -r _iptl; do
           case "$_iptl" in
             ""|Chain*|target*) ;;
@@ -184,7 +195,8 @@ check_security() {
     if command -v lsblk >/dev/null 2>&1; then
       local crypt_count crypt_count_raw
       local _lb_out _lbl _crypt_n=0
-      _lb_out=$(lsblk -o TYPE 2>/dev/null || true)
+      tcap "$MDOCTOR_CMD_TIMEOUT_S" "lsblk probe" lsblk -o TYPE || true
+      _lb_out="$_TCAP_OUT"
       while IFS= read -r _lbl; do
         case "$_lbl" in
           *crypt*) _crypt_n=$((_crypt_n + 1)) ;;
@@ -199,10 +211,19 @@ check_security() {
       fi
     fi
 
-    # SSH server
+    # SSH server — timeout-capped (dbus IPC); a timed-out probe reports
+    # "timed out", never "not running" (issue #101).
     if command -v systemctl >/dev/null 2>&1; then
-      if systemctl is-active ssh >/dev/null 2>&1 || systemctl is-active sshd >/dev/null 2>&1; then
+      local _ssh_rc=0 _sshd_rc=1
+      mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" systemctl is-active ssh >/dev/null 2>&1 || _ssh_rc=$?
+      if [ "$_ssh_rc" -ne 0 ]; then
+        _sshd_rc=0
+        mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" systemctl is-active sshd >/dev/null 2>&1 || _sshd_rc=$?
+      fi
+      if [ "$_ssh_rc" -eq 0 ] || [ "$_sshd_rc" -eq 0 ]; then
         status_info "SSH server: running"
+      elif [ "$_ssh_rc" -eq 124 ] || [ "$_sshd_rc" -eq 124 ]; then
+        status_info "SSH server probe timed out (timeout ${MDOCTOR_CMD_TIMEOUT_S}s) — status unknown."
       else
         status_ok "SSH server: not running"
       fi
@@ -245,13 +266,15 @@ check_security() {
   local _have_probe=0
   local _listen_out="" _lstn_line _lstn_seen=0
   if is_macos; then
-    _listen_out=$(lsof -iTCP -sTCP:LISTEN -P 2>/dev/null || true)
+    tcap "$MDOCTOR_NET_TIMEOUT_S" "Listening-ports enumeration" lsof -iTCP -sTCP:LISTEN -P || true
+    _listen_out="$_TCAP_OUT"
     _have_probe=1
   elif ! command -v ss >/dev/null 2>&1; then
     # Task 2.5: guarded ss; absent ss reports a skip, never an error.
     status_info "Skipping listening-ports probe: ss not found."
   else
-    _listen_out=$(ss -tlnp 2>/dev/null || true)
+    tcap "$MDOCTOR_NET_TIMEOUT_S" "Listening-ports enumeration" ss -tlnp || true
+    _listen_out="$_TCAP_OUT"
     _have_probe=1
   fi
   if (( _have_probe )); then

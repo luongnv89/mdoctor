@@ -53,9 +53,9 @@ register_all_modules() {
   register_module diagnose diagnose System HIGH check_diagnose_performance "Active performance diagnosis with bottleneck detection"
   # Check modules — Software
   if is_macos; then
-    register_module check homebrew   Software SAFE check_homebrew    "Homebrew installation & packages"
+    register_module check homebrew   Software SAFE check_homebrew    "Homebrew installation & packages"   # module probes are timeout-capped (#101)
   fi
-  register_module check node       Software SAFE check_node_npm    "Node.js & npm"
+  register_module check node       Software SAFE check_node_npm    "Node.js & npm"   # module probes are timeout-capped (#101)
   register_module check python     Software SAFE check_python      "Python & pip"
   register_module check devtools   Software SAFE check_dev_tools   "Developer tools, Git, Docker"
   register_module check shell      Software SAFE check_shell_configs "Shell config syntax"
@@ -89,7 +89,7 @@ register_all_modules() {
   register_module fix dns         System   LOW  fix_dns         "Flush DNS cache"
   if is_macos; then
     register_module fix disk        System   LOW  fix_disk        "Free disk space"
-    register_module fix homebrew    Software LOW  fix_homebrew    "Update, upgrade, cleanup Homebrew"
+    register_module fix homebrew    Software LOW  fix_homebrew    "Update, upgrade, cleanup Homebrew"   # sibling check module's probes are timeout-capped (#101)
     register_module fix permissions System   MED  fix_permissions "Reset file permissions"
     register_module fix spotlight   System   MED  fix_spotlight   "Rebuild Spotlight index"
     register_module fix bluetooth   Hardware LOW  fix_bluetooth   "Reset Bluetooth module"
