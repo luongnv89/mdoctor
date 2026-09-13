@@ -9,10 +9,19 @@
 # TRUTHY_BOOTSTRAP (Task 9.5): is_truthy lives in constants.sh, the
 # zero-dependency base lib. Source it before the guard so standalone
 # sourcing of this file still sees the predicate.
-_MDOCTOR_TRUTHY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
-# shellcheck source=/dev/null
-source "${_MDOCTOR_TRUTHY_DIR}/constants.sh"
-unset _MDOCTOR_TRUTHY_DIR
+# Zero-fork (issue #102): the lib dir is the literal directory part of
+# ${BASH_SOURCE[0]} — parameter expansion replaces the old
+# $(cd "$(dirname …)" && pwd) probe, and the declare -f guard skips the
+# source entirely once the base lib is loaded.
+_mdoctor_lib_dir="${BASH_SOURCE[0]%/*}"
+if [ "$_mdoctor_lib_dir" = "${BASH_SOURCE[0]}" ]; then
+  _mdoctor_lib_dir="."
+fi
+if ! declare -f is_truthy >/dev/null 2>&1; then
+  # shellcheck source=/dev/null
+  source "${_mdoctor_lib_dir}/constants.sh"
+fi
+unset _mdoctor_lib_dir
 
 
 if is_truthy "${_MDOCTOR_PLATFORM_LOADED:-}"; then
@@ -20,8 +29,14 @@ if is_truthy "${_MDOCTOR_PLATFORM_LOADED:-}"; then
 fi
 _MDOCTOR_PLATFORM_LOADED=true
 
-# Detect at source time
-_MDOCTOR_UNAME="$(uname -s 2>/dev/null || echo "unknown")"
+# Detect at source time. Zero-fork (issue #102): the OSTYPE builtin covers
+# the two supported families (darwin*, linux*) without execing uname; the
+# uname probe remains as the fallback for unrecognized OSTYPE values.
+case "${OSTYPE:-}" in
+  darwin*)  _MDOCTOR_UNAME="Darwin" ;;
+  linux*)   _MDOCTOR_UNAME="Linux" ;;
+  *)        _MDOCTOR_UNAME="$(uname -s 2>/dev/null || echo "unknown")" ;;
+esac
 
 case "$_MDOCTOR_UNAME" in
   Darwin)

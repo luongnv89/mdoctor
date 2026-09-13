@@ -29,43 +29,69 @@ set -uo pipefail
 
 MDOCTOR_VERSION="3.0.0"
 
-# Append short git commit hash if inside a git repo
-_mdoctor_commit=""
-if command -v git >/dev/null 2>&1; then
-  _mdoctor_commit="$(git -C "$(dirname "$0")" rev-parse --short HEAD 2>/dev/null || true)"
-fi
-if [ -n "$_mdoctor_commit" ]; then
-  MDOCTOR_VERSION_FULL="${MDOCTOR_VERSION}+${_mdoctor_commit}"
-else
-  MDOCTOR_VERSION_FULL="${MDOCTOR_VERSION}"
-fi
+# mdoctor_version_full — print MDOCTOR_VERSION with the "+<commit>"
+# decoration appended, resolved lazily and memoized (issue #102).
+# `git rev-parse` used to run at startup on EVERY invocation — including
+# `mdoctor help` — purely to decorate the banner; now it runs at most
+# once, only when a caller actually prints the decorated version.
+_MDOCTOR_VERSION_FULL=""
+mdoctor_version_full() {
+  if [ -z "$_MDOCTOR_VERSION_FULL" ]; then
+    local _commit=""
+    if command -v git >/dev/null 2>&1; then
+      _commit="$(git -C "$MDOCTOR_DIR" rev-parse --short HEAD 2>/dev/null || true)"
+    fi
+    if [ -n "$_commit" ]; then
+      _MDOCTOR_VERSION_FULL="${MDOCTOR_VERSION}+${_commit}"
+    else
+      _MDOCTOR_VERSION_FULL="${MDOCTOR_VERSION}"
+    fi
+  fi
+  printf '%s' "$_MDOCTOR_VERSION_FULL"
+}
 
 ########################################
 # RESOLVE INSTALL DIRECTORY
 ########################################
 
-# Find the real script directory (handles symlinks)
+# Find the real script directory (handles symlinks). Prints the result
+# AND leaves it in _MDOCTOR_RESOLVED_DIR so the startup call site can
+# discard stdout and skip the $(…) subshell fork entirely (issue #102);
+# the printing contract is what the regression suite extracts and calls.
 resolve_script_dir() {
-  local resolved
-  # Try realpath first (available on modern macOS)
-  if resolved="$(realpath "$0" 2>/dev/null)"; then
-    dirname "$resolved"
-    return
+  local src="$0" base resolved
+  # Fast path: a non-symlinked script with a lib/ sibling — the common
+  # case for repo runs and installed trees alike — resolves with pure
+  # parameter expansion. realpath/perl only run for symlinked or
+  # relocated invocations.
+  base="${src%/*}"
+  if [ "$base" = "$src" ]; then
+    base="."
   fi
+  if [ ! -h "$src" ] && [ -f "${base}/lib/common.sh" ]; then
+    case "$base" in
+      /*) _MDOCTOR_RESOLVED_DIR="$base" ;;
+      .)  _MDOCTOR_RESOLVED_DIR="$PWD" ;;
+      *)  _MDOCTOR_RESOLVED_DIR="${PWD}/${base}" ;;
+    esac
+  # Try realpath (available on modern macOS and coreutils Linux)
+  elif resolved="$(realpath "$src" 2>/dev/null)"; then
+    _MDOCTOR_RESOLVED_DIR="$(dirname "$resolved")"
   # Try perl as fallback (always available on macOS)
-  if resolved="$(perl -e 'use Cwd "abs_path"; use File::Basename; print dirname(abs_path($ARGV[0])) . "\n"' "$0" 2>/dev/null)"; then
-    echo "$resolved"
-    return
-  fi
+  elif resolved="$(perl -e 'use Cwd "abs_path"; use File::Basename; print dirname(abs_path($ARGV[0])) . "\n"' "$src" 2>/dev/null)"; then
+    _MDOCTOR_RESOLVED_DIR="$resolved"
   # Last resort: use known install location or script dir
-  if [ -d "${HOME}/.mdoctor/lib" ]; then
-    echo "${HOME}/.mdoctor"
+  elif [ -d "${HOME}/.mdoctor/lib" ]; then
+    _MDOCTOR_RESOLVED_DIR="${HOME}/.mdoctor"
   else
-    cd -P "$(dirname "$0")" && pwd
+    _MDOCTOR_RESOLVED_DIR="$(cd -P "$(dirname "$src")" >/dev/null 2>&1 && pwd)"
   fi
+  printf '%s\n' "$_MDOCTOR_RESOLVED_DIR"
 }
 
-MDOCTOR_DIR="$(resolve_script_dir)"
+resolve_script_dir >/dev/null
+MDOCTOR_DIR="$_MDOCTOR_RESOLVED_DIR"
+unset _MDOCTOR_RESOLVED_DIR
 
 # Named constants first (Task 8.7): pure assignments, no dependencies.
 source "${MDOCTOR_DIR}/lib/constants.sh"
@@ -89,18 +115,11 @@ MDOCTOR_DEBUG="${MDOCTOR_DEBUG:-false}"
 # COLORS
 ########################################
 
-if command -v tput >/dev/null 2>&1 && [ -t 1 ]; then
-  RED="$(tput setaf 1)"
-  GREEN="$(tput setaf 2)"
-  YELLOW="$(tput setaf 3)"
-  BLUE="$(tput setaf 4)"
-  CYAN="$(tput setaf 6)"
-  BOLD="$(tput bold)"
-  DIM="$(tput dim)"
-  RESET="$(tput sgr0)"
-else
-  RED="" GREEN="" YELLOW="" BLUE="" CYAN="" BOLD="" DIM="" RESET=""
-fi
+# All terminal sequences come from the single memoized `tput -S` batch in
+# mdoctor_term_init (issue #102): at most one tput exec per process —
+# the previous block ran eight per invocation — and zero when stdout is
+# not a tty, where colors are never wanted.
+mdoctor_term_init
 
 ########################################
 # HELPERS
@@ -114,7 +133,7 @@ banner() {
   echo ' | |  | | |_| | (_) | (__| || (_) | |   '
   echo ' |_|  |_|____/ \___/ \___|\__\___/|_|   '
   echo "${RESET}"
-  echo "${DIM}  Machine Doctor v${MDOCTOR_VERSION_FULL} - Keep your system healthy${RESET}"
+  echo "${DIM}  Machine Doctor v$(mdoctor_version_full) - Keep your system healthy${RESET}"
   echo
 }
 
@@ -311,7 +330,7 @@ cmd_check() {
   fi
 
   if ! is_truthy "$json_flag"; then
-    echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
+    echo "${DIM}mdoctor v$(mdoctor_version_full)${RESET}"
   fi
 
   if [ -n "$module" ]; then
@@ -452,7 +471,7 @@ cmd_clean() {
     esac
   done
 
-  echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
+  echo "${DIM}mdoctor v$(mdoctor_version_full)${RESET}"
 
   register_all_modules
   local cleanup_list
@@ -613,7 +632,7 @@ cmd_info() {
   arch=$(uname -m 2>/dev/null || echo "Unknown")
   uptime_str=$(uptime | sed 's/.*up *//; s/, *[0-9]* user.*//')
 
-  printf "  %-20s %s\n" "OS:" "$(platform_name)"
+  printf "  %-20s %s\n" "OS:" "${MDOCTOR_OS_NAME}"
   printf "  %-20s %s\n" "Architecture:" "${arch}"
   printf "  %-20s %s\n" "Hostname:" "$(hostname)"
   printf "  %-20s %s\n" "Uptime:" "${uptime_str}"
@@ -776,22 +795,22 @@ cmd_list() {
 
   register_all_modules
 
-  echo "${BOLD}${BLUE}== All Modules ($(platform_name)) ==${RESET}"
+  echo "${BOLD}${BLUE}== All Modules (${MDOCTOR_OS_NAME}) ==${RESET}"
   echo
 
-  echo "${BOLD}Check Modules ($(registry_count check) — all read-only):${RESET}"
+  echo "${BOLD}Check Modules (${_REG_COUNT_CHECK} — all read-only):${RESET}"
   list_modules_by_category check
   echo
 
-  echo "${BOLD}Cleanup Modules ($(registry_count cleanup)):${RESET}"
+  echo "${BOLD}Cleanup Modules (${_REG_COUNT_CLEANUP}):${RESET}"
   list_modules_by_category cleanup
   echo
 
-  echo "${BOLD}Diagnose Modules ($(registry_count diagnose)):${RESET}"
+  echo "${BOLD}Diagnose Modules (${_REG_COUNT_DIAGNOSE}):${RESET}"
   list_modules_by_category diagnose
   echo
 
-  echo "${BOLD}Fix Targets ($(registry_count fix)):${RESET}"
+  echo "${BOLD}Fix Targets (${_REG_COUNT_FIX}):${RESET}"
   list_modules_by_category fix
   echo
 }
@@ -837,7 +856,7 @@ cmd_diagnose() {
     esac
   done
 
-  echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
+  echo "${DIM}mdoctor v$(mdoctor_version_full)${RESET}"
 
   # Source libraries
   source "${MDOCTOR_DIR}/lib/common.sh"
@@ -865,7 +884,7 @@ cmd_diagnose() {
 ########################################
 
 cmd_version() {
-  echo "mdoctor ${MDOCTOR_VERSION_FULL}"
+  echo "mdoctor $(mdoctor_version_full)"
 }
 
 ########################################
@@ -947,7 +966,7 @@ cmd_update() {
     echo "${DIM}[debug]${RESET} update remote=${remote} branch=${branch} channel=${channel} check_only=${check_only}"
   fi
 
-  echo "${DIM}mdoctor v${MDOCTOR_VERSION_FULL}${RESET}"
+  echo "${DIM}mdoctor v$(mdoctor_version_full)${RESET}"
 
   if [ "$channel" = "main" ]; then
     update_from_branch "$remote" "$branch" "$remote_ref" "$check_only"
@@ -1117,7 +1136,7 @@ update_from_branch() {
   new_short="$(git -C "$MDOCTOR_DIR" rev-parse --short HEAD 2>/dev/null || echo "$remote_short")"
 
   echo "Update complete: ${local_short} -> ${new_short}"
-  echo "Current version: $(${MDOCTOR_DIR}/mdoctor version 2>/dev/null || echo "mdoctor ${MDOCTOR_VERSION_FULL}")"
+  echo "Current version: $(${MDOCTOR_DIR}/mdoctor version 2>/dev/null || echo "mdoctor $(mdoctor_version_full)")"
 }
 
 ########################################
@@ -1130,9 +1149,9 @@ cmd_help() {
   echo "Usage: ${BOLD}mdoctor${RESET} <command> [options]"
   echo
   echo "${BOLD}Commands:${RESET}"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "check"     "Run system health audit (read-only, $(registry_count check) checks)"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "clean"     "Run system cleanup (dry-run by default, $(registry_count cleanup) modules)"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "fix"       "Apply common fixes ($(registry_count fix) targets)"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "check"     "Run system health audit (read-only, ${_REG_COUNT_CHECK} checks)"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "clean"     "Run system cleanup (dry-run by default, ${_REG_COUNT_CLEANUP} modules)"
+  printf "  ${GREEN}%-12s${RESET} %s\n" "fix"       "Apply common fixes (${_REG_COUNT_FIX} targets)"
   printf "  ${GREEN}%-12s${RESET} %s\n" "diagnose"  "Run active performance diagnosis with bottleneck detection"
   printf "  ${GREEN}%-12s${RESET} %s\n" "info"      "Show system information summary"
   printf "  ${GREEN}%-12s${RESET} %s\n" "list"      "List all modules with category & risk level"
@@ -1153,7 +1172,7 @@ cmd_help() {
   registry_help_group fix
   echo
   echo "${BOLD}Examples:${RESET}"
-  echo "  mdoctor check                    # Full health audit ($(registry_count check) checks)"
+  echo "  mdoctor check                    # Full health audit (${_REG_COUNT_CHECK} checks)"
   echo "  mdoctor check -m battery         # Check only battery health"
   echo "  mdoctor check --json             # JSON output for automation"
   echo "  mdoctor check --debug            # Check with structured debug diagnostics"

@@ -6,12 +6,17 @@
 
 # run_cmd_args needs is_dry_run (Task 1.6), md_init needs
 # mdoctor_mktemp_file (Task 4.3). Engines load lib/common.sh first, but
-# cmd_fix and standalone sourcing may not — pull it in.
+# cmd_fix and standalone sourcing may not — pull it in. Zero-fork
+# (issue #102): the lib dir is the literal directory part of
+# ${BASH_SOURCE[0]} — no $(dirname)/cd probe.
 if ! declare -f is_dry_run >/dev/null 2>&1 || ! declare -f mdoctor_mktemp_file >/dev/null 2>&1; then
-  _MDOCTOR_LOGGING_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
+  _mdoctor_lib_dir="${BASH_SOURCE[0]%/*}"
+  if [ "$_mdoctor_lib_dir" = "${BASH_SOURCE[0]}" ]; then
+    _mdoctor_lib_dir="."
+  fi
   # shellcheck source=/dev/null
-  source "${_MDOCTOR_LOGGING_DIR}/common.sh"
-  unset _MDOCTOR_LOGGING_DIR
+  source "${_mdoctor_lib_dir}/common.sh"
+  unset _mdoctor_lib_dir
 fi
 
 ########################################

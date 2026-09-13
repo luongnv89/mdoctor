@@ -14,10 +14,19 @@
 # TRUTHY_BOOTSTRAP (Task 9.5): is_truthy lives in constants.sh, the
 # zero-dependency base lib. Source it before the guard so standalone
 # sourcing of this file still sees the predicate.
-_MDOCTOR_TRUTHY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
-# shellcheck source=/dev/null
-source "${_MDOCTOR_TRUTHY_DIR}/constants.sh"
-unset _MDOCTOR_TRUTHY_DIR
+# Zero-fork (issue #102): the lib dir is the literal directory part of
+# ${BASH_SOURCE[0]} — parameter expansion replaces the old
+# $(cd "$(dirname …)" && pwd) probe, and the declare -f guard skips the
+# source entirely once the base lib is loaded.
+_mdoctor_lib_dir="${BASH_SOURCE[0]%/*}"
+if [ "$_mdoctor_lib_dir" = "${BASH_SOURCE[0]}" ]; then
+  _mdoctor_lib_dir="."
+fi
+if ! declare -f is_truthy >/dev/null 2>&1; then
+  # shellcheck source=/dev/null
+  source "${_mdoctor_lib_dir}/constants.sh"
+fi
+unset _mdoctor_lib_dir
 
 # Guard against double-sourcing (re-sourcing would double-register).
 if is_truthy "${_MDOCTOR_REGISTRY_LOADED:-}"; then
@@ -101,6 +110,36 @@ register_all_modules() {
     register_module fix apt        System   LOW  fix_apt         "Fix APT packages (update, upgrade, autoremove)"
   fi
   _MDOCTOR_MODULES_REGISTERED=true
+  registry_counts
+}
+
+# Cached per-type totals (issue #102): register_all_modules refreshes them
+# once, then help/list text inlines ${_REG_COUNT_*} instead of forking a
+# $(registry_count …) subshell per line. Zeroed here so the variables are
+# never unset under `set -u` before registration runs.
+_REG_COUNT_CHECK=0
+_REG_COUNT_CLEANUP=0
+_REG_COUNT_FIX=0
+_REG_COUNT_DIAGNOSE=0
+
+# registry_counts — one pass over the registry, refreshing the four
+# _REG_COUNT_* totals. Called at the end of register_all_modules; safe to
+# call again after any manual register_module.
+registry_counts() {
+  _REG_COUNT_CHECK=0
+  _REG_COUNT_CLEANUP=0
+  _REG_COUNT_FIX=0
+  _REG_COUNT_DIAGNOSE=0
+  local i=0
+  while (( i < _MOD_COUNT )); do
+    case "${_MOD_TYPES[$i]}" in
+      check)    _REG_COUNT_CHECK=$((_REG_COUNT_CHECK + 1)) ;;
+      cleanup)  _REG_COUNT_CLEANUP=$((_REG_COUNT_CLEANUP + 1)) ;;
+      fix)      _REG_COUNT_FIX=$((_REG_COUNT_FIX + 1)) ;;
+      diagnose) _REG_COUNT_DIAGNOSE=$((_REG_COUNT_DIAGNOSE + 1)) ;;
+    esac
+    i=$((i + 1))
+  done
 }
 
 # registry_names TYPE — space-separated module names of one type, in order.
@@ -190,6 +229,10 @@ registry_check_names_plain() {
 
 # registry_count TYPE — number of registered modules of one type on the
 # running platform. Every user-facing count derives from this (Task 8.4).
+# Hot render paths should inline the _REG_COUNT_* cache (refreshed by
+# registry_counts at the end of register_all_modules) rather than forking
+# a $(registry_count …) subshell per line (issue #102); this stays the
+# printing interface for arbitrary/repeat queries.
 registry_count() {
   local type="$1"
   local i=0

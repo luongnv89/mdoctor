@@ -52,11 +52,91 @@ is_truthy() {
   esac
 }
 
+########################################
+# TERMINAL CAPABILITIES (issue #102)
+########################################
+
+# mdoctor_term_init — fill RED GREEN YELLOW BLUE CYAN BOLD DIM RESET and
+# _MDOCTOR_EL in ONE `tput` exec, memoized per process. Every consumer
+# previously ran its own per-capability tput (8 execs in mdoctor's startup
+# block, 6 in init_colors, 2 per spinner cycle — the issue's "8 tput execs
+# when tty" audit line).
+#
+# `tput -S` concatenates capability output with no separator, so each
+# request is followed by `cr` — carriage return is a literal \r on every
+# terminfo entry — giving the blob a delimiter to split on. If the blob
+# carries no \r (a tput without -S support, an exotic entry) everything
+# stays empty, which is the same plain output a dumb terminal gets today.
+#
+# Gated on `[ -t 1 ]`: colors serve interactive output only, so a piped or
+# hermetic run never execs tput at all. A second call in the same process
+# (mdoctor's startup block, then init_colors inside a command) refills the
+# variables without another exec — "tput at most once per process".
+_MDOCTOR_EL="${_MDOCTOR_EL:-}"
+
+mdoctor_term_init() {
+  # Refill from the per-process cache on repeat calls — never a second exec.
+  RED="$_MDOCTOR_TC_RED" GREEN="$_MDOCTOR_TC_GREEN" YELLOW="$_MDOCTOR_TC_YELLOW"
+  BLUE="$_MDOCTOR_TC_BLUE" CYAN="$_MDOCTOR_TC_CYAN" BOLD="$_MDOCTOR_TC_BOLD"
+  DIM="$_MDOCTOR_TC_DIM" RESET="$_MDOCTOR_TC_RESET"
+  _MDOCTOR_EL="$_MDOCTOR_TC_EL"
+  # Referenced here so the published globals are not write-only in this file.
+  : "${RED}${GREEN}${YELLOW}${BLUE}${CYAN}${BOLD}${DIM}${RESET}"
+  if is_truthy "${_MDOCTOR_TPUT_DONE:-}"; then
+    return 0
+  fi
+  _MDOCTOR_TPUT_DONE=true
+  command -v tput >/dev/null 2>&1 || return 0
+  [ -t 1 ] || return 0
+
+  local _cr _blob
+  _cr=$'\r'
+  _blob="$(printf '%s\n' \
+    'setaf 1' 'cr' 'setaf 2' 'cr' 'setaf 3' 'cr' 'setaf 4' 'cr' \
+    'setaf 6' 'cr' 'bold' 'cr' 'dim' 'cr' 'sgr0' 'cr' 'el' 'cr' \
+    | tput -S 2>/dev/null)"
+  case "$_blob" in
+    *"$_cr"*) ;;      # delimiter present — split below
+    *) return 0 ;;    # no -S support / no caps — stay empty
+  esac
+  local _i=0 _v
+  while IFS= read -r -d "$_cr" _v || [ -n "$_v" ]; do
+    case "$_i" in
+      0) _MDOCTOR_TC_RED="$_v" ;;
+      1) _MDOCTOR_TC_GREEN="$_v" ;;
+      2) _MDOCTOR_TC_YELLOW="$_v" ;;
+      3) _MDOCTOR_TC_BLUE="$_v" ;;
+      4) _MDOCTOR_TC_CYAN="$_v" ;;
+      5) _MDOCTOR_TC_BOLD="$_v" ;;
+      6) _MDOCTOR_TC_DIM="$_v" ;;
+      7) _MDOCTOR_TC_RESET="$_v" ;;
+      8) _MDOCTOR_TC_EL="$_v" ;;
+    esac
+    _i=$((_i + 1))
+  done <<< "$_blob"
+  # Publish to the public variables.
+  RED="$_MDOCTOR_TC_RED" GREEN="$_MDOCTOR_TC_GREEN" YELLOW="$_MDOCTOR_TC_YELLOW"
+  BLUE="$_MDOCTOR_TC_BLUE" CYAN="$_MDOCTOR_TC_CYAN" BOLD="$_MDOCTOR_TC_BOLD"
+  DIM="$_MDOCTOR_TC_DIM" RESET="$_MDOCTOR_TC_RESET"
+  _MDOCTOR_EL="$_MDOCTOR_TC_EL"
+  # Referenced here so the published globals are not write-only in this file.
+  : "${RED}${GREEN}${YELLOW}${BLUE}${CYAN}${BOLD}${DIM}${RESET}"
+  return 0
+}
+
 # Guard against double-sourcing.
 if is_truthy "${_MDOCTOR_CONSTANTS_LOADED:-}"; then
   return 0 2>/dev/null || true
 fi
 _MDOCTOR_CONSTANTS_LOADED=true
+
+# Terminal-capability cache (mdoctor_term_init above): initialized after
+# the guard so re-sourcing constants.sh can never reset the memoization
+# and cause a second tput exec.
+_MDOCTOR_TPUT_DONE=""
+_MDOCTOR_TC_RED="" _MDOCTOR_TC_GREEN="" _MDOCTOR_TC_YELLOW="" _MDOCTOR_TC_BLUE=""
+_MDOCTOR_TC_CYAN="" _MDOCTOR_TC_BOLD="" _MDOCTOR_TC_DIM="" _MDOCTOR_TC_RESET=""
+_MDOCTOR_TC_EL=""
 
 ########################################
 # SIZE UNITS (KB-based)
