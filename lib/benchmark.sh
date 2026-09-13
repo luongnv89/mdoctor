@@ -180,9 +180,10 @@ _bench_cleanup_tmp() {
 # osync (BSD). The flag makes dd sync THIS file to media before exiting,
 # so the write number covers the real commit — replacing the old bare
 # `sync` that flushed every process's dirty pages into our timing
-# (issue #103). Empty output = no conv support; the caller then writes
-# without one. The probe file sits in the benchmark's own dir so the
-# answer describes the same filesystem.
+# (issue #103). Empty output = no conv support; the caller refuses the
+# disk section rather than report a write that never reached media.
+# The probe file sits in the benchmark's own dir so the answer
+# describes the same filesystem.
 _bench_dd_conv_sync() {
   local dir="${1-}" probe="" c=""
   probe="${dir%/}/.dd-sync-probe.$$"

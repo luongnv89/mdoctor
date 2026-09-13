@@ -195,8 +195,9 @@ Tests include:
 - Disk write/read speed (256 MB test file staged in the per-user cache
   dir — never `/tmp`, which is tmpfs/RAM on most Linux installs; the run
   is skipped rather than misreported when the target filesystem is
-  RAM-backed, `dd` flushes via `conv=fdatasync`, and the read pass uses
-  `iflag=direct` where supported)
+  RAM-backed or `dd` cannot flush to media, the write flushes via
+  `conv=fdatasync`, and the read pass uses `iflag=direct` — or is
+  skipped when no page-cache bypass is available)
 - DNS resolution latency
 - HTTPS fetch time
 - CPU gzip compression (10 MB)
