@@ -93,6 +93,7 @@ usage_clean() {
   echo "be deleted without actually removing anything)."
   echo
   echo "Options:"
+  echo "  -n, --dry-run         Preview only (the default; nothing is deleted)"
   echo "  -f, --force           Actually delete files (no dry-run)"
   echo "  -m, --module <name>   Run only a specific cleanup module"
   echo "  -i, --interactive     Interactively choose cleanup modules"

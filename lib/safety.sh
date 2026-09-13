@@ -196,6 +196,9 @@ ensure_cleanup_whitelist_file() {
 # ~/.m2/repository/*
 EOF
     chmod 600 "$file"
+    # Issue #106: creation is announced, never silent — this file is the
+    # user's only path-protection mechanism, so its appearance is surfaced.
+    _safety_log "[SAFE][WHITELIST] created ${file} — add paths there to protect them from cleanup"
   fi
 }
 

@@ -123,6 +123,7 @@ All cleanup modules are **[LOW]** risk. Dry-run by default — add `--force` to 
 
 ```bash
 mdoctor clean                        # Dry-run all 10 modules
+mdoctor clean --dry-run              # Same dry-run, stated explicitly
 mdoctor clean --force                # Run all 10 modules for real
 mdoctor clean -m <module>            # Dry-run one module
 mdoctor clean -m <module> --force    # Run one module for real

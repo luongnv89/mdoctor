@@ -28,6 +28,15 @@ if ! declare -f is_truthy >/dev/null 2>&1; then
   # shellcheck source=/dev/null
   source "${_mdoctor_lib_dir}/constants.sh"
 fi
+# cleanup_mode_name (issue #106) lives in lib/common.sh next to
+# is_dry_run. select_interactive_modules runs BEFORE the entry point's
+# later source of common.sh (the menu renders ahead of
+# run_single_cleanup_module), so the menu path needs common.sh loaded
+# here — same declare -f bootstrap safety.sh/logging.sh use.
+if ! declare -f cleanup_mode_name >/dev/null 2>&1; then
+  # shellcheck source=/dev/null
+  source "${_mdoctor_lib_dir}/common.sh"
+fi
 unset _mdoctor_lib_dir
 
 # Guard against double-sourcing.
@@ -111,6 +120,19 @@ run_single_cleanup_module() {
   init_colors
   debug_log "cmd_clean module=${selected_module} force=${selected_force} debug=${MDOCTOR_DEBUG}"
 
+  # Mode banner (issue #106): every cleanup run opens by naming the mode,
+  # so `clean -m x` and `clean -m x --force` can never read identically.
+  local _run_mode
+  _run_mode="$(cleanup_mode_name "$selected_force")"
+  echo
+  if is_truthy "$selected_force"; then
+    echo "${BOLD}== Cleanup module: ${selected_module} — force mode ==${RESET}"
+    echo "This run will DELETE files."
+  else
+    echo "${BOLD}== Cleanup module: ${selected_module} — dry-run mode ==${RESET}"
+    echo "Preview only: nothing will be deleted (re-run with --force to apply)."
+  fi
+
   # Set globals (used by sourced cleanup modules via run_cmd_args)
   export DRY_RUN=true
   LOGFILE="$(platform_log_dir)/mdoctor_cleanup.log"
@@ -141,6 +163,15 @@ run_single_cleanup_module() {
     ensure_cleanup_scope_file
   fi
 
+  # Disk-delta baseline for the force-mode closing summary (issue #106):
+  # measured only when the run can actually free space — the same
+  # used-before/used-after approach as cleanup.sh main().
+  local _used_before_kb=0
+  if is_truthy "$selected_force"; then
+    _used_before_kb="$(disk_used_kb 2>/dev/null)" || _used_before_kb=0
+    case "$_used_before_kb" in ''|*[!0-9]*) _used_before_kb=0 ;; esac
+  fi
+
   # shellcheck source=/dev/null
   source "$clean_file"
 
@@ -166,18 +197,45 @@ run_single_cleanup_module() {
 
   progress_stop
 
+  # Closing summary (issue #106): every cleanup run terminates with a
+  # deleted/would-free line naming the mode — the same guarantee the
+  # full engine's "Cleanup finished"/"Estimated space" footer gives.
+  echo
+  if [ "$module_rc" -eq 0 ]; then
+    echo "${BOLD}Cleanup finished: ${selected_module} (${_run_mode} mode)${RESET}"
+    if is_truthy "$selected_force"; then
+      local _used_after_kb=0 _freed_kb=0
+      _used_after_kb="$(disk_used_kb 2>/dev/null)" || _used_after_kb=0
+      case "$_used_after_kb" in ''|*[!0-9]*) _used_after_kb="$_used_before_kb" ;; esac
+      _freed_kb=$(( _used_before_kb - _used_after_kb ))
+      if [ "$_freed_kb" -lt 0 ]; then _freed_kb=0; fi
+      echo "Estimated space freed: ~$(human_readable_kb "$_freed_kb")."
+    elif [ "${OP_ACTION_COUNT:-0}" -gt 0 ]; then
+      echo "Nothing was deleted — ${OP_ACTION_COUNT} change(s) would be applied. Re-run with --force."
+    else
+      echo "Nothing was deleted. Re-run with --force to apply."
+    fi
+  else
+    echo "${BOLD}Cleanup finished with errors: ${selected_module} (${_run_mode} mode, exit ${module_rc})${RESET}"
+  fi
+
   if [ "$module_rc" -eq 0 ]; then
     op_session_end "ok"
   else
     op_session_end "error:${module_rc}"
-    return "$module_rc"
   fi
+  return "$module_rc"
 }
 
-# select_interactive_modules MODULE_LIST — numbered picker over the passed
-# list; prints the chosen space-separated names on stdout.
+# select_interactive_modules MODULE_LIST [FORCE] — numbered picker over the
+# passed list; prints the chosen space-separated names on stdout. The menu
+# heading names the run mode (issue #106): `clean -i` and `clean -i --force`
+# must not render identically, so the picker states up front whether
+# selecting a module previews or deletes.
 select_interactive_modules() {
   local module_list="$1"
+  local menu_mode
+  menu_mode="$(cleanup_mode_name "${2:-false}")"
   local -a _mods=()
   local _m
   for _m in $module_list; do
@@ -190,7 +248,11 @@ select_interactive_modules() {
   local -a picks=()
 
   echo >&2
-  echo "${BOLD}Interactive cleanup mode${RESET}" >&2
+  if [ "$menu_mode" = "force" ]; then
+    echo "${BOLD}Interactive cleanup — force mode (selected modules will DELETE files)${RESET}" >&2
+  else
+    echo "${BOLD}Interactive cleanup — dry-run mode (preview only, nothing will be deleted)${RESET}" >&2
+  fi
   echo "Select modules to run:" >&2
 
   for selected_module in "${_mods[@]}"; do
@@ -253,7 +315,9 @@ run_interactive_cleanup() {
   local module_list="$1"
   local force="$2"
   local selected_line selection_rc=0 all_rc=0 selected_module
-  selected_line="$(select_interactive_modules "$module_list")" || selection_rc=$?
+  local _run_mode
+  _run_mode="$(cleanup_mode_name "$force")"
+  selected_line="$(select_interactive_modules "$module_list" "$force")" || selection_rc=$?
 
   if [ "$selection_rc" -eq 1 ]; then
     echo "No modules selected. Cancelled."
@@ -263,11 +327,29 @@ run_interactive_cleanup() {
     return "$selection_rc"
   fi
 
+  # Restate the resolved selection with the mode before the first module
+  # runs (issue #106): what was picked and what will happen to it.
+  echo
+  if is_truthy "$force"; then
+    echo "${BOLD}Selected: ${selected_line} — force mode (files will be deleted)${RESET}"
+  else
+    echo "${BOLD}Selected: ${selected_line} — dry-run mode (nothing will be deleted)${RESET}"
+  fi
+
   for selected_module in $selected_line; do
     echo
     echo "${BOLD}== Running cleanup module: ${selected_module} ==${RESET}"
     run_single_cleanup_module "$module_list" "$selected_module" "$force" || all_rc=$?
   done
+
+  # Terminator (issue #106): the interactive run ends with a clear
+  # completion line, never silence after the last module.
+  echo
+  if [ "$all_rc" -eq 0 ]; then
+    echo "Interactive cleanup finished (${_run_mode} mode)."
+  else
+    echo "Interactive cleanup finished with errors (${_run_mode} mode, exit ${all_rc})."
+  fi
 
   return "$all_rc"
 }

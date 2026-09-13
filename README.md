@@ -109,6 +109,7 @@ Dry-run mode (shows what would be deleted, nothing removed):
 
 ```bash
 mdoctor clean
+mdoctor clean --dry-run   # explicit form of the default (same as no flag)
 ```
 
 Force mode (actually deletes):
