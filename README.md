@@ -192,10 +192,20 @@ mdoctor benchmark
 ```
 
 Tests include:
-- Disk write/read speed (256 MB test file)
+- Disk write/read speed (256 MB test file staged in the per-user cache
+  dir — never `/tmp`, which is tmpfs/RAM on most Linux installs; the run
+  is skipped rather than misreported when the target filesystem is
+  RAM-backed or `dd` cannot flush to media, the write flushes via
+  `conv=fdatasync`, and the read pass uses `iflag=direct` — or is
+  skipped when no page-cache bypass is available)
 - DNS resolution latency
-- HTTP fetch time
+- HTTPS fetch time
 - CPU gzip compression (10 MB)
+
+Both network probes use one configurable host — `MDOCTOR_BENCH_HOST`
+(default `example.com`, fetched over HTTPS only). `MDOCTOR_BENCH_DIR`
+overrides where the disk test file is staged (must be an existing
+writable directory outside the protected system paths).
 
 ### System Info
 
