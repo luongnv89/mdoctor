@@ -7,18 +7,18 @@
 # Usage:
 #   mdoctor <command> [options]
 #
-# Commands:
-#   check      Run system health audit (read-only)
-#   clean      Run system cleanup (dry-run by default)
-#   fix        Apply common fixes
-#   diagnose   Run active performance diagnosis with bottleneck detection
-#   info       Show system information summary
-#   list       List all modules with category & risk
-#   history    View health score trends over time
-#   benchmark  Run disk, network, CPU benchmarks
-#   update     Update mdoctor to latest stable release
-#   version    Show mdoctor version
-#   help       Show this help message
+# Commands (badge = what the command can change; see lib/registry.sh):
+#   check      [SAFE]  Run system health audit (read-only)
+#   clean      [HIGH]  Run system cleanup (dry-run by default)
+#   fix        [MED]   Apply common fixes
+#   diagnose   [SAFE]  Run active performance diagnosis with bottleneck detection
+#   info       [SAFE]  Show system information summary
+#   list       [SAFE]  List all modules with category & risk
+#   history    [SAFE]  View health score trends over time
+#   benchmark  [LOW]   Run disk, network, CPU benchmarks
+#   update     [MED]   Update mdoctor to latest stable release
+#   version    [SAFE]  Show mdoctor version
+#   help       [SAFE]  Show this help message
 #
 
 set -uo pipefail
@@ -843,7 +843,7 @@ cmd_list() {
   list_modules_by_category cleanup
   echo
 
-  echo "${BOLD}Diagnose Modules (${_REG_COUNT_DIAGNOSE}):${RESET}"
+  echo "${BOLD}Diagnose Modules (${_REG_COUNT_DIAGNOSE} — all read-only):${RESET}"
   list_modules_by_category diagnose
   echo
 
@@ -1186,17 +1186,11 @@ cmd_help() {
   echo "Usage: ${BOLD}mdoctor${RESET} <command> [options]"
   echo
   echo "${BOLD}Commands:${RESET}"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "check"     "Run system health audit (read-only, ${_REG_COUNT_CHECK} checks)"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "clean"     "Run system cleanup (dry-run by default, ${_REG_COUNT_CLEANUP} modules)"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "fix"       "Apply common fixes (${_REG_COUNT_FIX} targets)"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "diagnose"  "Run active performance diagnosis with bottleneck detection"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "info"      "Show system information summary"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "list"      "List all modules with category & risk level"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "history"   "View health score trends over time"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "benchmark" "Run disk, network, CPU benchmarks"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "update"    "Update mdoctor to latest stable release"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "version"   "Show mdoctor version"
-  printf "  ${GREEN}%-12s${RESET} %s\n" "help"      "Show this help message"
+  # Rows come from the command registry (issue #107): the badge is the
+  # same risk vocabulary the module tables use, so help and `list` can
+  # never disagree about what a command can change.
+  registry_command_lines
+  echo "  ${DIM}[SAFE] read-only | [LOW]/[MED] modifies | [HIGH] deletes${RESET}"
   echo
   echo "${BOLD}Check Modules${RESET} (all [SAFE] read-only):"
   register_all_modules
@@ -1260,6 +1254,31 @@ cmd_help() {
 }
 
 ########################################
+# COMMAND: (bare invocation)
+########################################
+
+# Issue #107 (F-UX-013): bare `mdoctor` used to dump the full help wall —
+# every command name colored identically, nothing marking `clean` as more
+# dangerous than `check`, and no suggested next step. This short block
+# answers "what can I do here, and which of these is safe to try?" — the
+# badged command table plus legend — and ends with the recommended first
+# command instead of the full examples/env-var detail (`mdoctor help`
+# still prints that).
+cmd_orient() {
+  banner
+  register_all_modules
+  echo "Usage: ${BOLD}mdoctor${RESET} <command> [options]"
+  echo
+  echo "${BOLD}Commands${RESET} (badge = what the command can change):"
+  registry_command_lines
+  echo
+  echo "Badges: ${BOLD}[SAFE]${RESET} read-only | ${BOLD}[LOW]/[MED]${RESET} modifies | ${BOLD}[HIGH]${RESET} deletes"
+  echo "Full options, examples and environment variables: ${BOLD}mdoctor help${RESET}"
+  echo
+  echo "${BOLD}Recommended first command:${RESET} mdoctor check   # read-only audit - safe to run now"
+}
+
+########################################
 # MAIN DISPATCH
 ########################################
 
@@ -1280,7 +1299,7 @@ main() {
     version)   cmd_version ;;
     -v|--version) cmd_version ;;
     help|-h|--help) cmd_help ;;
-    "")        cmd_help ;;
+    "")        cmd_orient ;;
     *)
       error "Unknown command: ${command}"
       echo "Run 'mdoctor help' for usage."
