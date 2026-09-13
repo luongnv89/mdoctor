@@ -1173,7 +1173,13 @@ cmd_help() {
   echo
   echo "${BOLD}Examples:${RESET}"
   echo "  mdoctor check                    # Full health audit (${_REG_COUNT_CHECK} checks)"
-  echo "  mdoctor check -m battery         # Check only battery health"
+  # Platform-branched examples (issue #104): never name a module the
+  # running platform's registry does not provide.
+  if is_macos; then
+    echo "  mdoctor check -m battery         # Check only battery health"
+  else
+    echo "  mdoctor check -m apt             # Check only APT package health"
+  fi
   echo "  mdoctor check --json             # JSON output for automation"
   echo "  mdoctor check --debug            # Check with structured debug diagnostics"
   echo "  mdoctor diagnose                 # Active performance diagnosis"
@@ -1182,9 +1188,15 @@ cmd_help() {
   echo "  mdoctor clean --force            # Actually clean up"
   echo "  mdoctor clean --debug            # Cleanup with structured debug diagnostics"
   echo "  mdoctor clean -m crash_reports   # Clean only crash reports"
-  echo "  mdoctor fix homebrew             # Fix Homebrew issues"
-  echo "  mdoctor fix wifi                 # Fix Wi-Fi connection"
-  echo "  mdoctor fix --debug wifi         # Fix with structured debug diagnostics"
+  if is_macos; then
+    echo "  mdoctor fix homebrew             # Fix Homebrew issues"
+    echo "  mdoctor fix wifi                 # Fix Wi-Fi connection"
+    echo "  mdoctor fix --debug wifi         # Fix with structured debug diagnostics"
+  else
+    echo "  mdoctor fix apt                  # Fix APT packages"
+    echo "  mdoctor fix dns                  # Flush DNS cache"
+    echo "  mdoctor fix --debug dns          # Fix with structured debug diagnostics"
+  fi
   echo "  mdoctor fix all                  # Run all fixes"
   echo "  mdoctor list                     # Show all modules"
   echo "  mdoctor history                  # View score trends"
