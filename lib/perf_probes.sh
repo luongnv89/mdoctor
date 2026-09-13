@@ -537,12 +537,22 @@ perf_prefetch_wait() {
 # (e.g. a 60 s update-listing probe on macOS) on every check —
 # including single-module runs that never consume the probe.
 perf_prefetch_join() {
-  local entry pid
-  for entry in ${_PERF_PREFETCH_PIDS:-}; do
+  local entry pid name
+  local pids="${_PERF_PREFETCH_PIDS:-}"
+  # Consume the list up front: join is idempotent as a no-op on the
+  # second pass, but it must never re-signal pids — a disarmed worker
+  # exits without writing its rc, so its freed pid could already be
+  # recycled by the time cleanup calls us again via the exit hook.
+  _PERF_PREFETCH_PIDS=""
+  for entry in $pids; do
     pid="${entry#*:}"
-    kill -TERM "$pid" 2>/dev/null || true
+    name="${entry%%:*}"
+    # rc file exists ⇒ the worker already finished and its pid is free to
+    # recycle — only a worker that never completed may still be signalled.
+    [ -f "${_PERF_PREFETCH_DIR:-/nonexistent}/$name.rc" ] \
+      || kill -TERM "$pid" 2>/dev/null || true
   done
-  for entry in ${_PERF_PREFETCH_PIDS:-}; do
+  for entry in $pids; do
     pid="${entry#*:}"
     wait "$pid" 2>/dev/null || true
   done
