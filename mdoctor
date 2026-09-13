@@ -190,16 +190,9 @@ cmd_clean_preflight_summary_module() {
         printf "  - %-30s %s (could not determine)\n" "Old logs (>${days}d)" "$log_dir"
       fi
       ;;
-    downloads)
-      local dl_kb=0
-      dl_kb=$(preflight_find_kb "${HOME}/Downloads" -type f -size +500M -mtime "+${days}") || dl_kb=""
-      total_kb=$((total_kb + ${dl_kb:-0}))
-      if [ -n "$dl_kb" ]; then
-        printf "  - %-30s %s (~%s)\n" "Large downloads (>${days}d)" "${HOME}/Downloads" "$(human_readable_kb "$dl_kb")"
-      else
-        printf "  - %-30s %s (could not determine)\n" "Large downloads (>${days}d)" "${HOME}/Downloads"
-      fi
-      ;;
+    # downloads is report-only (issue #112): run_single_cleanup_module
+    # skips this summary entirely for SAFE modules — a report-only module
+    # must never appear in a destructive pre-flight.
     browser)
       if is_macos; then
         add_path "Chrome cache" "${HOME}/Library/Caches/Google/Chrome"

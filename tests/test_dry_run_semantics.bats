@@ -87,15 +87,17 @@ teardown_file() {
   assert_contains "$TMPHOME/prune-on.log" "docker system prune -af --volumes"
 }
 
-@test "re-rated badges: trash/logs/dev/dev_caches MED, caches/downloads/browser LOW" {
-  # Task 0.6
+@test "re-rated badges: trash/logs/dev/dev_caches MED, caches/browser LOW, downloads SAFE" {
+  # Task 0.6; downloads dropped to SAFE with the issue #112 report-only
+  # relabel — it never deletes, so the read-only badge is the honest one.
   ./mdoctor list >"$TMPHOME/list.out" 2>&1
   for m in trash logs dev dev_caches; do
     grep -q "$m.*\[MED\]" "$TMPHOME/list.out" || fail "Expected $m at [MED] in mdoctor list"
   done
-  for m in caches downloads browser; do
+  for m in caches browser; do
     grep -q "$m.*\[LOW\]" "$TMPHOME/list.out" || fail "Expected $m at [LOW] in mdoctor list"
   done
+  grep -q "downloads.*\[SAFE\]" "$TMPHOME/list.out" || fail "Expected downloads at [SAFE] in mdoctor list"
 }
 
 @test "central dry-run predicate normalizes truthy spellings" {

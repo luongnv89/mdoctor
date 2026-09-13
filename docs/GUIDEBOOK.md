@@ -27,7 +27,7 @@ mdoctor clean --force        # Actually free disk space
 | Clean dev dependency caches (npm, pip, Gradle, etc.) | `mdoctor clean -m dev_caches --force` |
 | Clean dev tool caches (Homebrew, Docker) | `mdoctor clean -m dev --force` |
 | Empty the Trash | `mdoctor clean -m trash --force` |
-| Remove large old files from Downloads | `mdoctor clean -m downloads --force` |
+| List large old files in Downloads (report only, never deletes) | `mdoctor clean -m downloads` |
 | Delete old crash/diagnostic reports | `mdoctor clean -m crash_reports --force` |
 | Clear browser caches | `mdoctor clean -m browser --force` |
 | Purge old log files | `mdoctor clean -m logs --force` |
@@ -113,7 +113,7 @@ All cleanup modules are **[LOW]** risk. Dry-run by default — add `--force` to 
 | `trash` | Files in Trash |
 | `caches` | User-level cache directories (`~/Library/Caches`) |
 | `logs` | Old log files |
-| `downloads` | Large files in `~/Downloads` older than threshold |
+| `downloads` | Report only: lists large files in `~/Downloads` older than threshold (never deletes) |
 | `crash_reports` | Old crash and diagnostic reports |
 | `ios_backups` | Old iOS device backups |
 | `browser` | Browser cache files |

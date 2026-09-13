@@ -17,12 +17,16 @@ fi
 clean_downloads_large_files() {
   local rc=0
   local days="${DAYS_OLD:-7}"
-  header "Listing large files in Downloads (>500MB, older than ${days} days)"
+  header "Listing large files in Downloads (>500MB, older than ${days} days) — report only"
+  # Issue #112: report-only by design. The deletion was never enabled (the
+  # safe_find_delete call was commented out since import) and ~/Downloads
+  # is outside the allowed deletion roots in lib/safety.sh, so this module
+  # only ever lists matches. It is registered SAFE, runs no destructive
+  # pre-flight, and is excluded from the engine's PROGRESS_TOTAL. The
+  # find runs directly (not via dry-run-gated run_cmd_args) so the report
+  # is produced in every mode.
   if [ -d "${HOME}/Downloads" ]; then
-    # Only list by default; you can uncomment the delete line if you want.
-    run_cmd_args find "${HOME}/Downloads" -type f -size +500M -mtime "+${days}" -print || rc=$?
-    # To actually delete matching files in future, use:
-    # safe_find_delete "${HOME}/Downloads" -type f -size +500M -mtime "+${days}"
+    find "${HOME}/Downloads" -type f -size +500M -mtime "+${days}" -print 2>/dev/null || rc=$?
   else
     log "No ~/Downloads directory found."
   fi

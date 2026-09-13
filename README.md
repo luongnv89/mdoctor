@@ -150,7 +150,7 @@ mdoctor clean --interactive --force
 
 | Category | macOS | Linux (Debian) |
 |----------|-------|----------------|
-| **System** | `trash` [MED], `caches` [LOW], `logs` [MED], `downloads` [LOW], `crash_reports` [MED], `ios_backups` [HIGH] | `trash` [MED], `caches` [LOW], `logs` [MED], `downloads` [LOW], `crash_reports` [MED], `apt` [MED] |
+| **System** | `trash` [MED], `caches` [LOW], `logs` [MED], `downloads` [SAFE] (report-only), `crash_reports` [MED], `ios_backups` [HIGH] | `trash` [MED], `caches` [LOW], `logs` [MED], `downloads` [SAFE] (report-only), `crash_reports` [MED], `apt` [MED] |
 | **Software** | `browser` [LOW], `dev` [MED], `xcode` [MED], `dev_caches` [MED] | `browser` [LOW], `dev` [MED], `dev_caches` [MED] |
 
 ### Fix
@@ -328,7 +328,7 @@ mdoctor/
 │   ├── trash.sh         # Trash cleanup
 │   ├── caches.sh        # User caches
 │   ├── logs.sh          # Old logs
-│   ├── downloads.sh     # Large files in Downloads
+│   ├── downloads.sh     # Large files in Downloads (report-only)
 │   ├── browser.sh       # Browser caches
 │   ├── dev.sh           # Developer tool caches
 │   ├── crash_reports.sh # Old crash/diagnostic reports

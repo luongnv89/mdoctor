@@ -39,7 +39,9 @@ mdoctor_context_init
 source "${SCRIPT_DIR}/cleanups/trash.sh"
 source "${SCRIPT_DIR}/cleanups/caches.sh"
 source "${SCRIPT_DIR}/cleanups/logs.sh"
-source "${SCRIPT_DIR}/cleanups/downloads.sh"
+# downloads is report-only (issue #112): not a destructive step, so the
+# engine neither sources it nor counts it in PROGRESS_TOTAL — it runs via
+# `mdoctor clean -m downloads` / `clean -i` instead.
 source "${SCRIPT_DIR}/cleanups/browser.sh"
 source "${SCRIPT_DIR}/cleanups/dev.sh"
 source "${SCRIPT_DIR}/cleanups/crash_reports.sh"
@@ -98,9 +100,9 @@ done
 
 PROGRESS_CURRENT=0
 if is_macos; then
-	PROGRESS_TOTAL=8 # trash, caches, logs, downloads, crash_reports, ios_backups, xcode, dev_caches
+	PROGRESS_TOTAL=7 # trash, caches, logs, crash_reports, ios_backups, xcode, dev_caches
 else
-	PROGRESS_TOTAL=7 # trash, caches, logs, downloads, crash_reports, dev_caches, apt
+	PROGRESS_TOTAL=6 # trash, caches, logs, crash_reports, dev_caches, apt
 fi
 
 # Alias for progress bar functions (they use STEP_CURRENT/STEP_TOTAL)
@@ -156,9 +158,9 @@ cleanup_force_preflight_summary() {
 	echo "${BOLD:-}${YELLOW:-}== Pre-flight Safety Summary (force mode) ==${RESET:-}"
 
 	if is_macos; then
-		echo "Modules touched: trash, caches, logs, downloads, crash_reports, ios_backups, xcode, dev_caches"
+		echo "Modules touched: trash, caches, logs, crash_reports, ios_backups, xcode, dev_caches"
 	else
-		echo "Modules touched: trash, caches, logs, downloads, crash_reports, dev_caches, apt"
+		echo "Modules touched: trash, caches, logs, crash_reports, dev_caches, apt"
 	fi
 	echo "Touched targets:"
 
@@ -205,22 +207,18 @@ cleanup_force_preflight_summary() {
 		done
 	fi
 
-	local logs_kb dl_kb
+	# downloads is report-only (issue #112): it never deletes, so the
+	# destructive pre-flight neither sizes nor names it.
+	local logs_kb
 	local log_dir
 	log_dir="$(platform_user_log_dir)"
 	logs_kb=$(preflight_find_kb "$log_dir" -type f -mtime "+${days}") || logs_kb=""
-	dl_kb=$(preflight_find_kb "${HOME}/Downloads" -type f -size +500M -mtime "+${days}") || dl_kb=""
-	total_kb=$((total_kb + ${logs_kb:-0} + ${dl_kb:-0}))
+	total_kb=$((total_kb + ${logs_kb:-0}))
 
 	if [ -n "$logs_kb" ]; then
 		printf "  - %-45s (~%s)\n" "${log_dir} (files older than ${days}d)" "$(human_readable_kb "$logs_kb")"
 	else
 		printf "  - %-45s (could not determine)\n" "${log_dir} (files older than ${days}d)"
-	fi
-	if [ -n "$dl_kb" ]; then
-		printf "  - %-45s (~%s)\n" "${HOME}/Downloads (>500MB, older than ${days}d)" "$(human_readable_kb "$dl_kb")"
-	else
-		printf "  - %-45s (could not determine)\n" "${HOME}/Downloads (>500MB, older than ${days}d)"
 	fi
 
 	# Platform-specific crash dirs
@@ -347,8 +345,8 @@ main() {
 	step "Cleaning old logs"
 	clean_logs || _cleanup_rc=$?
 
-	step "Scanning large files in Downloads"
-	clean_downloads_large_files || _cleanup_rc=$?
+	# Report-only modules never occupy a destructive step (issue #112):
+	# `downloads` runs via `mdoctor clean -m downloads` instead.
 
 	# New cleanup modules
 	step "Cleaning crash reports"
