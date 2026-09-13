@@ -638,6 +638,20 @@ is_dry_run() {
   esac
 }
 
+# cleanup_mode_name FORCE — the canonical cleanup mode label (issue
+# #106): "force" when the flag is truthy, "dry-run" otherwise. The CLI
+# names cleanup modes with exactly these two strings — the safe default
+# and the explicit destructive opt-in, the same words --help and the
+# pre-flight summaries use — so menus, banners and closing summaries can
+# never drift into a third spelling.
+cleanup_mode_name() {
+  if is_truthy "${1:-false}"; then
+    echo "force"
+  else
+    echo "dry-run"
+  fi
+}
+
 ########################################
 # SECURE TEMP FILES (Task 4.3)
 ########################################

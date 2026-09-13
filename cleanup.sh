@@ -5,9 +5,10 @@
 #
 # Default: DRY RUN (shows what would be deleted, nothing actually removed).
 # Usage:
-#   ./cleanup.sh           # dry run
-#   ./cleanup.sh --force   # actually delete
-#   ./cleanup.sh --debug   # dry run + structured debug diagnostics
+#   ./cleanup.sh            # dry run
+#   ./cleanup.sh --dry-run  # dry run (explicit; same as no flag)
+#   ./cleanup.sh --force    # actually delete
+#   ./cleanup.sh --debug    # dry run + structured debug diagnostics
 #
 
 set -euo pipefail
@@ -63,21 +64,29 @@ while [[ $# -gt 0 ]]; do
 			DRY_RUN=false
 			shift
 			;;
+		--dry-run|-n)
+			# Explicit form of the default (issue #106): accepted so the
+			# safe mode can be declared by name. Last flag wins — it
+			# cancels an earlier --force; a later --force overrides it.
+			DRY_RUN=true
+			shift
+			;;
 		--debug)
 			MDOCTOR_DEBUG=true
 			export MDOCTOR_DEBUG
 			shift
 			;;
 		--help|-h)
-			echo "Usage: ./cleanup.sh [--force] [--debug]"
+			echo "Usage: ./cleanup.sh [--dry-run|--force] [--debug]"
 			echo
-			echo "  --force, -f   Actually delete files (default is dry-run)"
-			echo "  --debug       Enable structured debug diagnostics"
+			echo "  --dry-run, -n   Preview only — the default; nothing is deleted"
+			echo "  --force, -f     Actually delete files (default is dry-run)"
+			echo "  --debug         Enable structured debug diagnostics"
 			exit 0
 			;;
 		*)
 			echo "Unknown option: $1" >&2
-			echo "Usage: ./cleanup.sh [--force] [--debug]" >&2
+			echo "Usage: ./cleanup.sh [--dry-run|--force] [--debug]" >&2
 			exit 1
 			;;
 	esac
@@ -257,6 +266,12 @@ cleanup_force_preflight_summary() {
 	fi
 
 	echo "  - docker system prune -af --volumes (size estimate: n/a) — ONLY with MDOCTOR_ALLOW_DOCKER_PRUNE=true; --volumes deletes named volumes (database data, not just caches)"
+
+	# Whitelist visibility (issue #106): the screen that enumerates paths
+	# about to be deleted names the one mechanism that protects a path.
+	echo
+	echo "Whitelist file: ${MDOCTOR_CLEANUP_WHITELIST_FILE:-${HOME}/.config/mdoctor/cleanup_whitelist}"
+	echo "  Paths listed there are never deleted — edit it to protect your own."
 	echo
 	echo "Estimated reclaim size: ~$(human_readable_kb "$total_kb")"
 	echo "${YELLOW:-}Note:${RESET:-} estimate is approximate and excludes dynamic command-based reclaim sizes."
@@ -296,7 +311,11 @@ main() {
 	local _dry_rc=0
 	is_dry_run || _dry_rc=$?
 
+	# Mode label (issue #106): every cleanup run opens and closes by
+	# naming the mode — dry-run (default/preview) or force (destructive).
+	local _run_mode="dry-run"
 	if [ "$_dry_rc" -eq 1 ]; then
+		_run_mode="force"
 		cleanup_force_preflight_summary
 		# Pre-flight-only early exit (Task 0.1): lets the force test assert
 		# on the pre-flight summary without executing any destructive step.
@@ -310,7 +329,7 @@ main() {
 		confirm_destructive_execution "full cleanup" || exit 1
 	fi
 
-	header "Starting cleanup (DRY_RUN=${DRY_RUN}, platform=$(platform_name))"
+	header "Starting cleanup (${_run_mode} mode, DRY_RUN=${DRY_RUN}, platform=$(platform_name))"
 
 	# Per-module accumulator (Task 9.3): a failing module must not abort its
 	# siblings under `set -e`, but partial failures propagate in the exit code.
@@ -383,12 +402,12 @@ main() {
 	if [ "$_cleanup_rc" -ne 0 ]; then
 		log "Cleanup finished with errors from one or more modules (code ${_cleanup_rc}: $(safety_error_name "$_cleanup_rc"))."
 	else
-		log "Cleanup finished."
+		log "Cleanup finished (${_run_mode} mode)."
 	fi
 	log "$(disk_usage)"
 
 	if [ "$_dry_rc" -ne 1 ]; then
-		log "Estimated space that COULD be freed: ${freed_hr} (dry run – no actual changes made)."
+		log "Estimated space that COULD be freed: ${freed_hr} (dry-run mode – no actual changes made)."
 	else
 		log "Estimated space freed: ${freed_hr}."
 	fi

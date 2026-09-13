@@ -274,6 +274,11 @@ cmd_clean_preflight_summary_module() {
       ;;
   esac
 
+  # Whitelist visibility (issue #106): the screen that enumerates paths
+  # about to be deleted names the one mechanism that protects a path.
+  echo
+  echo "Whitelist file: ${MDOCTOR_CLEANUP_WHITELIST_FILE:-${HOME}/.config/mdoctor/cleanup_whitelist}"
+  echo "  Paths listed there are never deleted — edit it to protect your own."
   echo
   echo "Estimated reclaim size: ~$(human_readable_kb "$total_kb")"
   echo "${YELLOW}Note:${RESET} estimate is approximate and excludes some command-based cleanup results."
@@ -407,6 +412,25 @@ cmd_check() {
     # Stop spinner after single-module check
     progress_stop
 
+    # Summary counts (issue #106): computed once and shared by the --json
+    # and human-readable renderers below, so the single-module path ends
+    # with the same score/counts the full audit emits.
+    local _chk_penalty _chk_score _chk_rating
+    _chk_penalty=$(( WARN_COUNT * 4 + FAIL_COUNT * 8 ))
+    _chk_score=$(( 100 - _chk_penalty ))
+    if (( _chk_score < 0 )); then
+      _chk_score=0
+    fi
+    if (( _chk_score >= 90 )); then
+      _chk_rating="Excellent"
+    elif (( _chk_score >= 75 )); then
+      _chk_rating="Good"
+    elif (( _chk_score >= 50 )); then
+      _chk_rating="Needs attention"
+    else
+      _chk_rating="Critical – fix issues ASAP"
+    fi
+
     # Single-module --json: restore stdout, emit the same document shape
     # as the full audit, and return before the human-readable summary so
     # the payload parses as valid JSON on its own (issues #90, #183).
@@ -420,26 +444,17 @@ cmd_check() {
       for _json_action in "${ACTIONS[@]}"; do
         json_add_action "$_json_action"
       done
-      local _json_penalty _json_score _json_rating
-      _json_penalty=$(( WARN_COUNT * 4 + FAIL_COUNT * 8 ))
-      _json_score=$(( 100 - _json_penalty ))
-      if (( _json_score < 0 )); then
-        _json_score=0
-      fi
-      if (( _json_score >= 90 )); then
-        _json_rating="Excellent"
-      elif (( _json_score >= 75 )); then
-        _json_rating="Good"
-      elif (( _json_score >= 50 )); then
-        _json_rating="Needs attention"
-      else
-        _json_rating="Critical – fix issues ASAP"
-      fi
-      json_build_output "$_json_score" "$_json_rating" "$WARN_COUNT" "$FAIL_COUNT"
+      json_build_output "$_chk_score" "$_chk_rating" "$WARN_COUNT" "$FAIL_COUNT"
       return "$_check_rc"
     fi
 
-    # Show summary for single module
+    # Summary for single module — same counts the full run prints
+    # (issue #106), then the actions list, then the same terminator so
+    # the user can tell the run finished rather than was cut off.
+    echo
+    echo "Health score: ${BOLD}${_chk_score}/100${RESET} (${_chk_rating})"
+    echo "Warnings: ${WARN_COUNT}, Failures: ${FAIL_COUNT}"
+
     if ((${#ACTIONS[@]} > 0)); then
       echo
       echo "${BOLD}Actions:${RESET}"
@@ -449,6 +464,8 @@ cmd_check() {
         i=$((i + 1))
       done
     fi
+    echo
+    echo "${BOLD}Done.${RESET}"
     return "$_check_rc"
   else
     # Run full doctor, propagating its exit code like cmd_fix does.
@@ -476,6 +493,8 @@ cmd_clean() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --force|-f) force=true; shift ;;
+      # Issue #106: --dry-run/-n explicitly affirms the default; last flag wins.
+      --dry-run|-n) force=false; shift ;;
       --module|-m)
         # Issue #105: same arity guard as cmd_check — name the flag and
         # reuse the unknown-module error's registry-derived list.
@@ -516,14 +535,12 @@ cmd_clean() {
   fi
 
   # Full cleanup (MDOCTOR_DEBUG set by the shared parser when --debug).
+  # MDOCTOR_ASSUME_YES is forwarded with its unset-default spelled out; it
+  # only matters to the confirmation gate on the --force path anyway.
   local _args=()
   is_truthy "$force" && _args+=(--force)
   is_truthy "${MDOCTOR_DEBUG:-false}" && _args+=(--debug)
-  if is_truthy "$force"; then
-    MDOCTOR_ASSUME_YES="${MDOCTOR_ASSUME_YES:-false}" MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" ${_args[@]+"${_args[@]}"}
-  else
-    MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" ${_args[@]+"${_args[@]}"}
-  fi
+  MDOCTOR_ASSUME_YES="${MDOCTOR_ASSUME_YES:-false}" MDOCTOR_DEBUG="${MDOCTOR_DEBUG}" bash "${MDOCTOR_DIR}/cleanup.sh" ${_args[@]+"${_args[@]}"}
 }
 
 ########################################
@@ -1187,6 +1204,10 @@ cmd_help() {
   echo
   echo "${BOLD}Cleanup Modules${RESET} (risk-rated by blast radius):"
   registry_help_group cleanup
+  echo
+  # Issue #106: the whitelist is the only path-protection mechanism —
+  # name it where cleanup is introduced, not just in the env-var list.
+  echo "Whitelist file: ${MDOCTOR_CLEANUP_WHITELIST_FILE:-~/.config/mdoctor/cleanup_whitelist} — listed paths are never deleted"
   echo
   echo "${BOLD}Fix Targets${RESET}:"
   registry_help_group fix
