@@ -283,9 +283,9 @@ perf_probe_mem_pressure() {
             MemAvailable:) mem_avail_kb="$_mv" ;;
           esac
         done <<< "$_PERF_MEMINFO"
-        if [ -n "$mem_total_kb" ] && [ -n "$mem_avail_kb" ] \
-          && (( mem_total_kb > 0 )); then
-          avail_pct=$(( mem_avail_kb * 100 / mem_total_kb ))
+        if is_uint "$mem_total_kb" && is_uint "$mem_avail_kb" \
+          && (( 10#$mem_total_kb > 0 )); then
+          avail_pct=$(( 10#$mem_avail_kb * 100 / 10#$mem_total_kb ))
           _PERF_MEMPRESSURE_LIVE="linux ${avail_pct}"
         fi
       fi
@@ -344,8 +344,8 @@ perf_probe_swap() {
             SwapFree:)  swap_free_kb="$_mv" ;;
           esac
         done <<< "$_PERF_MEMINFO"
-        if [ -n "$swap_total_kb" ] && [ -n "$swap_free_kb" ]; then
-          swap_used_kb=$((swap_total_kb - swap_free_kb))
+        if is_uint "$swap_total_kb" && is_uint "$swap_free_kb"; then
+          swap_used_kb=$((10#$swap_total_kb - 10#$swap_free_kb))
           _PERF_SWAP_LIVE="linux ${swap_used_kb} ${swap_total_kb}"
         fi
       fi

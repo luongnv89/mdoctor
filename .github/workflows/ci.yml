@@ -145,7 +145,10 @@ jobs:
       - name: Run shell regression harness
         run: |
           set -o pipefail
-          timeout 300 ./tests/run.sh 2>&1 | tee /tmp/baseline-green.txt
+          # 600s headroom under the 15-min job cap — shared-runner
+          # variance put the growing suite within ~10s of the old 300s
+          # budget (run 34774379868 timed out mid-file, no test failed).
+          timeout 600 ./tests/run.sh 2>&1 | tee /tmp/baseline-green.txt
 
       - name: Assert no external state destroyed (Task 1.7)
         run: |
@@ -246,7 +249,8 @@ jobs:
       - name: Run test suite under Bash 3.2 (output-asserted)
         run: |
           set +e
-          timeout 300 bash ./tests/run.sh > /tmp/bats32.log 2>&1
+          # Same 600s headroom as the Ubuntu lane (see test-linux).
+          timeout 600 bash ./tests/run.sh > /tmp/bats32.log 2>&1
           rc=$?
           cat /tmp/bats32.log
           echo "suite exit: $rc"

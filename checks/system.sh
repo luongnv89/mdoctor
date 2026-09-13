@@ -45,7 +45,9 @@ check_system() {
     # leaves load empty, exactly like awk on no input.
     _la=$(sysctl -n vm.loadavg 2>/dev/null || true)
     read -r _lrest _l1 _l5 _l15 _ <<< "$_la"
-    if [ -n "$_la" ]; then
+    # Gate on the parsed fields, not the raw string (issue #111): a
+    # non-empty but malformed "{ }" would otherwise print ",,".
+    if [ -n "$_l1" ] && [ -n "$_l5" ] && [ -n "$_l15" ]; then
       load="${_l1},${_l5},${_l15}"
     else
       load=""
@@ -56,7 +58,8 @@ check_system() {
     if perf_capture_loadavg; then
       read -r _l1 _l5 _l15 _lrest <<< "$_PERF_LOADAVG"
     fi
-    if [ -n "$_l1" ]; then
+    # Same field-presence gate as the macOS arm (issue #111).
+    if [ -n "$_l1" ] && [ -n "$_l5" ] && [ -n "$_l15" ]; then
       load="${_l1},${_l5},${_l15}"
     else
       load=""
@@ -72,7 +75,11 @@ check_system() {
     if command -v vm_stat >/dev/null 2>&1; then
       local page_size active_pages="" inactive_pages="" wired_pages=""
       local _vm_out _vml _vv
-      page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096)
+      page_size=$(sysctl -n hw.pagesize 2>/dev/null || true)
+      # Invalid/missing page size falls back to the named default —
+      # an empty value would silently coerce to 0 in the used-pages
+      # arithmetic below (issue #111).
+      is_uint "$page_size" || page_size="$MDOCTOR_PAGE_SIZE_FALLBACK"
       # Shared vm_stat snapshot — captured once per process (issue #100).
       perf_capture_vm_stat || true
       _vm_out="${_PERF_VM_STAT:-}"
@@ -96,11 +103,22 @@ check_system() {
       local total_kb used_kb free_kb
       local total_bytes
       total_bytes=$(sysctl -n hw.memsize 2>/dev/null || true)
-      total_kb=$(( ${total_bytes:-0} / 1024 ))
-      used_kb=$(( (active_pages + inactive_pages + wired_pages) * page_size / 1024 ))
-      free_kb=$(( total_kb - used_kb ))
-
-      status_info "Memory total: $(kb_to_human "$total_kb"), used: $(kb_to_human "$used_kb"), free: $(kb_to_human "$free_kb")"
+      # Every external reading is validated before arithmetic
+      # (issue #111): an empty or non-numeric sysctl/vm_stat field used
+      # to coerce to 0 and print a healthy "0 KB used" summary — now it
+      # reports the measurement failure honestly.
+      if is_uint "$total_bytes" && is_uint "$active_pages" \
+        && is_uint "$inactive_pages" && is_uint "$wired_pages"; then
+        total_kb=$(( 10#$total_bytes / 1024 ))
+        # page_size is is_uint-clean above but still needs 10# — a
+        # zero-padded reading like "04096" would otherwise be parsed
+        # as octal by (( )) and silently halve the used-memory figure.
+        used_kb=$(( (10#$active_pages + 10#$inactive_pages + 10#$wired_pages) * 10#$page_size / 1024 ))
+        free_kb=$(( total_kb - used_kb ))
+        status_info "Memory total: $(kb_to_human "$total_kb"), used: $(kb_to_human "$used_kb"), free: $(kb_to_human "$free_kb")"
+      else
+        status_warn "Memory usage: could not determine"
+      fi
     fi
   else
     # Linux: parse the shared /proc/meminfo snapshot — one read per
@@ -115,9 +133,17 @@ check_system() {
           MemAvailable:) mem_avail_kb="$_mv" ;;
         esac
       done <<< "$_PERF_MEMINFO"
-      mem_used_kb=$(( ${mem_total_kb:-0} - ${mem_avail_kb:-0} ))
-      local mem_free_kb=$((mem_avail_kb))
-      status_info "Memory total: $(kb_to_human "$mem_total_kb"), used: $(kb_to_human "$mem_used_kb"), free: $(kb_to_human "$mem_free_kb")"
+      # Same validation contract (issue #111): unparseable fields report
+      # "could not determine" rather than a zeroed memory summary.
+      if is_uint "$mem_total_kb" && is_uint "$mem_avail_kb"; then
+        mem_used_kb=$(( 10#$mem_total_kb - 10#$mem_avail_kb ))
+        local mem_free_kb=$((10#$mem_avail_kb))
+        status_info "Memory total: $(kb_to_human "$mem_total_kb"), used: $(kb_to_human "$mem_used_kb"), free: $(kb_to_human "$mem_free_kb")"
+      else
+        status_warn "Memory usage: could not determine"
+      fi
+    else
+      status_warn "Memory usage: could not determine"
     fi
   fi
 }

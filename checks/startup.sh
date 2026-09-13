@@ -95,11 +95,17 @@ check_startup() {
       # (issue #98).
       local enabled_count=0 _sc_out _scl _sc_rc=0
       # systemctl calls are dbus IPC — timeout-capped with a distinct
-      # "timed out" report (issue #101); a capped-out probe never prints
-      # a bogus "0 services" line.
+      # "timed out" report (issue #101). Reachability is also probed per
+      # call (issue #111): a non-zero rc that is not 124 means systemd
+      # never answered, which must report "could not determine" — never
+      # a fabricated "0 services" or a bogus "No failed services".
       tcap "$MDOCTOR_CMD_TIMEOUT_S" "Enabled-services probe" systemctl list-unit-files --state=enabled --type=service --no-pager --no-legend || _sc_rc=$?
       _sc_out="$_TCAP_OUT"
-      if [ "$_sc_rc" -ne 124 ]; then
+      if [ "$_sc_rc" -eq 124 ]; then
+        :   # tcap already printed the distinct timeout line
+      elif [ "$_sc_rc" -ne 0 ]; then
+        status_info "Enabled systemd services: could not determine (systemd unreachable)"
+      else
         while IFS= read -r _scl; do
           [ -n "$_scl" ] && enabled_count=$((enabled_count + 1))
         done <<< "$_sc_out"
@@ -111,7 +117,11 @@ check_startup() {
       _sc_rc=0
       tcap "$MDOCTOR_CMD_TIMEOUT_S" "Failed-services probe" systemctl --failed --no-pager --no-legend || _sc_rc=$?
       _sc_out="$_TCAP_OUT"
-      if [ "$_sc_rc" -ne 124 ]; then
+      if [ "$_sc_rc" -eq 124 ]; then
+        :   # tcap already printed the distinct timeout line
+      elif [ "$_sc_rc" -ne 0 ]; then
+        status_info "Failed systemd services: could not determine (systemd unreachable)"
+      else
         while IFS= read -r _scl; do
           [ -n "$_scl" ] && failed_count=$((failed_count + 1))
         done <<< "$_sc_out"
@@ -128,7 +138,11 @@ check_startup() {
       _sc_rc=0
       tcap "$MDOCTOR_CMD_TIMEOUT_S" "User-services probe" systemctl --user list-unit-files --state=enabled --type=service --no-pager --no-legend || _sc_rc=$?
       _sc_out="$_TCAP_OUT"
-      if [ "$_sc_rc" -ne 124 ]; then
+      if [ "$_sc_rc" -eq 124 ]; then
+        :   # tcap already printed the distinct timeout line
+      elif [ "$_sc_rc" -ne 0 ]; then
+        status_info "User-level enabled services: could not determine (systemd unreachable)"
+      else
         while IFS= read -r _scl; do
           [ -n "$_scl" ] && user_enabled=$((user_enabled + 1))
         done <<< "$_sc_out"

@@ -57,26 +57,38 @@ check_performance() {
     local pressure_rec avail_pct _pkey
     if pressure_rec=$(perf_probe_mem_pressure 2>/dev/null); then
       read -r _pkey avail_pct _ <<< "$pressure_rec"
-      if [ -n "$avail_pct" ]; then
-        if (( avail_pct < 10 )); then
+      # is_uint before the (( )) bands (issue #111): a non-numeric value
+      # used to coerce to 0 and read as "critical".
+      if is_uint "$avail_pct"; then
+        if (( 10#$avail_pct < 10 )); then
           status_fail "Memory pressure: critical (${avail_pct}% available)"
           add_action "Memory pressure is critical. Close applications immediately."
-        elif (( avail_pct < 25 )); then
+        elif (( 10#$avail_pct < 25 )); then
           status_warn "Memory pressure: elevated (${avail_pct}% available)"
           add_action "Memory pressure is elevated. Close unused applications to free RAM."
         else
           status_ok "Memory pressure: normal (${avail_pct}% available)"
         fi
+      else
+        status_warn "Memory pressure: could not determine"
       fi
+    else
+      status_warn "Memory pressure: could not determine"
     fi
 
     # Swap (sampling: lib/perf_probes.sh — "linux <used_kb> <total_kb>")
     local swap_rec swap_total_kb swap_used_kb _skey
     if swap_rec=$(perf_probe_swap 2>/dev/null); then
       read -r _skey swap_used_kb swap_total_kb <<< "$swap_rec"
-      if (( ${swap_total_kb:-0} > 0 )); then
-        status_info "Swap: $(kb_to_human "$swap_used_kb") used / $(kb_to_human "$swap_total_kb") total"
+      if is_uint "$swap_used_kb" && is_uint "$swap_total_kb"; then
+        if (( 10#$swap_total_kb > 0 )); then
+          status_info "Swap: $(kb_to_human "$swap_used_kb") used / $(kb_to_human "$swap_total_kb") total"
+        fi
+      else
+        status_warn "Swap: could not determine"
       fi
+    else
+      status_warn "Swap: could not determine"
     fi
   fi
 
@@ -115,7 +127,7 @@ check_performance() {
     status_info "Top memory processes:"
     local pid rss_kb name mem_hr
     while read -r pid rss_kb name; do
-      if [ -n "$name" ] && [ -n "$rss_kb" ] && (( rss_kb > 0 )); then
+      if [ -n "$name" ] && is_uint "$rss_kb" && (( 10#$rss_kb > 0 )); then
         mem_hr=$(human_readable_kb "$rss_kb")
         status_info "  PID ${pid}: ${mem_hr} — ${name}"
       fi
@@ -169,7 +181,13 @@ check_performance() {
   local probe_load cores load1
   if probe_load=$(perf_probe_load 2>/dev/null); then
     read -r load1 cores _ <<< "$probe_load"
-    if [ -n "$load1" ] && [ -n "$cores" ]; then
+    # Validate before arithmetic (issue #111): a malformed load string or
+    # a non-numeric core count must not reach the threshold math below —
+    # it would coerce to 0 and report a bogus "within normal range".
+    local _load_ok=1
+    case "$load1" in ''|.|*[!0-9.]*|*.*.*) _load_ok=0 ;; esac
+    is_uint "$cores" || _load_ok=0
+    if [ "$_load_ok" -eq 1 ]; then
       local load_int
       # trunc(load1*100) via string decimal shift — the retired awk
       # printed %d (truncation), so hundredths come from concatenation,
@@ -179,13 +197,17 @@ check_performance() {
       _lf="${_lf%%[!0-9]*}00"
       case "$_li" in ""|*[!0-9]*) _li=0 ;; esac
       load_int=$((10#${_li}${_lf:0:2}))
-      local threshold=$((cores * 100))
+      local threshold=$((10#$cores * 100))
       if (( load_int > threshold )); then
         status_warn "Load average (${load1}) exceeds CPU core count (${cores})"
         add_action "System load is high. Check running processes with 'top' or 'Activity Monitor'."
       else
         status_ok "Load average (${load1}) within normal range for ${cores} cores."
       fi
+    else
+      status_warn "Load average: could not determine"
     fi
+  else
+    status_warn "Load average: could not determine"
   fi
 }

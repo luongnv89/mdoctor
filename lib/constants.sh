@@ -52,6 +52,19 @@ is_truthy() {
   esac
 }
 
+# is_uint VALUE — the single unsigned-integer gate (issue #111). Every
+# numeric reading taken from an external command passes here before any
+# arithmetic: an empty or non-numeric value must never reach (( )), where
+# it silently coerces to 0 and a failed probe reports a healthy zero.
+# rc 0 iff VALUE is non-empty and all digits (^[0-9]+$). For signed
+# readings validate "${v#-}" instead (one leading minus stripped).
+is_uint() {
+  case "${1-}" in
+    ""|*[!0-9]*) return 1 ;;
+  esac
+  return 0
+}
+
 ########################################
 # TERMINAL CAPABILITIES (issue #102)
 ########################################
@@ -338,3 +351,13 @@ export MDOCTOR_BENCH_DIR="${MDOCTOR_BENCH_DIR:-}"
 # Overridable so tests can stage a fixture tree instead of touching real
 # /sys/class/power_supply.
 export MDOCTOR_POWER_SUPPLY_ROOT="${MDOCTOR_POWER_SUPPLY_ROOT:-/sys/class/power_supply}"
+
+# sysfs thermal root the Linux temperature probe reads (issue #111).
+# Overridable so tests can stage a fixture tree instead of touching real
+# /sys/class/thermal.
+export MDOCTOR_THERMAL_ROOT="${MDOCTOR_THERMAL_ROOT:-/sys/class/thermal}"
+
+# os-release file sourced during Linux platform detection (issue #111).
+# Overridable so tests can stage a fixture file instead of reading the
+# host's real /etc/os-release.
+export MDOCTOR_OS_RELEASE="${MDOCTOR_OS_RELEASE:-/etc/os-release}"
