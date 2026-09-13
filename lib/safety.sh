@@ -297,6 +297,7 @@ _mdoctor_allowed_deletion_roots_list() {
     "/tmp"
     "/var/tmp"
     "/var/crash"
+    "/var/lib/systemd/coredump"
     "$home/.Trash"
     "$home/.cache"
     "$home/.npm"
@@ -376,8 +377,10 @@ is_protected_deletion_path() {
   # NOTE: /Library/Logs/DiagnosticReports is deliberately NOT carved out
   # (Task 0.4 acceptance): system-wide diagnostic reports are outside the
   # user-cleanup scope, so macOS crash cleanup covers the user domain only.
+  # /var/lib/systemd/coredump joined the carve-outs with issue #109 — the
+  # systemd-coredump crash path the Linux crash_reports module targets.
   case "$path" in
-    /var/crash|/var/crash/*|/var/tmp|/var/tmp/*)
+    /var/crash|/var/crash/*|/var/tmp|/var/tmp/*|/var/lib/systemd/coredump|/var/lib/systemd/coredump/*)
       return 1
       ;;
   esac

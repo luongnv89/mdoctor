@@ -39,7 +39,7 @@ Single source of truth: `_mdoctor_allowed_deletion_roots()` in
 function if they disagree — the code wins):
 
 - Temp: `${TMPDIR:-/tmp}`, `/tmp`, `/var/tmp`
-- Crash intake: `/var/crash`
+- Crash intake: `/var/crash`, `/var/lib/systemd/coredump`
 - macOS Trash / caches / logs / developer data: `~/.Trash`,
   `~/Library/Caches`, `~/Library/Logs`, `~/Library/Developer`,
   `~/Library/Application Support/MobileSync`
@@ -182,7 +182,7 @@ If you suspect an unwanted cleanup:
 | Trash location | `~/.Trash` | `~/.local/share/Trash/files` |
 | User cache dir | `~/Library/Caches` | `~/.cache` |
 | User log dir | `~/Library/Logs` | `~/.local/share/mdoctor` |
-| Crash reports | `~/Library/Logs/DiagnosticReports` | `/var/crash`, `~/.local/share/apport` |
+| Crash reports | `~/Library/Logs/DiagnosticReports` | `/var/crash` (apport), `~/.local/share/apport`, `/var/lib/systemd/coredump` |
 | Protected paths | SIP/read-only system volume | `/boot`, `/proc`, `/sys`, `/dev`, SELinux |
 | Config dir | `~/.config/mdoctor/` | `~/.config/mdoctor/` (same) |
 

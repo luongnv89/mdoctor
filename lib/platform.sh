@@ -137,7 +137,21 @@ platform_trash_dir() {
   fi
 }
 
-# Platform-aware crash reports directories (prints one per line)
+# Platform-aware trash *metadata* directory (issue #109). The
+# freedesktop.org Trash spec pairs every files/<name> with
+# info/<name>.trashinfo — emptying only files/ leaves phantom entries in
+# the desktop trash UI. macOS ~/.Trash has no metadata dir (prints
+# nothing).
+platform_trash_info_dir() {
+  if is_linux; then
+    echo "${HOME}/.local/share/Trash/info"
+  fi
+}
+
+# Platform-aware crash reports directories (prints one per line).
+# Linux covers both collectors (issue #109): apport drops *.crash files
+# in /var/crash (and the user mirror under ~/.local/share/apport);
+# systemd-coredump writes core.* files under /var/lib/systemd/coredump.
 platform_crash_dirs() {
   if is_macos; then
     echo "${HOME}/Library/Logs/DiagnosticReports"
@@ -145,5 +159,27 @@ platform_crash_dirs() {
   else
     echo "/var/crash"
     echo "${HOME}/.local/share/apport"
+    echo "/var/lib/systemd/coredump"
   fi
+}
+
+# platform_crash_name_patterns DIR — the `find -name` patterns (one per
+# line) matching crash artifacts in DIR for the running platform
+# (issue #109). macOS keeps the historical .crash/.diag/.ips set; on
+# Linux the systemd-coredump dir holds core.<exe>.<uid>.… files while
+# apport paths hold *.crash.
+platform_crash_name_patterns() {
+  local dir="${1-}"
+  if is_macos; then
+    printf '%s\n' "*.crash" "*.diag" "*.ips"
+    return 0
+  fi
+  case "$dir" in
+    */systemd/coredump|*/systemd/coredump/)
+      printf '%s\n' "core.*"
+      ;;
+    *)
+      printf '%s\n' "*.crash" "core.*" "*.core"
+      ;;
+  esac
 }

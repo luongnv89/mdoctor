@@ -124,9 +124,13 @@ teardown_file() {
     done
     ! grep -qw apt "$TMPHOME/all_lists.txt" || fail "Linux-only module 'apt' in help/error output"
   else
-    for m in battery bluetooth usb homebrew ios_backups xcode; do
+    # battery became cross-platform in issue #109 (self-gated: sysfs on
+    # Linux) — only bluetooth/usb/homebrew/ios_backups/xcode stay
+    # macOS-only.
+    for m in bluetooth usb homebrew ios_backups xcode; do
       ! grep -qw "$m" "$TMPHOME/all_lists.txt" || fail "macOS-only module '$m' in help/error output"
     done
+    grep -qw battery "$TMPHOME/all_lists.txt" || fail "expected cross-platform module 'battery' in help/error output"
     grep -qw apt "$TMPHOME/all_lists.txt" || fail "expected Linux module 'apt' in help/error output"
   fi
 }

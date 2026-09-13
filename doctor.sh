@@ -33,9 +33,9 @@ source "${SCRIPT_DIR}/lib/history.sh"
 mdoctor_context_init
 
 # Source check modules — Hardware
-if is_macos; then
-  source "${SCRIPT_DIR}/checks/battery.sh"
-fi
+# battery is sourced unconditionally since issue #109 — the module
+# self-gates (pmset/ioreg on macOS, sysfs power_supply on Linux).
+source "${SCRIPT_DIR}/checks/battery.sh"
 source "${SCRIPT_DIR}/checks/hardware.sh"
 if is_macos; then
   source "${SCRIPT_DIR}/checks/bluetooth.sh"
@@ -131,14 +131,15 @@ main() {
   md_append "- This script is read-only: it does **not** modify your system."
   echo
 
-  # Hardware checks
+  # Hardware checks — battery runs on every platform since issue #109
+  # (the module self-gates: pmset/ioreg on macOS, sysfs on Linux).
   if is_macos; then
     debug_log "doctor.sh phase=hardware checks=4"
-    _set_check_context battery
-    check_battery
   else
-    debug_log "doctor.sh phase=hardware checks=1"
+    debug_log "doctor.sh phase=hardware checks=2"
   fi
+  _set_check_context battery
+  check_battery
   _set_check_context hardware
   check_hardware
   if is_macos; then
