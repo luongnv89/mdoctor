@@ -233,7 +233,10 @@ _bench_run() {
     fail "a cached read ran despite no cache bypass: $(cat "$TMPHOME/t9.log")"
   fi
   assert_contains "$TMPHOME/t9.out" "skipped"
-  # exactly the write's two MB/s renderings (section line + summary row)
-  [ "$(grep -c 'MB/s' "$TMPHOME/t9.out")" -eq 2 ] ||
-    fail "expected write-only MB/s output: $(cat "$TMPHOME/t9.out")"
+  # no read number may be printed (a page-cache hit is not disk I/O)
+  if grep -qE 'Read \(256 MB\):.*MB/s' "$TMPHOME/t9.out"; then
+    fail "read number reported without a cache bypass: $(cat "$TMPHOME/t9.out")"
+  fi
+  grep -q 'Disk Read.*skipped' "$TMPHOME/t9.out" ||
+    fail "read row did not render skipped: $(cat "$TMPHOME/t9.out")"
 }
