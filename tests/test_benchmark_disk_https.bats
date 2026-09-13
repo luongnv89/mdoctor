@@ -51,11 +51,18 @@ exit 0
 EOF
 
   # dd — records argv; creates a tiny of= target like a real truncating
-  # write, never the real payload.
+  # write, never the real payload. STUB_DD_NOCONV/STUB_DD_NOIFLAG make
+  # the stub reject conv=*/iflag=* argv like a dd lacking the feature.
   cat >"$STUBBIN/dd" <<'EOF'
 #!/usr/bin/env bash
 if [ -n "${MDOCTOR_STUB_LOG:-}" ]; then
   printf 'dd %s\n' "$*" >>"$MDOCTOR_STUB_LOG"
+fi
+if [ -n "${STUB_DD_NOCONV:-}" ]; then
+  case "$*" in *conv=*) exit 1 ;; esac
+fi
+if [ -n "${STUB_DD_NOIFLAG:-}" ]; then
+  case "$*" in *iflag=*) exit 1 ;; esac
 fi
 _out=""
 for _a in "$@"; do
@@ -83,7 +90,13 @@ if [ -n "${MDOCTOR_STUB_LOG:-}" ]; then
 fi
 exit 0
 EOF
-  chmod +x "$STUBBIN/df" "$STUBBIN/mount" "$STUBBIN/dd" "$STUBBIN/nslookup" "$STUBBIN/curl"
+
+  # purge — the macOS cache-drop; STUB_PURGE_RC controls its exit.
+  cat >"$STUBBIN/purge" <<'EOF'
+#!/usr/bin/env bash
+exit "${STUB_PURGE_RC:-0}"
+EOF
+  chmod +x "$STUBBIN/df" "$STUBBIN/mount" "$STUBBIN/dd" "$STUBBIN/nslookup" "$STUBBIN/curl" "$STUBBIN/purge"
 }
 
 teardown_file() {
@@ -193,4 +206,34 @@ _bench_run() {
     fail "nslookup did not resolve the override host: $(cat "$TMPHOME/t7.log")"
   grep -q 'curl .*https://bench\.internal' "$TMPHOME/t7.log" ||
     fail "curl did not fetch the override host over HTTPS: $(cat "$TMPHOME/t7.log")"
+}
+
+@test "disk benchmark refuses to report when dd cannot flush to media" {
+  # A dd with no conv=fdatasync/fsync/osync cannot commit the payload:
+  # the write number would be a page-cache write. Fail closed.
+  _bench_run ext4 / "$TMPHOME/t8.out" "$TMPHOME/t8.log" STUB_DD_NOCONV=1
+  assert_contains "$TMPHOME/t8.out" "skipped"
+  if grep -q 'MB/s' "$TMPHOME/t8.out"; then
+    fail "disk MB/s numbers reported although dd cannot sync to media: $(cat "$TMPHOME/t8.out")"
+  fi
+  if grep -q 'of=.*bench_disk' "$TMPHOME/t8.log"; then
+    fail "dd wrote the payload file despite the no-flush refusal"
+  fi
+}
+
+@test "disk read is skipped when the page cache cannot be bypassed" {
+  # No iflag=direct and (on macOS) a failing purge => a plain read would
+  # be a page-cache hit on the just-written file. Write still reports.
+  _bench_run ext4 / "$TMPHOME/t9.out" "$TMPHOME/t9.log" STUB_DD_NOIFLAG=1 STUB_PURGE_RC=1
+  grep -q 'of=[^ ]*bench_disk .*conv=fdatasync' "$TMPHOME/t9.log" ||
+    fail "write pass did not run with conv=fdatasync: $(cat "$TMPHOME/t9.log")"
+  # Only the iflag=direct probe may read bench_disk — never a plain
+  # (cache-hit) read.
+  if grep 'if=[^ ]*bench_disk of=/dev/null' "$TMPHOME/t9.log" | grep -vq 'iflag=direct'; then
+    fail "a cached read ran despite no cache bypass: $(cat "$TMPHOME/t9.log")"
+  fi
+  assert_contains "$TMPHOME/t9.out" "skipped"
+  # exactly the write's two MB/s renderings (section line + summary row)
+  [ "$(grep -c 'MB/s' "$TMPHOME/t9.out")" -eq 2 ] ||
+    fail "expected write-only MB/s output: $(cat "$TMPHOME/t9.out")"
 }

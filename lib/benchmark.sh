@@ -116,7 +116,8 @@ _bench_fs_type() {
 # traversal → no control characters → canonical → not a protected
 # deletion path → existing writable dir); the dir returned is a
 # `mdoctor-bench.*` mktemp child of that validated base, canonicalized
-# again so the removal target is provably the dir this process created.
+# again and re-checked for containment so both the write target and the
+# removal target are provably the dir this process created.
 _bench_scratch_dir() {
   local base="${MDOCTOR_BENCH_DIR:-}"
   if [ -z "$base" ]; then
@@ -148,6 +149,18 @@ _bench_scratch_dir() {
   dir="$(mktemp -d "${canon%/}/mdoctor-bench.XXXXXX" 2>/dev/null)" || return 1
   _canonical_path "$dir" canon_dir
   _normalize_path "$canon_dir" canon_dir
+  # Containment proof: the canonical result must still be the
+  # mktemp-shaped child of the validated base — if a hostile swap
+  # (symlink race on a shared override dir) pointed it elsewhere, the
+  # write must not follow. The `mdoctor-bench.*` name guard protects
+  # removal; this one protects creation (issue #103).
+  case "$canon_dir" in
+    "${canon%/}/mdoctor-bench."*) ;;
+    *)
+      rm -rf -- "$dir" 2>/dev/null || true
+      return 1
+      ;;
+  esac
   printf '%s\n' "$canon_dir"
 }
 
@@ -210,7 +223,7 @@ run_benchmark() {
   # a number that might be RAM bandwidth is never presented as disk I/O.
   local tmp_dir=""
   tmp_dir="$(_bench_scratch_dir)"
-  local disk_skip=""
+  local disk_skip="" conv=""
   if [ -n "$tmp_dir" ]; then
     _BENCH_TMP_DIR="$tmp_dir"
     # Ensure cleanup via the ordered exit-hook list (Task 4.7): a bare
@@ -227,6 +240,16 @@ run_benchmark() {
         disk_skip="filesystem type of ${tmp_dir} could not be determined — results would be unverifiable"
         ;;
     esac
+    if [ -z "$disk_skip" ]; then
+      # A dd with no end-of-write flush conv (fdatasync/fsync/osync)
+      # cannot commit the payload to media — the write number would be
+      # a page-cache write reported as disk I/O. Same fail-closed rule
+      # as the fs-type gate: unverifiable numbers are never reported.
+      conv="$(_bench_dd_conv_sync "$tmp_dir")"
+      if [ -z "$conv" ]; then
+        disk_skip="dd cannot flush output to media (no conv=fdatasync/fsync/osync support) — write would be unverifiable"
+      fi
+    fi
   else
     disk_skip="no writable scratch directory (see MDOCTOR_BENCH_DIR)"
   fi
@@ -245,42 +268,52 @@ run_benchmark() {
     local disk_file="${tmp_dir}/bench_disk"
 
     # Write test — dd flushes the file to media itself via the probed
-    # conv (fdatasync/fsync/osync); no system-wide `sync` is run.
-    local conv=""
-    conv="$(_bench_dd_conv_sync "$tmp_dir")"
+    # conv (fdatasync/fsync/osync); no system-wide `sync` is run. conv
+    # is provably non-empty here: a dd without one refused the section
+    # above.
     w_start=$(_bench_time)
-    if [ -n "$conv" ]; then
-      dd if=/dev/zero of="$disk_file" bs="$bs" count="$count" conv="$conv" 2>/dev/null
-    else
-      dd if=/dev/zero of="$disk_file" bs="$bs" count="$count" 2>/dev/null
-    fi
+    dd if=/dev/zero of="$disk_file" bs="$bs" count="$count" conv="$conv" 2>/dev/null
     w_end=$(_bench_time)
     w_elapsed=$(_bench_elapsed "$w_start" "$w_end")
     w_speed=$(awk -v sz="$count" -v t="$w_elapsed" 'BEGIN {if(t>0) printf "%.1f", sz/t; else print "N/A"}')
 
     # Read test — bypass the page cache (iflag=direct where dd supports
     # it) or drop it (purge on macOS) so the number is the media's.
+    # With no verified bypass the read would be a page-cache hit — the
+    # file was just committed by fdatasync but its pages stay cached —
+    # so it is refused rather than reported (same fail-closed rule).
+    local iflag="" bypassed=""
     if is_macos 2>/dev/null; then
-      purge 2>/dev/null || true
+      if purge 2>/dev/null; then
+        bypassed="purge"
+      fi
     fi
-    local iflag=""
     if _bench_dd_iflag_direct "$disk_file" "$bs"; then
       iflag="direct"
+      bypassed="direct"
     fi
-    r_start=$(_bench_time)
-    if [ -n "$iflag" ]; then
-      dd if="$disk_file" of=/dev/null bs="$bs" iflag="$iflag" 2>/dev/null
+    if [ -n "$bypassed" ]; then
+      r_start=$(_bench_time)
+      if [ -n "$iflag" ]; then
+        dd if="$disk_file" of=/dev/null bs="$bs" iflag="$iflag" 2>/dev/null
+      else
+        dd if="$disk_file" of=/dev/null bs="$bs" 2>/dev/null
+      fi
+      r_end=$(_bench_time)
+      r_elapsed=$(_bench_elapsed "$r_start" "$r_end")
+      r_speed=$(awk -v sz="$count" -v t="$r_elapsed" 'BEGIN {if(t>0) printf "%.1f", sz/t; else print "N/A"}')
     else
-      dd if="$disk_file" of=/dev/null bs="$bs" 2>/dev/null
+      r_speed="skipped"
     fi
-    r_end=$(_bench_time)
-    r_elapsed=$(_bench_elapsed "$r_start" "$r_end")
-    r_speed=$(awk -v sz="$count" -v t="$r_elapsed" 'BEGIN {if(t>0) printf "%.1f", sz/t; else print "N/A"}')
 
     rm -f "$disk_file"
 
     printf "  %-20s %s\n" "Write (${MDOCTOR_BENCH_DISK_MB} MB):" "${w_speed} MB/s (${w_elapsed}s)"
-    printf "  %-20s %s\n" "Read (${MDOCTOR_BENCH_DISK_MB} MB):" "${r_speed} MB/s (${r_elapsed}s)"
+    if [ "$r_speed" = "skipped" ]; then
+      printf "  %-20s %s\n" "Read (${MDOCTOR_BENCH_DISK_MB} MB):" "skipped — no page-cache bypass available (needs iflag=direct or purge)"
+    else
+      printf "  %-20s %s\n" "Read (${MDOCTOR_BENCH_DISK_MB} MB):" "${r_speed} MB/s (${r_elapsed}s)"
+    fi
   fi
   echo
 
@@ -354,13 +387,21 @@ run_benchmark() {
   echo "  ┌──────────────────────┬──────────────────┐"
   printf "  │ %-20s │ %-16s │\n" "Test" "Result"
   echo "  ├──────────────────────┼──────────────────┤"
-  if [ -n "$disk_skip" ]; then
-    printf "  │ %-20s │ %-16s │\n" "Disk Write (${MDOCTOR_BENCH_DISK_MB}MB)" "$w_speed"
-    printf "  │ %-20s │ %-16s │\n" "Disk Read (${MDOCTOR_BENCH_DISK_MB}MB)" "$r_speed"
-  else
-    printf "  │ %-20s │ %13s MB/s │\n" "Disk Write (${MDOCTOR_BENCH_DISK_MB}MB)" "$w_speed"
-    printf "  │ %-20s │ %13s MB/s │\n" "Disk Read (${MDOCTOR_BENCH_DISK_MB}MB)" "$r_speed"
-  fi
+  # Per-row numeric check: a partial refusal (write reported, read
+  # skipped — or the reverse) renders each side correctly, and an awk
+  # "N/A" no longer prints as "N/A MB/s".
+  case "$w_speed" in
+    ''|*[!0-9.]*)
+      printf "  │ %-20s │ %-16s │\n" "Disk Write (${MDOCTOR_BENCH_DISK_MB}MB)" "$w_speed" ;;
+    *)
+      printf "  │ %-20s │ %13s MB/s │\n" "Disk Write (${MDOCTOR_BENCH_DISK_MB}MB)" "$w_speed" ;;
+  esac
+  case "$r_speed" in
+    ''|*[!0-9.]*)
+      printf "  │ %-20s │ %-16s │\n" "Disk Read (${MDOCTOR_BENCH_DISK_MB}MB)" "$r_speed" ;;
+    *)
+      printf "  │ %-20s │ %13s MB/s │\n" "Disk Read (${MDOCTOR_BENCH_DISK_MB}MB)" "$r_speed" ;;
+  esac
   printf "  │ %-20s │ %15s ms │\n" "DNS Resolution" "$dns_ms"
   if [ "$c_elapsed" = "skipped" ]; then
     printf "  │ %-20s │ %-16s │\n" "CPU gzip (10MB)" "$c_elapsed"
