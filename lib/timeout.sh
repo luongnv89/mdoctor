@@ -92,14 +92,21 @@ _mdoctor_timeout_watchdog() {
   return "$rc"
 }
 
-# _mdoctor_timeout_gnu_ok BIN — BIN must be a GNU-style timeout that
-# accepts `-k`. Minimal images (Alpine/BusyBox — including the bash:3.2
-# CI image) ship a `timeout` applet that rejects `-k` with a usage error;
-# selecting it would make every capped call fail instantly with a
-# non-124 code — the silent-uncap this file exists to prevent. The
-# functional probe costs one exec per resolution.
+# _mdoctor_timeout_gnu_ok BIN — BIN must be GNU coreutils timeout. The
+# `-k` flag and the 124-on-timeout convention are GNU semantics: the
+# BusyBox `timeout` applet on minimal images (Alpine — the bash:3.2 CI
+# image included) accepts the argv but returns the killed child's status
+# instead of 124, which would erase the "timed out" signal this file
+# exists to preserve. GNU prints "(GNU coreutils)" in --version output;
+# BusyBox errors on the flag entirely. One cheap probe per call — any
+# doubt resolves to the builtin watchdog, correct on every host.
 _mdoctor_timeout_gnu_ok() {
-  "$1" -k 1 1 true >/dev/null 2>&1
+  local _tv=""
+  _tv="$("$1" --version 2>/dev/null)" || true
+  case "$_tv" in
+    *coreutils*|*GNU*) return 0 ;;
+  esac
+  return 1
 }
 
 # mdoctor_timeout SECONDS CMD [ARGS...] — cap a blocking call.

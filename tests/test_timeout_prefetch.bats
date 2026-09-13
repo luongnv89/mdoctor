@@ -132,12 +132,13 @@ _make_dockbin() {
 @test "mdoctor_timeout: a non-GNU timeout (-k-less) is skipped for the watchdog" {
   source "$ROOT_DIR/lib/timeout.sh"
   mkdir -p "$TEST_TMP/bboxbin"
-  # BusyBox-shaped stub: `timeout` exists but rejects the -k flag the
-  # GNU backend needs — the resolver must fall through to the watchdog
-  # rather than letting capped calls fail instantly with a non-124 code.
+  # BusyBox-shaped stub (the bash:3.2 CI image ships this): `timeout`
+  # exists and even accepts the argv, but --version is unrecognized and
+  # a timed-out child comes back as 143, never 124 — the resolver must
+  # fall through to the watchdog instead of erasing the timeout signal.
   _write_stub "$TEST_TMP/bboxbin" timeout \
-    'case " $* " in *" -k "*) echo "timeout: unrecognized option: k" >&2; exit 1 ;; esac' \
-    '"$@"'
+    'case " $* " in *" --version "*) echo "timeout: unrecognized option: --version" >&2; exit 1 ;; esac' \
+    'echo "timeout: unrecognized option" >&2; exit 1'
   local rc=0
   PATH="$TEST_TMP/bboxbin:$PATH" \
     mdoctor_timeout 1 sleep 30 >/dev/null 2>&1 || rc=$?
