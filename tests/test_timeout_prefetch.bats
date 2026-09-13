@@ -129,6 +129,21 @@ _make_dockbin() {
   [ "$rc" -eq 9 ]
 }
 
+@test "mdoctor_timeout: a non-GNU timeout (-k-less) is skipped for the watchdog" {
+  source "$ROOT_DIR/lib/timeout.sh"
+  mkdir -p "$TEST_TMP/bboxbin"
+  # BusyBox-shaped stub: `timeout` exists but rejects the -k flag the
+  # GNU backend needs — the resolver must fall through to the watchdog
+  # rather than letting capped calls fail instantly with a non-124 code.
+  _write_stub "$TEST_TMP/bboxbin" timeout \
+    'case " $* " in *" -k "*) echo "timeout: unrecognized option: k" >&2; exit 1 ;; esac' \
+    '"$@"'
+  local rc=0
+  PATH="$TEST_TMP/bboxbin:$PATH" \
+    mdoctor_timeout 1 sleep 30 >/dev/null 2>&1 || rc=$?
+  [ "$rc" -eq 124 ]
+}
+
 # --- 3. distinct "timed out" reporting --------------------------------
 
 @test "tcap: a timed-out probe prints a distinct line and leaves _TCAP_OUT empty" {

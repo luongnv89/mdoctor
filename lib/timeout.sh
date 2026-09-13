@@ -92,6 +92,16 @@ _mdoctor_timeout_watchdog() {
   return "$rc"
 }
 
+# _mdoctor_timeout_gnu_ok BIN — BIN must be a GNU-style timeout that
+# accepts `-k`. Minimal images (Alpine/BusyBox — including the bash:3.2
+# CI image) ship a `timeout` applet that rejects `-k` with a usage error;
+# selecting it would make every capped call fail instantly with a
+# non-124 code — the silent-uncap this file exists to prevent. The
+# functional probe costs one exec per resolution.
+_mdoctor_timeout_gnu_ok() {
+  "$1" -k 1 1 true >/dev/null 2>&1
+}
+
 # mdoctor_timeout SECONDS CMD [ARGS...] — cap a blocking call.
 # rc: CMD's exit code, or 124 when the cap fired. A non-numeric or
 # non-positive SECONDS runs CMD directly — callers pass named constants,
@@ -122,9 +132,12 @@ mdoctor_timeout() {
       ;;
   esac
   if [ -z "$impl" ]; then
-    if command -v timeout >/dev/null 2>&1; then
+    # `command -v` alone is not enough: a non-GNU `timeout` (BusyBox)
+    # exists on minimal images but rejects `-k` — probe the flag before
+    # selecting so those hosts land on the watchdog instead.
+    if command -v timeout >/dev/null 2>&1 && _mdoctor_timeout_gnu_ok timeout; then
       impl="timeout"
-    elif command -v gtimeout >/dev/null 2>&1; then
+    elif command -v gtimeout >/dev/null 2>&1 && _mdoctor_timeout_gnu_ok gtimeout; then
       impl="gtimeout"
     else
       impl="watchdog"
