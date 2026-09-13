@@ -370,11 +370,11 @@ if command -v mdoctor >/dev/null 2>&1; then
   echo "  Binary:   ${BIN_DIR}/${BINARY_NAME}"
   echo
   echo "${BOLD}Get started:${RESET}"
-  echo "  mdoctor help       # Show all commands"
-  echo "  mdoctor check      # Run health audit"
-  echo "  mdoctor info       # Quick system overview"
-  echo "  mdoctor clean      # Cleanup (dry-run)"
-  echo "  mdoctor fix all    # Apply common fixes"
+  echo "  mdoctor help       # Show all commands (read-only)"
+  echo "  mdoctor check      # Run health audit (read-only)"
+  echo "  mdoctor info       # Quick system overview (read-only)"
+  echo "  mdoctor clean      # Preview cleanup (dry-run)"
+  echo "  mdoctor fix all    # Apply common fixes [MED] — modifies the system"
   echo
 else
   warn "mdoctor was installed but '${BIN_DIR}' may not be in your PATH."

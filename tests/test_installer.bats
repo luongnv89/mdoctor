@@ -89,6 +89,41 @@ teardown_file() {
   [ ! -e "$TEST_TMP/broken/install" ] || fail "expected the install dir to be removed"
 }
 
+@test "first screen presents read-only starters and marks 'fix all' with its risk" {
+  local bin_dir="$TEST_TMP/firstscreen/bin"
+  mkdir -p "$bin_dir"
+  # PATH override puts the fresh symlink on PATH so the installer's
+  # `command -v mdoctor` gate passes and the Get-started block prints —
+  # hermetic: $bin_dir lives inside $TEST_TMP.
+  MDOCTOR_REPO_URL="$ROOT_DIR" \
+  MDOCTOR_INSTALL_DIR="$TEST_TMP/firstscreen/install" \
+  MDOCTOR_BIN_DIR="$bin_dir" \
+  MDOCTOR_BINARY_NAME="mdoctor" \
+  HOME="$TEST_TMP/home" \
+  PATH="${bin_dir}:${PATH}" \
+    ./install.sh >"$TEST_TMP/firstscreen-install.out" 2>&1 \
+    || { tail -n 20 "$TEST_TMP/firstscreen-install.out"; fail "install.sh failed (firstscreen)"; }
+  assert_contains "$TEST_TMP/firstscreen-install.out" "Get started"
+  # help, check and info are the read-only starting points.
+  local cmd
+  for cmd in help check info; do
+    grep "mdoctor ${cmd}" "$TEST_TMP/firstscreen-install.out" | grep -q 'read-only' \
+      || fail "'mdoctor ${cmd}' is not presented as read-only on the first screen"
+  done
+  # `fix all` may be omitted entirely; when listed it must carry its
+  # risk marker — never a bare peer of the read-only commands (it runs
+  # two [MED] targets on macOS).
+  if grep -q 'fix all' "$TEST_TMP/firstscreen-install.out"; then
+    grep 'fix all' "$TEST_TMP/firstscreen-install.out" | grep -q '\[MED\]' \
+      || fail "'fix all' is listed without a risk marker on the first screen"
+  fi
+}
+
+@test "installer never uses the old 'mac-doctor' product name" {
+  [ "$(grep -c 'mac-doctor' "$ROOT_DIR/install.sh")" = "0" ] \
+    || fail "install.sh still mentions 'mac-doctor'"
+}
+
 # _install_roundtrip STEM — fresh install per the old CI release-sanity
 # recipe (same env overrides) into $TEST_TMP/<stem>/install with its
 # symlink in $TEST_TMP/<stem>/bin. Fails the calling test on error.
