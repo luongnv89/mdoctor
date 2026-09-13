@@ -281,11 +281,15 @@ _make_dockbin() {
   # 5 × 2s probes sequentially = 10s; parallel ≈ 2–3s. Bound at 8s leaves
   # CI jitter headroom while still proving the overlap.
   [ "$elapsed" -lt 8 ]
-  [ "$nd" = "npm-ok" ]
-  [ "$no" = "npm-ok" ]
-  [ "$pc" = "pip3-ok" ]
-  [ "$po" = "pip3-ok" ]
-  [ "$di" = "docker-ok" ]
+  if [ "$nd" != "npm-ok" ] || [ "$no" != "npm-ok" ] || [ "$pc" != "pip3-ok" ] \
+    || [ "$po" != "pip3-ok" ] || [ "$di" != "docker-ok" ]; then
+    # Surface the captured values so a container flake shows *what* the
+    # probes actually returned rather than a bare assertion failure.
+    printf 'prefetch captures: nd=%q no=%q pc=%q po=%q di=%q\n' \
+      "$nd" "$no" "$pc" "$po" "$di" >&2
+    ls -l "$_PERF_PREFETCH_DIR" >&2 2>/dev/null || true
+    return 1
+  fi
   perf_prefetch_cleanup
 }
 
