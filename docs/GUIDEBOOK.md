@@ -106,7 +106,7 @@ mdoctor clean --force        # Actually free disk space
 
 ## Cleanup Cheat Sheet
 
-All cleanup modules are **[LOW]** risk. Dry-run by default — add `--force` to actually delete.
+Cleanup modules are risk-rated (`[SAFE]` modules only report — they never delete). Dry-run by default — add `--force` to actually delete.
 
 | Module | What it removes |
 |--------|-----------------|

@@ -132,6 +132,34 @@ _platform_sentinels() {
   done
 }
 
+@test "firefox-esr process name also skips the Linux firefox cache" {
+  # Debian's stock firefox-esr binary runs as "firefox-esr" — pgrep -x
+  # firefox does not match it, but it shares ~/.cache/mozilla/firefox.
+  _mk_browser_caches "$TMPHOME"
+  (
+    source "$ROOT_DIR/lib/context.sh"
+    mdoctor_context_init
+    source "$ROOT_DIR/lib/common.sh"
+    source "$ROOT_DIR/lib/logging.sh"
+    source "$ROOT_DIR/lib/safety.sh"
+    source "$ROOT_DIR/lib/cleanup_scope.sh"
+    export HOME="$TMPHOME"
+    export LOGFILE="$TMPHOME/browser-esr.log"
+    export DRY_RUN=true
+    export MDOCTOR_STUB_PGREP_RUNNING=firefox-esr
+    # shellcheck source=/dev/null
+    source "$ROOT_DIR/cleanups/browser.sh"
+
+    is_macos() { return 1; }
+    clean_browser_caches >"$TMPHOME/esr.out" 2>&1
+  )
+  grep -q "Skipping firefox cache.*firefox-esr is running" "$TMPHOME/esr.out" \
+    || { cat "$TMPHOME/esr.out" >&2; fail "firefox-esr did not trigger the skip"; }
+  # The other Linux targets were not skipped by the esr-only stub.
+  assert_not_contains "$TMPHOME/esr.out" "Skipping google-chrome cache"
+  assert_not_contains "$TMPHOME/esr.out" "Skipping chromium cache"
+}
+
 @test "downloads is report-only: --force lists matches, deletes nothing, no gate" {
   # A >500MB sparse fixture (1 real byte) aged past the 7-day threshold.
   mkdir -p "$TMPHOME/Downloads"

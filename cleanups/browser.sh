@@ -14,25 +14,34 @@ if [ "${_MDOCTOR_CONTEXT_READY:-false}" != true ]; then
   echo "${BASH_SOURCE[0]##*/}: module context not initialized (_MDOCTOR_CONTEXT_READY) — call mdoctor_context_init from lib/context.sh first" >&2
   return 1 2>/dev/null || exit 1
 fi
-# _browser_running PROC — rc 0 when pgrep finds a process named PROC.
-# A missing pgrep fails open (rc 1): the running-browser guard is
-# best-effort, and tests stub pgrep on PATH (issue #112).
+# _browser_running PROC [PROC ...] — rc 0 and prints the first PROC that
+# pgrep finds running. A missing pgrep fails open (rc 1): the running-
+# browser guard is best-effort, and tests stub pgrep on PATH (issue #112).
 _browser_running() {
   command -v pgrep >/dev/null 2>&1 || return 1
-  pgrep -x "$1" >/dev/null 2>&1
+  local proc
+  for proc in "$@"; do
+    if pgrep -x "$proc" >/dev/null 2>&1; then
+      printf '%s\n' "$proc"
+      return 0
+    fi
+  done
+  return 1
 }
 
-# _clean_browser_cache LABEL DIR PROC — delete DIR's children unless
-# pgrep finds PROC running. Deleting cache index/journal files under a
-# live browser corrupts the cache (issue #112), so the skip happens
-# BEFORE the safety call and is logged.
+# _clean_browser_cache LABEL DIR PROC [PROC ...] — delete DIR's children
+# unless pgrep finds one of the named processes running. Deleting cache
+# index/journal files under a live browser corrupts the cache (issue
+# #112), so the skip happens BEFORE the safety call and is logged.
 _clean_browser_cache() {
   local label="$1"
   local dir="$2"
-  local proc="$3"
+  shift 2
   [ -d "$dir" ] || return 0
-  if _browser_running "$proc"; then
-    log "Skipping ${label} cache (${dir}): ${proc} is running."
+  local running=""
+  running="$(_browser_running "$@")" || running=""
+  if [ -n "$running" ]; then
+    log "Skipping ${label} cache (${dir}): ${running} is running."
     return 0
   fi
   safe_remove_children "$dir"
@@ -53,7 +62,9 @@ clean_browser_caches() {
     # Linux: XDG cache paths
     _clean_browser_cache "google-chrome" "${HOME}/.cache/google-chrome" "chrome" || rc=$?
     _clean_browser_cache "chromium" "${HOME}/.cache/chromium" "chromium" || rc=$?
-    _clean_browser_cache "firefox" "${HOME}/.cache/mozilla/firefox" "firefox" || rc=$?
+    # Debian's stock Firefox ESR runs as "firefox-esr", not "firefox" —
+    # both names share the ~/.cache/mozilla/firefox target (issue #112).
+    _clean_browser_cache "firefox" "${HOME}/.cache/mozilla/firefox" firefox firefox-esr || rc=$?
   fi
   rc="$(handle_cleanup_rc "$rc")"
   [ "$rc" -eq 0 ] || log "Module 'browser' finished with $(safety_error_name "$rc"): $(safety_error_hint "$rc" 'browser')"
