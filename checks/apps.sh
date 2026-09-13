@@ -89,13 +89,15 @@ check_apps() {
     fi
   else
     if command -v dpkg >/dev/null 2>&1; then
-      local pkg_count=0 _dp _dpl
-      _dp=$(dpkg -l 2>/dev/null || true)
+      local pkg_count=0 _dpl
+      # Shared `dpkg -l` snapshot — the report is captured once per
+      # process (issue #100) instead of re-formatted per consumer.
+      perf_capture_dpkg_l || true
       while IFS= read -r _dpl; do
         case "$_dpl" in
           ii*) pkg_count=$((pkg_count + 1)) ;;
         esac
-      done <<< "$_dp"
+      done <<< "${_PERF_DPKG_L:-}"
       status_info "Installed packages (dpkg): ${pkg_count}"
     fi
   fi

@@ -130,8 +130,10 @@ teardown_file() {
   [ "$(grep -c 'SwapTotal' "$ROOT_DIR/checks/diagnose_performance.sh" || true)" = "0" ]
   [ "$(grep -c 'SwapFree' "$ROOT_DIR/checks/performance.sh" || true)" = "0" ]
   [ "$(grep -c 'SwapFree' "$ROOT_DIR/checks/diagnose_performance.sh" || true)" = "0" ]
-  [ "$(grep -c -e '/proc/loadavg' "$ROOT_DIR/checks/performance.sh" || true)" = "0" ]
-  [ "$(grep -c -e '/proc/loadavg' "$ROOT_DIR/checks/diagnose_performance.sh" || true)" = "0" ]
+  # Comment lines excluded: this assert is about sampling code, and the
+  # issue #100 prefill comment legitimately names /proc/loadavg.
+  [ "$(grep -v '^\s*#' "$ROOT_DIR/checks/performance.sh" | grep -c -e '/proc/loadavg' || true)" = "0" ]
+  [ "$(grep -v '^\s*#' "$ROOT_DIR/checks/diagnose_performance.sh" | grep -c -e '/proc/loadavg' || true)" = "0" ]
   [ "$(grep -c 'ps -arcwwxo "pid,%cpu,comm"' "$ROOT_DIR/checks/performance.sh" || true)" = "0" ]
   [ "$(grep -c 'ps -arcwwxo "pid,%cpu,comm"' "$ROOT_DIR/checks/diagnose_performance.sh" || true)" = "0" ]
   [ "$(grep -c 'ps -eo pid,%cpu,comm' "$ROOT_DIR/checks/performance.sh" || true)" = "0" ]

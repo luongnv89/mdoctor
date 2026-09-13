@@ -75,13 +75,28 @@ check_hardware() {
     status_info "CPU: ${cpu_model}"
 
     local physical_cores logical_cores
-    logical_cores=$(nproc 2>/dev/null || grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo "?")
+    # Shared nproc + /proc/meminfo captures — each read once per process
+    # (issue #100; this module used to open meminfo and fork nproc on
+    # top of the perf_probe_load callers' own reads).
+    if perf_capture_nproc; then
+      logical_cores="$_PERF_NPROC"
+    else
+      logical_cores=$(grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo "?")
+    fi
     physical_cores=$(awk '/^core id/ {print $NF}' /proc/cpuinfo 2>/dev/null | sort -u | wc -l | tr -d ' ')
     [ "$physical_cores" = "0" ] && physical_cores="$logical_cores"
     status_info "Cores: ${physical_cores} physical, ${logical_cores} logical"
 
-    local total_mem_kb
-    total_mem_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || true)
+    local total_mem_kb=""
+    if perf_capture_meminfo; then
+      local _mk _mv _mline
+      while IFS= read -r _mline; do
+        read -r _mk _mv _ <<< "$_mline"
+        case "$_mk" in
+          MemTotal:) total_mem_kb="$_mv" ;;
+        esac
+      done <<< "$_PERF_MEMINFO"
+    fi
     total_mem_kb="${total_mem_kb:-0}"
     if (( total_mem_kb > 0 )); then
       status_info "Memory: $(human_readable_kb "$total_mem_kb")"

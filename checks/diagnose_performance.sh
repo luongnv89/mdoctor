@@ -201,9 +201,11 @@ check_memory_usage() {
     # macOS: use sysctl for physical memory stats
     local page_size active_pages wired_pages total_bytes
     page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo "$MDOCTOR_PAGE_SIZE_FALLBACK")
-    # One vm_stat capture, field-split in-shell (issue #98).
+    # One shared vm_stat capture, field-split in-shell (issue #98;
+    # shared per-process since issue #100).
     local vm_out vline _v1 _v2 _v3
-    vm_out=$(vm_stat 2>/dev/null || true)
+    perf_capture_vm_stat || true
+    vm_out="${_PERF_VM_STAT:-}"
     active_pages=""
     wired_pages=""
     while IFS= read -r vline; do
@@ -232,18 +234,20 @@ check_memory_usage() {
       pct=0
     fi
   else
-    # Linux: use /proc/meminfo — one in-shell pass for both fields
-    # (issue #98; previously two awk opens of the same file).
+    # Linux: parse the shared /proc/meminfo snapshot — read once per
+    # process for all consumers (issue #100; was a per-check open).
     total_kb=""
     avail_kb=""
     local _mk _mv _mline
-    while IFS= read -r _mline; do
-      read -r _mk _mv _ <<< "$_mline"
-      case "$_mk" in
-        MemTotal:)     total_kb="$_mv" ;;
-        MemAvailable:) avail_kb="$_mv" ;;
-      esac
-    done 2>/dev/null < /proc/meminfo
+    if perf_capture_meminfo; then
+      while IFS= read -r _mline; do
+        read -r _mk _mv _ <<< "$_mline"
+        case "$_mk" in
+          MemTotal:)     total_kb="$_mv" ;;
+          MemAvailable:) avail_kb="$_mv" ;;
+        esac
+      done <<< "$_PERF_MEMINFO"
+    fi
     used_kb=$(( ${total_kb:-0} - ${avail_kb:-0} ))
 
     if (( ${total_kb:-0} > 0 )); then
@@ -331,9 +335,11 @@ check_swap_usage() {
     if [ -n "$swap_total_raw" ]; then
       status_info "Swap: ${swap_total_raw}"
 
-      # Try to get actual usage from vm_stat — one capture, in-shell split.
+      # Try to get actual usage from the shared vm_stat capture (issue
+      # #100 — second read of the same report, now the same snapshot).
       local swap_in="" swap_out="" vm_out vline _v1 _v2 _v3
-      vm_out=$(vm_stat 2>/dev/null || true)
+      perf_capture_vm_stat || true
+      vm_out="${_PERF_VM_STAT:-}"
       while IFS= read -r vline; do
         case "$vline" in
           "Pages swapped in"*)
@@ -824,6 +830,19 @@ check_diagnose_performance() {
   # Reset the live-sample cache only; an explicit DIAG_LINUX_IOWAIT_PCT
   # test override is never cleared here (see get_linux_iowait_pct).
   _DIAG_IOWAIT_CACHED=""
+
+  # Capture-once prefill (issue #100): every probe call below runs inside
+  # a $() subshell whose globals die with it, so the shared snapshots and
+  # memoized records are populated here, in this shell — after this block
+  # /proc/meminfo, /proc/loadavg, nproc, vm_stat and the /proc/stat
+  # iowait sample have each been read at most once, and every consumer
+  # replays the cached copy.
+  perf_capture_reset
+  perf_capture_vm_stat || true
+  perf_probe_load >/dev/null 2>&1 || true
+  perf_probe_mem_pressure >/dev/null 2>&1 || true
+  perf_probe_swap >/dev/null 2>&1 || true
+  get_linux_iowait_pct >/dev/null 2>&1 || true
 
   # ── CPU Diagnostics ──
   section_title "CPU Diagnostics"

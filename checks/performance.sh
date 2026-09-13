@@ -18,6 +18,16 @@ fi
 check_performance() {
   step "Performance & Memory"
 
+  # Capture-once prefill (issue #100): every perf_probe_* call below runs
+  # inside a $() subshell whose globals die with it, so the memoized
+  # records are populated here, in this shell — after this block each
+  # /proc file / nproc / vm_stat has been read at most once per process
+  # and every consumer replays the cached record. The calls are no-ops
+  # when an earlier check module already captured the snapshots.
+  perf_probe_load >/dev/null 2>&1 || true
+  perf_probe_mem_pressure >/dev/null 2>&1 || true
+  perf_probe_swap >/dev/null 2>&1 || true
+
   # Memory pressure level (sampling: lib/perf_probes.sh)
   if is_macos; then
     local pressure_rec pressure _pkey

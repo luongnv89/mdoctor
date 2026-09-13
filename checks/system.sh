@@ -51,8 +51,10 @@ check_system() {
       load=""
     fi
   else
-    if [ -r /proc/loadavg ]; then
-      read -r _l1 _l5 _l15 _lrest < /proc/loadavg
+    # Shared /proc/loadavg snapshot — read once per process (issue #100),
+    # fields 1/5/15 split in-shell like the retired direct read.
+    if perf_capture_loadavg; then
+      read -r _l1 _l5 _l15 _lrest <<< "$_PERF_LOADAVG"
     fi
     if [ -n "$_l1" ]; then
       load="${_l1},${_l5},${_l15}"
@@ -71,7 +73,9 @@ check_system() {
       local page_size active_pages="" inactive_pages="" wired_pages=""
       local _vm_out _vml _vv
       page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096)
-      _vm_out=$(vm_stat 2>/dev/null || true)
+      # Shared vm_stat snapshot — captured once per process (issue #100).
+      perf_capture_vm_stat || true
+      _vm_out="${_PERF_VM_STAT:-}"
       while IFS= read -r _vml; do
         case "$_vml" in
           *"Pages active:"*)
@@ -99,9 +103,9 @@ check_system() {
       status_info "Memory total: $(kb_to_human "$total_kb"), used: $(kb_to_human "$used_kb"), free: $(kb_to_human "$free_kb")"
     fi
   else
-    # Linux: parse /proc/meminfo — one in-shell pass for both fields
-    # (issue #98; was two awk opens of the same file).
-    if [ -r /proc/meminfo ]; then
+    # Linux: parse the shared /proc/meminfo snapshot — one read per
+    # process serves every consumer (issue #100; was a per-check open).
+    if perf_capture_meminfo; then
       local mem_total_kb="" mem_avail_kb="" mem_used_kb
       local _mk _mv _mline
       while IFS= read -r _mline; do
@@ -110,7 +114,7 @@ check_system() {
           MemTotal:)     mem_total_kb="$_mv" ;;
           MemAvailable:) mem_avail_kb="$_mv" ;;
         esac
-      done < /proc/meminfo
+      done <<< "$_PERF_MEMINFO"
       mem_used_kb=$(( ${mem_total_kb:-0} - ${mem_avail_kb:-0} ))
       local mem_free_kb=$((mem_avail_kb))
       status_info "Memory total: $(kb_to_human "$mem_total_kb"), used: $(kb_to_human "$mem_used_kb"), free: $(kb_to_human "$mem_free_kb")"

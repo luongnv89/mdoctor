@@ -24,11 +24,20 @@ check_apt() {
     return 0
   fi
 
-  # Package count
+  # Package count — the full `dpkg -l` list is captured once per process
+  # (issue #100): this module used to format the 2,000–4,000-row report
+  # twice, and check_apps once more with a byte-identical query. Both
+  # counts below come from the one shared snapshot.
+  local installed_count=0 residual_count=0
   if command -v dpkg >/dev/null 2>&1; then
-    local installed_count installed_count_raw
-    installed_count_raw=$(dpkg -l 2>/dev/null | grep -c '^ii' || true)
-    installed_count=$(to_int "$installed_count_raw")
+    perf_capture_dpkg_l || true
+    local _dline
+    while IFS= read -r _dline; do
+      case "$_dline" in
+        ii*) installed_count=$((installed_count + 1)) ;;
+        rc*) residual_count=$((residual_count + 1)) ;;
+      esac
+    done <<< "${_PERF_DPKG_L:-}"
     status_info "Installed packages: ${installed_count}"
   fi
 
@@ -49,10 +58,8 @@ check_apt() {
     status_ok "No broken packages."
   fi
 
-  # Residual configs (packages removed but config files remain)
-  local residual_count residual_count_raw
-  residual_count_raw=$(dpkg -l 2>/dev/null | grep -c '^rc' || true)
-  residual_count=$(to_int "$residual_count_raw")
+  # Residual configs (packages removed but config files remain) —
+  # counted from the same `dpkg -l` snapshot above.
   if (( residual_count > 5 )); then
     status_info "Packages with residual configs: ${residual_count}"
     add_action "Clean residual configs: sudo apt purge \$(dpkg -l | grep '^rc' | awk '{print \$2}')"

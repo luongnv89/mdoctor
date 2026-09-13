@@ -18,18 +18,43 @@ fi
 check_battery() {
   step "Battery Health"
 
-  # Detect if this is a desktop Mac (no battery)
-  local has_battery
-  has_battery=$(system_profiler SPPowerDataType 2>/dev/null | grep -c "Battery Information" || true)
+  # One capture per report, parsed in-shell (issue #100): this check used
+  # to re-invoke the same three slow binaries once per field —
+  # system_profiler SPPowerDataType 3× (a sibling comment documents
+  # system_profiler as "very slow (~30s)"), ioreg 2× and pmset -g batt 3×.
+  local sp_out _spline
+  sp_out=$(system_profiler SPPowerDataType 2>/dev/null || true)
+
+  # Detect if this is a desktop Mac (no battery) — count of lines
+  # containing "Battery Information" in the single capture above.
+  local has_battery=0
+  while IFS= read -r _spline; do
+    case "$_spline" in
+      *"Battery Information"*) has_battery=$((has_battery + 1)) ;;
+    esac
+  done <<< "$sp_out"
 
   if (( has_battery == 0 )); then
     status_info "No battery detected (desktop Mac). Skipping battery checks."
     return 0
   fi
 
-  # Battery condition
-  local condition
-  condition=$(system_profiler SPPowerDataType 2>/dev/null | awk -F': ' '/Condition/ {print $2; exit}')
+  # Battery condition — first "Condition:" line of the same capture;
+  # the value after the first ': ' separator, truncated at the next
+  # ': ' like the retired awk -F': ' {print $2; exit}.
+  local condition=""
+  while IFS= read -r _spline; do
+    case "$_spline" in
+      *Condition:*" "*)
+        condition="${_spline#*: }"
+        condition="${condition%%: *}"
+        break
+        ;;
+      *Condition:*)
+        break   # valueless "Condition:" — awk's $2 was empty here too
+        ;;
+    esac
+  done <<< "$sp_out"
   if [ -n "$condition" ]; then
     if [ "$condition" = "Normal" ]; then
       status_ok "Battery condition: ${condition}"
@@ -39,9 +64,22 @@ check_battery() {
     fi
   fi
 
-  # Cycle count
-  local cycle_count
-  cycle_count=$(system_profiler SPPowerDataType 2>/dev/null | awk -F': ' '/Cycle Count/ {gsub(/ /,"",$2); print $2; exit}')
+  # Cycle count — first "Cycle Count:" line, spaces stripped like the
+  # retired gsub(/ /,"",$2).
+  local cycle_count=""
+  while IFS= read -r _spline; do
+    case "$_spline" in
+      *"Cycle Count:"*" "*)
+        cycle_count="${_spline#*: }"
+        cycle_count="${cycle_count%%: *}"
+        cycle_count="${cycle_count// /}"
+        break
+        ;;
+      *"Cycle Count:"*)
+        break   # valueless — same empty result as the retired awk
+        ;;
+    esac
+  done <<< "$sp_out"
   if [ -n "$cycle_count" ]; then
     if (( cycle_count > 1000 )); then
       status_warn "Battery cycle count: ${cycle_count} (high — above 1000)"
@@ -51,10 +89,28 @@ check_battery() {
     fi
   fi
 
-  # Health percentage: AppleRawMaxCapacity / DesignCapacity
-  local max_cap design_cap
-  max_cap=$(ioreg -r -c AppleSmartBattery 2>/dev/null | grep '"AppleRawMaxCapacity" = ' | grep -o '[0-9]*$' | head -1)
-  design_cap=$(ioreg -r -c AppleSmartBattery 2>/dev/null | grep '"DesignCapacity" = ' | grep -o '[0-9]*$' | head -1)
+  # Health percentage: AppleRawMaxCapacity / DesignCapacity — one ioreg
+  # capture serves both fields; first matching line wins and the value
+  # is its trailing digit run (the retired grep -o '[0-9]*$' | head -1).
+  local ioreg_out _ioline
+  ioreg_out=$(ioreg -r -c AppleSmartBattery 2>/dev/null || true)
+  local max_cap="" design_cap=""
+  while IFS= read -r _ioline; do
+    case "$_ioline" in
+      *'"AppleRawMaxCapacity" = '*)
+        max_cap="${_ioline##*[!0-9]}"
+        break
+        ;;
+    esac
+  done <<< "$ioreg_out"
+  while IFS= read -r _ioline; do
+    case "$_ioline" in
+      *'"DesignCapacity" = '*)
+        design_cap="${_ioline##*[!0-9]}"
+        break
+        ;;
+    esac
+  done <<< "$ioreg_out"
 
   if [ -n "$max_cap" ] && [ -n "$design_cap" ] && (( design_cap > 0 )); then
     local health_pct
@@ -67,18 +123,59 @@ check_battery() {
     fi
   fi
 
-  # Power source
-  local power_source
-  power_source=$(pmset -g batt 2>/dev/null | head -1 | sed "s/.*'//;s/'.*//" || true)
+  # Power source, charging status and percent — one `pmset -g batt`
+  # capture serves all three fields.
+  local pmset_out _pmline
+  pmset_out=$(pmset -g batt 2>/dev/null || true)
+
+  # Power source: text between the first pair of quotes on the first
+  # line (e.g. "Now drawing from 'Battery Power'"). The retired
+  # `sed "s/.*'//;s/'.*//"` was greedy — it ate through the last quote
+  # and always produced empty — so this restores the intended field.
+  local power_source="" _pmfirst
+  _pmfirst="${pmset_out%%$'\n'*}"
+  case "$_pmfirst" in
+    *"'"*"'"*)
+      power_source="${_pmfirst#*\'}"
+      power_source="${power_source%%\'*}"
+      ;;
+  esac
   if [ -n "$power_source" ]; then
     status_info "Power source: ${power_source}"
   fi
 
-  # Charging status
-  local charging
-  charging=$(pmset -g batt 2>/dev/null | grep -o "charging\|discharging\|charged\|finishing charge" | head -1 || true)
-  local batt_pct
-  batt_pct=$(pmset -g batt 2>/dev/null | grep -o '[0-9]*%' | head -1 || true)
+  # Charging status: first status keyword in output order (leftmost
+  # match per line), mirroring the retired
+  # grep -o "charging|discharging|charged|finishing charge" | head -1.
+  local charging="" _pmw _pmpre _pmbest=-1
+  while IFS= read -r _pmline; do
+    for _pmw in "finishing charge" discharging charging charged; do
+      case "$_pmline" in
+        *"$_pmw"*)
+          _pmpre="${_pmline%%"$_pmw"*}"
+          if (( _pmbest < 0 )) || (( ${#_pmpre} < _pmbest )); then
+            _pmbest=${#_pmpre}
+            charging="$_pmw"
+          fi
+          ;;
+      esac
+    done
+    [ -n "$charging" ] && break
+  done <<< "$pmset_out"
+
+  # Battery percent: first "<digits>%" in output order — the retired
+  # grep -o '[0-9]*%' | head -1 (which could emit a bare "%"; the digit
+  # is required here, matching every real pmset line).
+  local batt_pct="" _pmpre2
+  while IFS= read -r _pmline; do
+    case "$_pmline" in
+      *[0-9]\%*)
+        _pmpre2="${_pmline%%\%*}"
+        batt_pct="${_pmpre2##*[!0-9]}%"
+        break
+        ;;
+    esac
+  done <<< "$pmset_out"
   if [ -n "$charging" ] && [ -n "$batt_pct" ]; then
     status_info "Battery: ${batt_pct} (${charging})"
   fi

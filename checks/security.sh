@@ -209,10 +209,21 @@ check_security() {
     fi
 
     # Unattended upgrades (Debian-family only) — the '^ii' line test
-    # runs in-shell (issue #98).
+    # runs in-shell (issue #98) on rows filtered from the shared
+    # `dpkg -l` snapshot (issue #100: `dpkg -l unattended-upgrades`
+    # printed the same rows the cached full list already holds).
     if is_debian; then
-      local _dpkg_out
-      _dpkg_out=$(dpkg -l unattended-upgrades 2>/dev/null || true)
+      local _dpkg_out="" _dline _dst _dname
+      if perf_capture_dpkg_l; then
+        while IFS= read -r _dline; do
+          read -r _dst _dname _ <<< "$_dline"
+          case "$_dname" in
+            unattended-upgrades|unattended-upgrades:*)
+              _dpkg_out="${_dpkg_out}${_dline}"$'\n'
+              ;;
+          esac
+        done <<< "$_PERF_DPKG_L"
+      fi
       case "$_dpkg_out" in
         ii*|*$'\n'ii*)
           status_ok "Unattended upgrades: installed"
