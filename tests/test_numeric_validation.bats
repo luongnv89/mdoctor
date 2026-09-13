@@ -312,6 +312,41 @@ EOF
   assert_not_contains "$t/out.txt" "DNS cache flushed."
 }
 
+@test "fix dns dry-run stays rc 0 with no resolver tool" {
+  local t="$TEST_TMP/dns-none-dry"
+  mkdir -p "$t/home"
+  local rc=0
+  PATH="$TEST_TMP/farm" HOME="$t/home" \
+    LOGFILE="$t/home/mdoctor.log" bash -c '
+    source "$ROOT_DIR/lib/context.sh"; mdoctor_context_init
+    source "$ROOT_DIR/lib/platform.sh"
+    export MDOCTOR_PLATFORM=linux   # platform.sh re-derives it at source time
+    source "$ROOT_DIR/lib/common.sh"
+    source "$ROOT_DIR/lib/logging.sh"
+    source "$ROOT_DIR/lib/safety.sh"
+    init_colors
+    export MDOCTOR_DIR="$ROOT_DIR" OPLOG_ENABLED=false DRY_RUN=true
+    source "$ROOT_DIR/fixes/dns.sh"
+    fix_dns' >"$t/out.txt" 2>"$t/err.txt" || rc=$?
+  [ "$rc" -eq 0 ] || { cat "$t/err.txt" >&2; fail "fix_dns dry-run rc=$rc with no resolver tool — poisons fix all"; }
+  assert_contains "$t/out.txt" "No systemd-resolved found"
+  assert_not_contains "$t/out.txt" "DNS cache flushed."
+}
+
+@test "dry-run fix all exits 0 on a host with no resolver tools (Task 4.4 contract)" {
+  local t="$TEST_TMP/fixall-none"
+  mkdir -p "$t/home"
+  # Reproduces the bash:3.2 CI lane: a PATH without resolvectl/
+  # systemd-resolve. helpers/bin keeps the apt-get/sudo stubs so the
+  # only missing fix tool is the DNS resolver pair.
+  local rc=0
+  PATH="$TEST_TMP/farm:$ROOT_DIR/tests/helpers/bin" HOME="$t/home" \
+    DRY_RUN=true bash "$ROOT_DIR/mdoctor" fix all \
+    >"$t/out.txt" 2>"$t/err.txt" || rc=$?
+  [ "$rc" -eq 0 ] || { tail -n 15 "$t/out.txt" >&2; fail "dry-run fix all rc=$rc with no resolver tool"; }
+  assert_contains "$t/out.txt" "No systemd-resolved found"
+}
+
 # ---------------------------------------------------------------------
 # checks/hardware.sh — thermal zone picked by `type`, temp validated
 # ---------------------------------------------------------------------
