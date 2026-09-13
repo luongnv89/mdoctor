@@ -38,22 +38,30 @@ fi
 _MDOCTOR_TIMEOUT_LOADED=true
 
 # _mdoctor_timeout_watchdog SECONDS CMD... — the no-GNU-timeout backend.
-# The command runs as a background job of the *current* shell; a watchdog
-# subshell sleeps SECONDS, drops a flag file, then TERM-kills the job
-# (KILL after a 1 s grace for probes that ignore TERM). `wait` returns the
-# real exit code; the flag file is the only reliable "cap fired" signal —
-# checking whether the watchdog is still alive races with its own exit.
+# The command runs as a background job of the *current* shell; a detached
+# watchdog subshell polls a "done" flag the parent writes the instant it
+# reaps the command — when the deadline passes with no flag it writes
+# "fired", TERM-kills the job, then KILLs after a 1 s grace for probes
+# that ignore TERM. `wait` returns the real exit code; the flag file is
+# the only reliable "cap fired" signal — checking whether the watchdog
+# is still alive races with its own exit.
 #
-# The watchdog subshell detaches EVERY inherited fd first: when the
-# parent disarms a fast probe, TERM can land while the subshell is
-# mid-spawn — the `sleep` then survives as an orphan, and any fd it still
-# holds keeps a caller's command substitution or pipe open until the
-# deadline (reproduced under bash 3.2 + the CI bash:3.2 image: bats holds
-# its TAP sync pipe on fd 3 and the per-test output on fd 4, so a single
-# 45 s orphan stalls the whole file). /dev/null for 0-2 plus closing 3-63
-# leaves the stray sleep holding nothing — it dies quietly at its own
-# deadline while the TERM/KILL follow-ups below still bound the probed
-# command itself.
+# Design constraints learned the hard way (all reproduced under the
+# bash:3.2 CI image):
+#  * The dog is NEVER killed. A disarm-by-TERM dies *by signal*, and
+#    bash prints a "PID Terminated …" job notice at the next command
+#    boundary — `wait … 2>/dev/null` cannot contain it because the flush
+#    lands in whatever stderr context is current then (under bats the
+#    DEBUG trap flushes it into a merge-mode probe's .out file).
+#    Self-termination via the done flag makes every exit a clean 0.
+#  * The dog detaches EVERY inherited fd first: a watchdog child that
+#    outlives the call must hold nothing the caller could block on —
+#    $(tcap …) waits on pipe EOF (bats keeps its TAP pipe on fd 3 and
+#    per-test output on fd 4), not on our exit.
+#  * The dog only kills "$pid" after observing done-absent at the
+#    deadline; the parent's reap-then-flag ordering means a live
+#    same-pid stranger can only exist if the kernel recycled it inside
+#    a single-builtin window — and even then the dog re-checks the flag.
 # Costs one mktemp -d per call (macOS path only).
 _mdoctor_timeout_watchdog() {
   local secs="$1"
@@ -77,27 +85,34 @@ _mdoctor_timeout_watchdog() {
       _wfd=$((_wfd + 1))
     done
     unset _wfd
-    sleep "$secs"
-    : >"$dir/fired" 2>/dev/null
-    kill -TERM "$pid" 2>/dev/null || true
-    # Grace before the guaranteed kill: TERM lets well-behaved probes
-    # flush and exit; KILL bounds even a wedged call to secs + 1.
-    sleep 1
-    kill -KILL "$pid" 2>/dev/null || true
+    _w=0
+    while [ ! -f "$dir/done" ] && [ "$_w" -lt "$secs" ]; do
+      sleep 1
+      _w=$((_w + 1))
+    done
+    if [ ! -f "$dir/done" ]; then
+      : >"$dir/fired" 2>/dev/null
+      kill -TERM "$pid" 2>/dev/null || true
+      # Grace before the guaranteed kill: TERM lets well-behaved probes
+      # flush and exit; KILL bounds even a wedged call to secs + ~2.
+      sleep 1
+      kill -KILL "$pid" 2>/dev/null || true
+    fi
   ) &
   dog=$!
   wait "$pid" 2>/dev/null || rc=$?
+  # Flag the reap before checking "fired": on a deadline tie the watchdog
+  # must already have committed to firing (GNU timeout's semantics — the
+  # cap wins a boundary race), never kill a recycled pid.
+  : >"$dir/done" 2>/dev/null || true
   if [ -f "$dir/fired" ]; then
     rc=124
-    # Reap the watchdog too — it exits once the KILL follow-up lands
-    # (bounded by the 1 s grace), and an unwaited child would otherwise
-    # sit as a zombie on direct (non-substitution) calls.
-    wait "$dog" 2>/dev/null || true
-  else
-    # Command finished inside the cap — disarm and reap the watchdog.
-    kill -TERM "$dog" 2>/dev/null || true
+    # The dog exits once its KILL follow-up lands (bounded by the 1 s
+    # grace) — reap it so the child never sits as a zombie.
     wait "$dog" 2>/dev/null || true
   fi
+  # Otherwise the dog self-exits on the next flag poll (≤1 s); it holds
+  # no caller fd, so leaving it unwaited is invisible to every consumer.
   rm -rf "$dir"
   return "$rc"
 }

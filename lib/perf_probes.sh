@@ -462,7 +462,11 @@ perf_prefetch_begin() {
   _PERF_PREFETCH_DIR="$dir"
   _PERF_PREFETCH_PIDS=""
   local _pf_list name _em
-  _pf_list="$(_perf_probe_prefetch_list)"
+  # `|| true`: the list helper's last `command -v && printf` arm yields
+  # status 1 when that binary is absent — under an inherited `set -e`
+  # that aborts this function before `return 0`, and prefetch's contract
+  # is "never fail the caller".
+  _pf_list="$(_perf_probe_prefetch_list)" || true
   for name in $_pf_list; do
     [ -n "$name" ] || continue
     _em="$(_perf_probe_errmode "$name")"
