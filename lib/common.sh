@@ -40,10 +40,12 @@ fi
 _MDOCTOR_COMMON_LOADED=true
 
 init_colors() {
-  # All terminal sequences come from the single memoized `tput -S` batch
-  # in mdoctor_term_init (issue #102): at most one tput exec per process,
-  # zero when stdout is not a tty (the previous per-capability calls ran
-  # tput six times even on pipes, where colors are never wanted).
+  # The single color implementation every entry point calls (issue #108).
+  # All terminal sequences come from the memoized `tput -S` batch in
+  # mdoctor_term_init (issue #102): at most one tput exec per process,
+  # zero when stdout is not a tty or NO_COLOR/MDOCTOR_NO_COLOR is set
+  # (the previous per-capability calls ran tput six times even on pipes,
+  # where colors are never wanted).
   mdoctor_term_init
 
   CHECK="✅"

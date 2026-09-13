@@ -68,10 +68,12 @@ is_truthy() {
 # carries no \r (a tput without -S support, an exotic entry) everything
 # stays empty, which is the same plain output a dumb terminal gets today.
 #
-# Gated on `[ -t 1 ]`: colors serve interactive output only, so a piped or
-# hermetic run never execs tput at all. A second call in the same process
-# (mdoctor's startup block, then init_colors inside a command) refills the
-# variables without another exec — "tput at most once per process".
+# Gated on `[ -t 1 ]` plus the NO_COLOR / MDOCTOR_NO_COLOR kill switches
+# (issue #108): colors serve interactive output only, so a piped, hermetic
+# or explicitly uncolored run never execs tput at all. A second call in the
+# same process (mdoctor's startup block, then init_colors inside a command)
+# refills the variables without another exec — "tput at most once per
+# process".
 _MDOCTOR_EL="${_MDOCTOR_EL:-}"
 
 mdoctor_term_init() {
@@ -86,6 +88,13 @@ mdoctor_term_init() {
     return 0
   fi
   _MDOCTOR_TPUT_DONE=true
+  # NO_COLOR / MDOCTOR_NO_COLOR (issue #108): either variable set to a
+  # non-empty value disables color — the no-color.org convention, applied
+  # identically to both names. The capability cache stays empty, so every
+  # consumer prints plain text and the spinner's erase-line never arms.
+  if [ -n "${NO_COLOR:-}" ] || [ -n "${MDOCTOR_NO_COLOR:-}" ]; then
+    return 0
+  fi
   command -v tput >/dev/null 2>&1 || return 0
   [ -t 1 ] || return 0
 

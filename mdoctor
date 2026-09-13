@@ -115,11 +115,13 @@ MDOCTOR_DEBUG="${MDOCTOR_DEBUG:-false}"
 # COLORS
 ########################################
 
-# All terminal sequences come from the single memoized `tput -S` batch in
-# mdoctor_term_init (issue #102): at most one tput exec per process —
-# the previous block ran eight per invocation — and zero when stdout is
-# not a tty, where colors are never wanted.
-mdoctor_term_init
+# init_colors (lib/common.sh, pulled in by lib/clean_common.sh above) is the
+# single color implementation every entry point calls (issue #108). Its
+# terminal sequences come from one memoized `tput -S` batch: at most one
+# tput exec per process — the previous block ran eight per invocation —
+# and zero when stdout is not a tty or NO_COLOR/MDOCTOR_NO_COLOR is set,
+# where escape sequences are never wanted.
+init_colors
 
 ########################################
 # HELPERS
@@ -1249,6 +1251,8 @@ cmd_help() {
   echo "  MDOCTOR_UPDATE_BRANCH            Override update git branch (default: main)"
   echo "  MDOCTOR_BENCH_HOST               Host for the benchmark DNS + HTTPS probes (default: example.com)"
   echo "  MDOCTOR_BENCH_DIR                Disk benchmark scratch dir (default: per-user cache dir)"
+  echo "  NO_COLOR                         Disable colored output (any non-empty value)"
+  echo "  MDOCTOR_NO_COLOR                 Same as NO_COLOR"
   echo
   echo "${DIM}Documentation: https://github.com/luongnv89/mdoctor${RESET}"
 }

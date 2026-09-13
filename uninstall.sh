@@ -45,7 +45,10 @@ else
   }
 fi
 
-if command -v tput >/dev/null 2>&1 && [ -t 1 ]; then
+# Same color contract as init_colors (issue #108): tty only, and never
+# when NO_COLOR / MDOCTOR_NO_COLOR carries a non-empty value.
+if command -v tput >/dev/null 2>&1 && [ -t 1 ] \
+  && [ -z "${NO_COLOR:-}" ] && [ -z "${MDOCTOR_NO_COLOR:-}" ]; then
   GREEN="$(tput setaf 2)"
   CYAN="$(tput setaf 6)"
   RESET="$(tput sgr0)"
