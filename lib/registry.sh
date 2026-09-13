@@ -83,7 +83,11 @@ register_all_modules() {
   register_module cleanup trash         System   MED clean_trash               "Empty Trash"
   register_module cleanup caches        System   LOW clean_user_caches         "User cache directories"
   register_module cleanup logs          System   MED clean_logs                "Old log files"
-  register_module cleanup downloads     System   LOW clean_downloads_large_files "Large files in Downloads"
+  # downloads is report-only (issue #112): it lists large files and never
+  # deletes — ~/Downloads is outside the allowed deletion roots — so it
+  # carries the SAFE badge, is excluded from the engine's PROGRESS_TOTAL
+  # and gets no destructive pre-flight estimate.
+  register_module cleanup downloads     System   SAFE clean_downloads_large_files "List large files in Downloads (report-only, never deletes)"
   register_module cleanup crash_reports System   MED clean_crash_reports       "Old crash/diagnostic reports"
   if is_macos; then
     register_module cleanup ios_backups   System   HIGH clean_ios_backups         "Old iOS device backups"

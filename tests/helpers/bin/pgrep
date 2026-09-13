@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Stub for `pgrep` (issue #112): never inspects real processes, so the
+# running-browser skip in cleanups/browser.sh is deterministic on every
+# host. Default: exit 1 (no match — nothing running).
+# MDOCTOR_STUB_PGREP_RUNNING is a space-separated list of argv
+# substrings that count as "running"; the literal `all` matches every
+# invocation. Invocations append to $MDOCTOR_STUB_LOG (if set) as
+# "pgrep <argv>".
+if [ -n "${MDOCTOR_STUB_LOG:-}" ]; then
+  printf 'pgrep %s\n' "$*" >>"$MDOCTOR_STUB_LOG"
+fi
+# shellcheck disable=SC2086  # word-splitting the pattern list is the point
+for _p in ${MDOCTOR_STUB_PGREP_RUNNING:-}; do
+  if [ "$_p" = "all" ]; then
+    exit 0
+  fi
+  case " $* " in
+    *" $_p "*) exit 0 ;;
+  esac
+done
+exit 1

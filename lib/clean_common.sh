@@ -124,8 +124,20 @@ run_single_cleanup_module() {
   # so `clean -m x` and `clean -m x --force` can never read identically.
   local _run_mode
   _run_mode="$(cleanup_mode_name "$selected_force")"
+  # Report-only modules (issue #112): a cleanup registered at SAFE risk
+  # never deletes anything, so even --force produces no destructive
+  # pre-flight, no confirmation gate and no DRY_RUN=false — the banner
+  # says report-only instead. An empty lookup (registry not yet
+  # populated) fails toward the normal destructive path.
+  local _report_only=false
+  if [ "$(get_module_risk "$selected_module" cleanup 2>/dev/null || true)" = "SAFE" ]; then
+    _report_only=true
+  fi
   echo
-  if is_truthy "$selected_force"; then
+  if is_truthy "$_report_only"; then
+    echo "${BOLD}== Cleanup module: ${selected_module} — report-only mode ==${RESET}"
+    echo "This module only reports; it never deletes files."
+  elif is_truthy "$selected_force"; then
     echo "${BOLD}== Cleanup module: ${selected_module} — force mode ==${RESET}"
     echo "This run will DELETE files."
   else
@@ -147,7 +159,7 @@ run_single_cleanup_module() {
     summary_days="$(module_documented_days "$selected_module")"
   fi
 
-  if is_truthy "$selected_force"; then
+  if is_truthy "$selected_force" && ! is_truthy "$_report_only"; then
     export DRY_RUN=false
     cmd_clean_preflight_summary_module "$selected_module" "$summary_days"
     # Confirmation gate (Task 0.5): y/N prompt, or refusal on a
@@ -165,9 +177,10 @@ run_single_cleanup_module() {
 
   # Disk-delta baseline for the force-mode closing summary (issue #106):
   # measured only when the run can actually free space — the same
-  # used-before/used-after approach as cleanup.sh main().
+  # used-before/used-after approach as cleanup.sh main(). Report-only
+  # modules never free space, so they skip the measurement.
   local _used_before_kb=0
-  if is_truthy "$selected_force"; then
+  if is_truthy "$selected_force" && ! is_truthy "$_report_only"; then
     _used_before_kb="$(disk_used_kb 2>/dev/null)" || _used_before_kb=0
     case "$_used_before_kb" in ''|*[!0-9]*) _used_before_kb=0 ;; esac
   fi
@@ -202,21 +215,31 @@ run_single_cleanup_module() {
   # full engine's "Cleanup finished"/"Estimated space" footer gives.
   echo
   if [ "$module_rc" -eq 0 ]; then
-    echo "${BOLD}Cleanup finished: ${selected_module} (${_run_mode} mode)${RESET}"
-    if is_truthy "$selected_force"; then
-      local _used_after_kb=0 _freed_kb=0
-      _used_after_kb="$(disk_used_kb 2>/dev/null)" || _used_after_kb=0
-      case "$_used_after_kb" in ''|*[!0-9]*) _used_after_kb="$_used_before_kb" ;; esac
-      _freed_kb=$(( _used_before_kb - _used_after_kb ))
-      if [ "$_freed_kb" -lt 0 ]; then _freed_kb=0; fi
-      echo "Estimated space freed: ~$(human_readable_kb "$_freed_kb")."
-    elif [ "${OP_ACTION_COUNT:-0}" -gt 0 ]; then
-      echo "Nothing was deleted — ${OP_ACTION_COUNT} change(s) would be applied. Re-run with --force."
+    if is_truthy "$_report_only"; then
+      # Report-only modules (issue #112) never print a would-free/deleted
+      # estimate or a "re-run with --force" hint — nothing to apply.
+      echo "${BOLD}Cleanup finished: ${selected_module} (report-only mode — nothing was deleted)${RESET}"
     else
-      echo "Nothing was deleted. Re-run with --force to apply."
+      echo "${BOLD}Cleanup finished: ${selected_module} (${_run_mode} mode)${RESET}"
+      if is_truthy "$selected_force"; then
+        local _used_after_kb=0 _freed_kb=0
+        _used_after_kb="$(disk_used_kb 2>/dev/null)" || _used_after_kb=0
+        case "$_used_after_kb" in ''|*[!0-9]*) _used_after_kb="$_used_before_kb" ;; esac
+        _freed_kb=$(( _used_before_kb - _used_after_kb ))
+        if [ "$_freed_kb" -lt 0 ]; then _freed_kb=0; fi
+        echo "Estimated space freed: ~$(human_readable_kb "$_freed_kb")."
+      elif [ "${OP_ACTION_COUNT:-0}" -gt 0 ]; then
+        echo "Nothing was deleted — ${OP_ACTION_COUNT} change(s) would be applied. Re-run with --force."
+      else
+        echo "Nothing was deleted. Re-run with --force to apply."
+      fi
     fi
   else
-    echo "${BOLD}Cleanup finished with errors: ${selected_module} (${_run_mode} mode, exit ${module_rc})${RESET}"
+    if is_truthy "$_report_only"; then
+      echo "${BOLD}Cleanup finished with errors: ${selected_module} (report-only mode, exit ${module_rc})${RESET}"
+    else
+      echo "${BOLD}Cleanup finished with errors: ${selected_module} (${_run_mode} mode, exit ${module_rc})${RESET}"
+    fi
   fi
 
   if [ "$module_rc" -eq 0 ]; then
