@@ -282,7 +282,7 @@ Override cleanup age thresholds (per-module defaults: 7 for logs/downloads, 30 f
 
 ```bash
 DAYS_OLD_OVERRIDE=14 mdoctor clean --force
-DAYS_OLD_NODE_MODULES=60 mdoctor clean --force   # stale node_modules in dev_caches
+DAYS_OLD_NODE_MODULES=60 mdoctor clean --force   # stale node_modules in dev_caches (default 30)
 ```
 
 Cleanup whitelist path override:
