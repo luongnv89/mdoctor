@@ -443,10 +443,16 @@ progress_pause() {
 
 # _spinner_teardown_channel — close the parent-side fds and drop the fifo
 # dir. Safe when the worker is already gone; never signals anything.
+# The closes are gated on _SPINNER_DIR (set only after both channel opens
+# in _spinner_spawn succeeded): a bare `exec N>&-` on a never-opened fd
+# aborts Bash 3.2 in some redirection states — silently, since the failing
+# command's own 2>/dev/null swallows the diagnostic. progress_stop calls
+# this unconditionally, so the single-module path died here with empty
+# output on the bash:3.2 lane (issue #114 doc-example run).
 _spinner_teardown_channel() {
-  exec 9>&- 2>/dev/null || true
-  exec 8>&- 2>/dev/null || true
   if [ -n "$_SPINNER_DIR" ]; then
+    exec 9>&- 2>/dev/null || true
+    exec 8>&- 2>/dev/null || true
     rm -rf "$_SPINNER_DIR" 2>/dev/null || true
     _SPINNER_DIR=""
   fi

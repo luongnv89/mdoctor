@@ -440,7 +440,7 @@ cmd_check() {
       exec 3>&-
 
       local _json_action
-      for _json_action in "${ACTIONS[@]}"; do
+      for _json_action in ${ACTIONS[@]+"${ACTIONS[@]}"}; do
         json_add_action "$_json_action"
       done
       json_build_output "$_chk_score" "$_chk_rating" "$WARN_COUNT" "$FAIL_COUNT"
