@@ -16,7 +16,7 @@
 
 ## Why mdoctor?
 
-- **Comprehensive** -- 21 health checks across Hardware, System, and Software categories
+- **Comprehensive** -- health checks across Hardware, System, and Software categories (20 on macOS / 18 on Linux; `mdoctor list` shows the live set)
 - **Safe by default** -- health checks are read-only, cleanup runs in dry-run mode
 - **Risk-rated** -- every operation is classified `[SAFE]` `[LOW]` `[MED]` `[HIGH]`
 - **Modular** -- run everything or target a single module
@@ -57,10 +57,10 @@ recommended first command.
 
 | Command | Badge | Description |
 |---------|-------|-------------|
-| `mdoctor check` | `[SAFE]` | Run full system health audit (21 checks, read-only) |
+| `mdoctor check` | `[SAFE]` | Run full system health audit (20 checks on macOS / 18 on Linux, read-only) |
 | `mdoctor check --json` | `[SAFE]` | JSON output for automation |
-| `mdoctor clean` | `[HIGH]` | Run system cleanup (dry-run by default, 10 modules) |
-| `mdoctor fix <target>` | `[MED]` | Apply common fixes (9 targets) |
+| `mdoctor clean` | `[HIGH]` | Run system cleanup (dry-run by default, 10 on macOS / 9 on Linux) |
+| `mdoctor fix <target>` | `[MED]` | Apply common fixes (9 on macOS / 2 on Linux) |
 | `mdoctor diagnose` | `[SAFE]` | Run active performance diagnosis (read-only — prints remedies, never runs them) |
 | `mdoctor info` | `[SAFE]` | Show system information summary |
 | `mdoctor list` | `[SAFE]` | List all modules with category & risk level |
@@ -130,6 +130,12 @@ non-interactive runs, `MDOCTOR_ASSUME_YES=true` skips the prompt; with
 it set there is no confirmation and `--force` deletes immediately after
 the summary. Piping from a non-tty without that variable refuses
 outright. The summary itself is informational, not an approval step.
+
+A full `mdoctor clean` does not run every registered module — it runs a
+fixed step list of 7 on macOS / 6 on Linux. The opted-out modules —
+`downloads` (report-only: lists large files, never deletes), `browser`
+and `dev` — run via `mdoctor clean -m <name>` or
+`mdoctor clean --interactive`.
 
 Clean a specific target only:
 
@@ -289,24 +295,32 @@ mdoctor/
 ├── mdoctor              # Unified CLI entry point
 ├── install.sh           # One-line installer
 ├── uninstall.sh         # Uninstaller
-├── doctor.sh            # Health audit engine (21 checks)
-├── cleanup.sh           # Cleanup engine (10 modules)
-├── lib/                 # Shared libraries
+├── doctor.sh            # Health check engine (20 on macOS / 18 on Linux)
+├── cleanup.sh           # Cleanup engine (10 on macOS / 9 on Linux)
+├── lib/                 # Shared libraries (18 files)
 │   ├── platform.sh      # OS/distro detection (macOS, Debian, Ubuntu, etc.)
+│   ├── constants.sh     # Named thresholds/timeouts + truthy predicate
+│   ├── context.sh       # Module context contract (shared globals)
 │   ├── common.sh        # Colors, icons, UI helpers, progress spinner
 │   ├── logging.sh       # Logging + operation session records
 │   ├── disk.sh          # Disk utilities
-│   ├── metadata.sh      # Module registry (categories, risk levels)
+│   ├── metadata.sh      # Module registry primitives (categories, risk levels)
+│   ├── registry.sh      # Module declarations (single source of truth)
 │   ├── json.sh          # Pure-Bash JSON output support
 │   ├── history.sh       # Health score history & trends
 │   ├── benchmark.sh     # System benchmark tests
+│   ├── perf_probes.sh   # Timeout-capped performance samplers
+│   ├── preflight.sh     # Pre-flight size estimators
+│   ├── timeout.sh       # Portable command time-capping
+│   ├── help.sh          # usage_* renderers + shared flag parser
 │   ├── safety.sh        # Deletion safety primitives + whitelist policy
-│   └── cleanup_scope.sh # Dev cache scope include/exclude config
-├── checks/              # Health check modules (21)
+│   ├── cleanup_scope.sh # Dev cache scope include/exclude config
+│   └── clean_common.sh  # Single-module + interactive cleanup helpers
+├── checks/              # Health check modules (22 files)
 │   ├── battery.sh       # Battery health & cycle count
 │   ├── hardware.sh      # CPU, RAM, thermals
-│   ├── bluetooth.sh     # Bluetooth status
-│   ├── usb.sh           # USB device audit
+│   ├── bluetooth.sh     # Bluetooth status (macOS)
+│   ├── usb.sh           # USB device audit (macOS)
 │   ├── system.sh        # OS, memory, load average
 │   ├── disk.sh          # Disk usage
 │   ├── updates.sh       # System updates (macOS + APT)
@@ -315,7 +329,8 @@ mdoctor/
 │   ├── network.sh       # Connectivity, DNS, Wi-Fi signal
 │   ├── performance.sh   # Memory pressure, CPU, processes
 │   ├── storage.sh       # Large files & storage analysis
-│   ├── homebrew.sh      # Homebrew checks
+│   ├── diagnose_performance.sh # Active performance diagnosis
+│   ├── homebrew.sh      # Homebrew checks (macOS)
 │   ├── node.sh          # Node.js & npm
 │   ├── python.sh        # Python & pip
 │   ├── devtools.sh      # Developer tools, Git, Docker
@@ -324,40 +339,43 @@ mdoctor/
 │   ├── git_config.sh    # Git & SSH config
 │   ├── containers.sh    # Docker & containers
 │   └── apt.sh           # APT package manager health (Linux)
-├── cleanups/            # Cleanup modules (10)
+├── cleanups/            # Cleanup modules (11 files)
 │   ├── trash.sh         # Trash cleanup
 │   ├── caches.sh        # User caches
 │   ├── logs.sh          # Old logs
 │   ├── downloads.sh     # Large files in Downloads (report-only)
-│   ├── browser.sh       # Browser caches
-│   ├── dev.sh           # Developer tool caches
+│   ├── browser.sh       # Browser caches (opt-in via -m)
+│   ├── dev.sh           # Developer tool caches (opt-in via -m)
 │   ├── crash_reports.sh # Old crash/diagnostic reports
-│   ├── ios_backups.sh   # Old iOS device backups
-│   ├── xcode.sh         # Xcode DerivedData, archives, simulators
+│   ├── ios_backups.sh   # Old iOS device backups (macOS)
+│   ├── xcode.sh         # Xcode DerivedData, archives, simulators (macOS)
 │   ├── dev_caches.sh    # Developer dependency & package caches
 │   └── apt.sh           # APT package cache cleanup (Linux)
-├── fixes/               # Fix modules (9)
-│   ├── homebrew.sh      # Homebrew update & repair
+├── fixes/               # Fix modules (10 files)
+│   ├── homebrew.sh      # Homebrew update & repair (macOS)
 │   ├── dns.sh           # Flush DNS cache
-│   ├── disk.sh          # Free disk space
-│   ├── permissions.sh   # Reset permissions
-│   ├── spotlight.sh     # Rebuild Spotlight index
-│   ├── bluetooth.sh     # Reset Bluetooth
-│   ├── audio.sh         # Restart Core Audio
-│   ├── wifi.sh          # Fix Wi-Fi connection
+│   ├── disk.sh          # Free disk space (macOS)
+│   ├── permissions.sh   # Reset permissions (macOS)
+│   ├── spotlight.sh     # Rebuild Spotlight index (macOS)
+│   ├── bluetooth.sh     # Reset Bluetooth (macOS)
+│   ├── audio.sh         # Restart Core Audio (macOS)
+│   ├── wifi.sh          # Fix Wi-Fi connection (macOS)
 │   ├── timemachine.sh   # Time Machine repair (macOS)
 │   └── apt.sh           # Fix APT packages (Linux)
-├── scripts/
-│   └── lint_shell.sh    # Shared ShellCheck policy entrypoint (local + CI)
+├── scripts/             # Repo scripts (3 files)
+│   ├── lint_shell.sh    # Shared ShellCheck policy entrypoint (local + CI)
+│   ├── check_bash32.sh  # Bash 3.2 banned-construct scanner
+│   └── check_version.sh # Version consistency check
 ├── tests/
 │   ├── run.sh            # bats-core delegation, filter, JUnit, watchdog
-│   ├── helpers/assert.bash
+│   ├── helpers/          # assert.bash, fixture.bash, fixes_lane.bash, PATH stubs (bin/, bin-macos/)
 │   └── test_*.bats       # Regression coverage for parsing/safety/cleanup behavior
 ├── openspec/            # Task-scoped change artifacts and archived specs
-└── docs/                # Documentation
+└── docs/                # Documentation (8 files)
     ├── GUIDEBOOK.md
     ├── ARCHITECTURE.md
     ├── DEVELOPMENT.md
+    ├── AGENT_ENVIRONMENT.md
     ├── DEPLOYMENT.md
     ├── SAFETY.md
     ├── LINUX_DEBIAN_PLAN.md
@@ -366,15 +384,27 @@ mdoctor/
 
 ## Documentation
 
+All project documents — `docs/` holds the guides, the repo root holds the
+project documents:
+
 - [Guidebook](docs/GUIDEBOOK.md) -- Quick problem → command lookup
 - [Architecture](docs/ARCHITECTURE.md) -- System design and component overview
 - [Development](docs/DEVELOPMENT.md) -- Local setup and debugging guide
+- [Agent Environment](docs/AGENT_ENVIRONMENT.md) -- Agent runbook: environment quirks, Bash 3.2 floor
 - [Deployment](docs/DEPLOYMENT.md) -- Distribution and release process
 - [Safety & Recovery](docs/SAFETY.md) -- Cleanup safety model, recovery playbook, known limitations
 - [Linux Debian Plan](docs/LINUX_DEBIAN_PLAN.md) -- phased roadmap for Debian-based Linux support
 - [Changelog](docs/CHANGELOG.md) -- Version history
 - [Contributing](CONTRIBUTING.md) -- How to contribute
 - [Security](SECURITY.md) -- Vulnerability reporting
+- [Code of Conduct](CODE_OF_CONDUCT.md) -- Community standards
+- [Release Notes](RELEASE_NOTES.md) -- Release-by-release highlights
+- [Agents](AGENTS.md) -- Agent-facing project rules and conventions
+- [Claude](CLAUDE.md) -- Claude-specific commands (includes AGENTS.md)
+- [Code Review](CODE_REVIEW.md) -- Latest code-review artifact
+- [Modernization Plan](MODERNIZATION_PLAN.md) -- Tasked improvement plan
+- [Modernization Report](MODERNIZATION_REPORT.md) -- Plan execution report
+- [README](README.md) -- This file
 
 ## Contributing
 

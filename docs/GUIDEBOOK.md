@@ -112,7 +112,11 @@ mdoctor clean --force        # Actually free disk space
 
 ## Cleanup Cheat Sheet
 
-Cleanup modules are risk-rated (`[SAFE]` modules only report — they never delete). Dry-run by default — add `--force` to actually delete. The module set is platform-filtered: macOS registers 10 modules, Debian Linux registers 9.
+Cleanup modules are risk-rated (`[SAFE]` modules only report — they never delete). Dry-run by default — add `--force` to actually delete.
+
+The registered cleanup set is platform-filtered: 10 on macOS / 9 on Linux (`mdoctor list` shows the live set for your machine).
+
+A full `mdoctor clean` does not run every registered module — it runs a fixed step list of 7 on macOS / 6 on Linux. The opted-out modules — `downloads` (report-only: it lists large files, never deletes), `browser` and `dev` — run via `mdoctor clean -m <name>` or `mdoctor clean --interactive`.
 
 | Module | What it removes | Platform |
 |--------|-----------------|----------|
@@ -129,9 +133,9 @@ Cleanup modules are risk-rated (`[SAFE]` modules only report — they never dele
 | `xcode` | Xcode DerivedData, archives, old simulators | macOS only |
 
 ```bash
-mdoctor clean                        # Dry-run every module registered for this platform
+mdoctor clean                        # Dry-run the full-clean step list (7 on macOS / 6 on Linux)
 mdoctor clean --dry-run              # Same dry-run, stated explicitly
-mdoctor clean --force                # Run every module for real (asks to confirm)
+mdoctor clean --force                # Same step list for real (asks to confirm)
 mdoctor clean -m caches              # Dry-run one module
 mdoctor clean -m caches --force      # Run one module for real
 mdoctor clean -m apt --force         # Linux only — clean the APT cache for real
