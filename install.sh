@@ -9,6 +9,9 @@
 #   git clone https://github.com/luongnv89/mdoctor.git && cd mdoctor && ./install.sh
 #
 
+# Errexit posture (issue #113): `set -e` is deliberate — a half-completed
+# install is worse than no install, so any failure aborts immediately.
+# See CONTRIBUTING.md "Errexit posture".
 set -euo pipefail
 
 ########################################
@@ -116,10 +119,13 @@ verify_release_tag() {
     return 1
   fi
   local verify_out verify_rc
-  set +e
-  verify_out="$(git -C "$repo_dir" verify-tag "$tag" 2>&1)"
-  verify_rc=$?
-  set -e
+  # Posture-agnostic capture (issue #113): the `if` keeps a failing
+  # substitution from aborting under `set -e` without toggling flags.
+  if verify_out="$(git -C "$repo_dir" verify-tag "$tag" 2>&1)"; then
+    verify_rc=0
+  else
+    verify_rc=$?
+  fi
   if [ "$verify_rc" -eq 0 ]; then
     info "Verified release tag signature: ${tag}"
     return 0

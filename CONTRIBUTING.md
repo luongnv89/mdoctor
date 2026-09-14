@@ -181,11 +181,39 @@ docs: add troubleshooting section to README
 ## Coding Standards
 
 - Use `#!/usr/bin/env bash` shebang
-- Use `set -uo pipefail` (or `set -euo pipefail` for cleanup scripts)
+- Follow the errexit posture table below — each entry point's `set` line
+  is a deliberate decision, stated in its header comment
 - Quote all variable expansions: `"$var"` not `$var`
 - Use the shared library functions (`status_ok`, `status_warn`, `status_fail`, etc.)
 - Keep modules small and focused on a single concern
 - Add comments only where the logic isn't self-evident
+
+### Errexit posture
+
+Each entry point picks its `set` flags deliberately; the posture is
+stated in the file's header comment and must not be changed casually.
+`set -uo pipefail` is the minimum everywhere.
+
+| Entry point | Flags | Why |
+|-------------|-------|-----|
+| `mdoctor` | `set -uo pipefail` | The dispatcher runs independent commands and reports each exit code itself; one failing command must not kill the CLI. |
+| `doctor.sh` | `set -uo pipefail` | A read-only audit of 20+ sequential checks — one check's failure must not abort the rest of the report. |
+| `cleanup.sh` | `set -euo pipefail` | Destructive engine — an unexpected failure aborts the run before further deletions. |
+| `install.sh`, `uninstall.sh` | `set -euo pipefail` | A half-completed install/uninstall is worse than none; fail fast. |
+| `tests/run.sh` | `set -uo pipefail` | The runner aggregates per-file failures; aborting on the first would hide later results. |
+
+Because the same `lib/` modules are sourced by entry points with and
+without `-e`, shared code must be **posture-agnostic** (issue #113):
+
+- Never rely on `set -e` to abort on failure — check return codes and
+  `return` explicitly.
+- Guard best-effort writes (operations log, `~/.mdoctor/history`,
+  `~/.config/mdoctor` config files, `$LOGFILE`) so a failure warns and
+  continues instead of tripping `-e`: `if ! cmd; then …`, `cmd || true`,
+  or `2>/dev/null` as appropriate.
+- Capture a command that may fail inside `if var="$(cmd)"; then … else
+  rc=$?; fi` — never toggle `set +e`/`set -e` mid-script (that also leaks
+  the flag into the rest of the process).
 
 ## Testing
 

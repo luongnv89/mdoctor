@@ -11,6 +11,12 @@
 #   ./cleanup.sh --debug    # dry run + structured debug diagnostics
 #
 
+# Errexit posture (issue #113): `set -e` is DELIBERATE here — an
+# unexpected failure aborts the run before further deletions. Shared
+# modules sourced below are therefore required to be posture-agnostic:
+# they must handle their own errors and must never let a best-effort
+# state write (operations log, whitelist/scope config, history, LOGFILE)
+# trip errexit. See CONTRIBUTING.md "Errexit posture".
 set -euo pipefail
 
 ########################################
@@ -281,8 +287,10 @@ cleanup_force_preflight_summary() {
 ########################################
 
 main() {
-	mkdir -p "$(dirname "$LOGFILE")"
-	echo >>"$LOGFILE"
+	# Issue #113: the log dir/file are best-effort — an unwritable HOME
+	# must warn-and-continue, never abort the run under `set -e`.
+	mkdir -p "$(dirname "$LOGFILE")" 2>/dev/null || true
+	_logfile_write ""
 
 	local used_before_kb
 	local used_after_kb

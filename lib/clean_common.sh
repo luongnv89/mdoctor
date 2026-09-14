@@ -167,7 +167,8 @@ run_single_cleanup_module() {
     confirm_destructive_execution "cleanup module ${selected_module}" || return 1
   fi
 
-  mkdir -p "$(dirname "$LOGFILE")"
+  # Issue #113: best-effort state — warn-and-continue under `set -e`.
+  mkdir -p "$(dirname "$LOGFILE")" 2>/dev/null || true
   if declare -f ensure_cleanup_whitelist_file >/dev/null 2>&1; then
     ensure_cleanup_whitelist_file
   fi

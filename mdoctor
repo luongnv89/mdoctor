@@ -21,6 +21,10 @@
 #   help       [SAFE]  Show this help message
 #
 
+# Errexit posture (issue #113): intentionally NO `set -e` — the CLI
+# dispatches many independent commands and reports each one's exit code
+# itself; a single failing command must not kill the process. Shared
+# modules are posture-agnostic. See CONTRIBUTING.md "Errexit posture".
 set -uo pipefail
 
 ########################################
@@ -1025,13 +1029,17 @@ mdoctor_verify_tag() {
     return 1
   fi
   local verify_out verify_rc
-  set +e
   # verify-tag spawns gpg → gpg-agent — a wedged agent could hang the
   # call, so it runs behind the same portable cap as the check probes
   # (issue #101). A timeout fails closed (treated as unverifiable).
-  verify_out="$(mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" git -C "$MDOCTOR_DIR" verify-tag "$tag" 2>&1)"
-  verify_rc=$?
-  set -e
+  # Posture-agnostic capture (issue #113): the `if` keeps a failing
+  # substitution from aborting under `set -e`; the old set +e/set -e
+  # wrapper also leaked `set -e` into this no-errexit entry point.
+  if verify_out="$(mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" git -C "$MDOCTOR_DIR" verify-tag "$tag" 2>&1)"; then
+    verify_rc=0
+  else
+    verify_rc=$?
+  fi
   if [ "$verify_rc" -eq 124 ]; then
     error "Tag verification timed out (timeout ${MDOCTOR_CMD_TIMEOUT_S}s) — refusing to update."
     return 1

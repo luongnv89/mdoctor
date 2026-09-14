@@ -13,6 +13,9 @@
 #                        (same flag as the cleanup confirmation gate)
 #
 
+# Errexit posture (issue #113): `set -e` is deliberate — a half-completed
+# uninstall is worse than none, so any failure aborts immediately.
+# See CONTRIBUTING.md "Errexit posture".
 set -euo pipefail
 
 INSTALL_DIR="${MDOCTOR_INSTALL_DIR:-${HOME}/.mdoctor}"

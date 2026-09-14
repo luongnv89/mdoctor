@@ -8,6 +8,10 @@
 #   ./doctor.sh
 #
 
+# Errexit posture (issue #113): intentionally NO `set -e` — the audit is
+# 20+ sequential read-only checks and one check's failure must never
+# abort the rest of the report. Modules handle their own errors; shared
+# libs are posture-agnostic. See CONTRIBUTING.md "Errexit posture".
 set -uo pipefail
 
 ########################################

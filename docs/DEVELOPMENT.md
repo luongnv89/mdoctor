@@ -185,7 +185,11 @@ Or add `set -x` temporarily inside a specific module.
 ## Code Style
 
 - Shebang: `#!/usr/bin/env bash`
-- Error handling: `set -uo pipefail` (add `e` for cleanup scripts)
+- Error handling: `set -uo pipefail` minimum; each entry point's errexit
+  posture is deliberate and documented (see CONTRIBUTING.md "Errexit
+  posture" — `cleanup.sh`/`install.sh`/`uninstall.sh` use `-e`, `mdoctor`/
+  `doctor.sh`/`tests/run.sh` intentionally do not; shared `lib/` modules
+  must be posture-agnostic)
 - Always quote variables: `"$var"`
 - Use library functions for output consistency
 - One concern per module file

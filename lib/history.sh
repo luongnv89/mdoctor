@@ -4,37 +4,111 @@
 # History storage and trend display for health scores
 #
 
+# history_prune needs validate_deletion_path (issue #113): retention
+# deletes route through the same lib/safety.sh validation every other
+# deletion passes. is_uint comes from lib/constants.sh. The variable is
+# named per-file because a sourced dependency unsets the shared
+# _mdoctor_lib_dir name (issue #113).
+_mdoctor_history_lib_dir="${BASH_SOURCE[0]%/*}"
+if [ "$_mdoctor_history_lib_dir" = "${BASH_SOURCE[0]}" ]; then
+  _mdoctor_history_lib_dir="."
+fi
+if ! declare -f is_uint >/dev/null 2>&1; then
+  # shellcheck source=/dev/null
+  source "${_mdoctor_history_lib_dir}/constants.sh"
+fi
+if ! declare -f validate_deletion_path >/dev/null 2>&1; then
+  # shellcheck source=/dev/null
+  source "${_mdoctor_history_lib_dir}/safety.sh"
+fi
+unset _mdoctor_history_lib_dir
+
 HISTORY_DIR="${HOME}/.mdoctor/history"
+
+# Per-process sequence suffix for history filenames (issue #113): the
+# second-resolution timestamp alone collides when two runs save inside
+# the same second — PID plus this counter makes every name distinct.
+_HISTORY_SEQ=0
 
 ########################################
 # SAVE HISTORY
 ########################################
 
 # history_save SCORE RATING WARNINGS FAILURES
-# Saves a summary JSON to ~/.mdoctor/history/YYYYMMDD_HHMMSS.json
+# Saves a summary JSON to ~/.mdoctor/history/YYYYMMDD_HHMMSS-<pid>-<seq>.json
 history_save() {
   local score="$1"
   local rating="$2"
   local warnings="$3"
   local failures="$4"
 
-  mkdir -p "$HISTORY_DIR"
-  # Task 3.4: state dirs/files are private at creation.
+  # Best-effort state (issue #113): a directory we cannot create warns and
+  # skips the save — it never aborts the run under `set -e`.
   if [ ! -d "$HISTORY_DIR" ]; then
-    chmod 700 "$HISTORY_DIR"
+    if ! mkdir -p "$HISTORY_DIR" 2>/dev/null; then
+      echo "warning: cannot create history dir '${HISTORY_DIR}' — skipping history save" >&2
+      return 0
+    fi
+    # Task 3.4: state dirs/files are private at creation.
+    chmod 700 "$HISTORY_DIR" 2>/dev/null || true
   fi
 
   local ts
   ts="$(date +%Y%m%d_%H%M%S)"
-  local file="${HISTORY_DIR}/${ts}.json"
+  _HISTORY_SEQ=$((_HISTORY_SEQ + 1))
+  local file="${HISTORY_DIR}/${ts}-$$-${_HISTORY_SEQ}.json"
 
   local esc_rating
   esc_rating="${rating//\"/\\\"}"
 
-  cat > "$file" <<HISTEOF
+  if cat > "$file" <<HISTEOF
 {"timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","score":${score},"rating":"${esc_rating}","warnings":${warnings},"failures":${failures}}
 HISTEOF
-  chmod 600 "$file"
+  then
+    chmod 600 "$file" 2>/dev/null || true
+  else
+    echo "warning: cannot write history entry '${file}' — skipping history save" >&2
+    return 0
+  fi
+
+  history_prune
+}
+
+# history_prune — bound the history directory to MDOCTOR_HISTORY_KEEP
+# entries (issue #113). Filenames sort chronologically (timestamp prefix),
+# so the oldest overflow is removed first. Candidates are the .json files
+# this process's own state dir contains; each deletion is validated by
+# lib/safety.sh's validate_deletion_path (~/.mdoctor/history is an allowed
+# deletion root) and the canonical path is removed directly — never via
+# safe_remove, whose dry-run gate would make the bound unreachable from
+# `mdoctor check`, which always runs dry and has no --force flag.
+history_prune() {
+  [ -d "$HISTORY_DIR" ] || return 0
+
+  local keep="${MDOCTOR_HISTORY_KEEP:-100}"
+  is_uint "$keep" || keep=100
+
+  local files=()
+  local f
+  while IFS= read -r f; do
+    files+=("$f")
+  done < <(find "$HISTORY_DIR" -name '*.json' -type f 2>/dev/null | sort)
+
+  local total=${#files[@]}
+  local excess=$((total - keep))
+  if (( excess <= 0 )); then
+    return 0
+  fi
+
+  local i=0 canon=""
+  while (( i < excess )); do
+    canon=""
+    if validate_deletion_path "${files[$i]}" canon >/dev/null 2>&1 && [ -n "$canon" ]; then
+      rm -f -- "$canon" 2>/dev/null || true
+    fi
+    i=$((i + 1))
+  done
+  return 0
 }
 
 # _history_is_uint VALUE — validates a parsed history field before any

@@ -12,6 +12,10 @@
 # on first use (no vendored dependency; MDOCTOR_BATS_BIN overrides the
 # lookup for offline/CI-pinned environments).
 
+# Errexit posture (issue #113): intentionally NO `set -e` — the runner
+# aggregates per-file failures into the summary; aborting on the first
+# non-zero rc would hide every later file's result. See CONTRIBUTING.md
+# "Errexit posture".
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

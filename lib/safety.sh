@@ -177,11 +177,21 @@ ensure_cleanup_whitelist_file() {
   local dir
   dir="$(dirname "$file")"
 
-  mkdir -p "$dir"
-  # Task 3.4: state is private (0700 dirs, 0600 files).
-  chmod 700 "$dir"
+  # Best-effort state (issue #113): an unwritable config dir warns once
+  # and continues — under cleanup.sh's `set -e` an unchecked mkdir/chmod
+  # here used to abort the whole run over a file the user may never have
+  # customized. load_cleanup_whitelist treats a missing file as an empty
+  # whitelist, which is the honest state when none could be created.
+  if [ ! -d "$dir" ]; then
+    if ! mkdir -p "$dir" 2>/dev/null; then
+      echo "warning: cannot create config dir '${dir}' — cleanup whitelist unavailable" >&2
+      return 0
+    fi
+    # Task 3.4: state is private (0700 dirs, 0600 files).
+    chmod 700 "$dir" 2>/dev/null || true
+  fi
   if [ ! -f "$file" ]; then
-    cat >"$file" <<'EOF'
+    if cat >"$file" 2>/dev/null <<'EOF'
 # mdoctor cleanup whitelist
 # One path per line. Blank lines and lines starting with # are ignored.
 #
@@ -195,10 +205,14 @@ ensure_cleanup_whitelist_file() {
 # ~/.cache/huggingface
 # ~/.m2/repository/*
 EOF
-    chmod 600 "$file"
-    # Issue #106: creation is announced, never silent — this file is the
-    # user's only path-protection mechanism, so its appearance is surfaced.
-    _safety_log "[SAFE][WHITELIST] created ${file} — add paths there to protect them from cleanup"
+    then
+      chmod 600 "$file" 2>/dev/null || true
+      # Issue #106: creation is announced, never silent — this file is the
+      # user's only path-protection mechanism, so its appearance is surfaced.
+      _safety_log "[SAFE][WHITELIST] created ${file} — add paths there to protect them from cleanup"
+    else
+      echo "warning: cannot create cleanup whitelist '${file}' — continuing without it" >&2
+    fi
   fi
 }
 
@@ -209,6 +223,19 @@ load_cleanup_whitelist() {
 
   ensure_cleanup_whitelist_file
   _MDOCTOR_WHITELIST=()
+
+  # Issue #113: a config dir that could not be created leaves no file to
+  # read — `done < missing` would error and, under `set -e`, abort the
+  # run. An absent whitelist is an empty whitelist.
+  if [ ! -f "$MDOCTOR_CLEANUP_WHITELIST_FILE" ]; then
+    _MDOCTOR_WHITELIST_LOADED=true
+    return 0
+  fi
+  if [ ! -r "$MDOCTOR_CLEANUP_WHITELIST_FILE" ]; then
+    echo "warning: cleanup whitelist '${MDOCTOR_CLEANUP_WHITELIST_FILE}' is unreadable — treating it as empty" >&2
+    _MDOCTOR_WHITELIST_LOADED=true
+    return 0
+  fi
 
   local line=""
   while IFS= read -r line || [ -n "$line" ]; do
@@ -307,6 +334,11 @@ _mdoctor_allowed_deletion_roots_list() {
     "$home/.cargo"
     "$home/.local/share/Trash"
     "$home/.local/share/mdoctor"
+    # Issue #113: mdoctor's own bounded state — history retention pruning
+    # validates each entry through validate_deletion_path before removing
+    # it. Only the history dir is carved out; the rest of ~/.mdoctor and
+    # ~/.config/mdoctor stay outside the allowed roots.
+    "$home/.mdoctor/history"
     "$home/.local/share/apport"
     "$home/.local/share/pnpm"
     "$home/Library/Caches"
