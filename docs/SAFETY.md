@@ -122,8 +122,10 @@ Examples:
 Rules:
 - One path per line
 - `#` comments and blank lines are ignored
+- `~` is expanded to your home directory — a leading `~` only; a tilde
+  anywhere else in the path stays literal and will not match
 - Exact path protects itself + descendants
-- `/*` protects descendants under a base path
+- `/*` protects the base path itself + descendants under it
 
 ### Cleanup scope (dev_caches node_modules scan)
 
@@ -140,8 +142,19 @@ EXCLUDE_GLOB=*important-monorepo/node_modules*
 ```
 
 Rules:
-- If no include paths are configured, default scan behavior is preserved
-- Exclude globs are matched before deletion
+- `INCLUDE_PATH=` adds one scan root per line, `EXCLUDE_GLOB=` drops
+  matching candidates; in both, `~` is expanded to your home directory —
+  a leading `~` only, the same rule the whitelist uses
+- Exclude globs are shell-style globs matched against the full
+  candidate path before deletion
+- With no active `INCLUDE_PATH` lines — the default state, since the
+  generated file ships every rule commented out — the scan keeps its
+  built-in defaults: six roots (`~/Projects`, `~/projects`, `~/code`,
+  `~/workspace`, `~/dev`, `~/src`), each searched to a depth of 5
+  (`find -maxdepth 5`), and a `node_modules` counts as stale when it was
+  last modified more than `DAYS_OLD_NODE_MODULES` days ago (default: 30).
+  A forced clean recursively deletes every stale `node_modules` found
+  under those roots.
 
 ## Recovery Playbook
 
