@@ -31,10 +31,18 @@ Paste the terminal output here
 
 ## Environment
 
-- macOS version: [e.g., macOS 15.2]
-- Architecture: [e.g., Apple Silicon / Intel]
+- OS: [e.g., macOS or Linux]
+- OS version: [e.g., macOS 15.2 / `uname -r` on Linux]
+- Distro/release (Linux): [e.g., Ubuntu 24.04 — `cat /etc/os-release`; write "n/a" on macOS]
+- Architecture: [e.g., Apple Silicon (arm64) / Intel (x86_64) — `uname -m`]
 - mdoctor version: [run `mdoctor version`]
 - Shell: [e.g., zsh, bash]
+
+## `mdoctor info` Output
+
+```
+Paste the output of `mdoctor info` here
+```
 
 ## Additional Context
 

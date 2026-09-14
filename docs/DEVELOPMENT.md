@@ -97,16 +97,13 @@ No git hook runs the suite automatically: the old `pre-push`
 `test-suite` hook was removed (Task 0.1). CI runs the full suite from a
 clean checkout; developers run it explicitly with the command above.
 
-Current coverage includes:
-- command parsing/help behavior
-- metadata/list routing checks
-- safety validation + whitelist protection
-- dry-run vs force cleanup semantics
-- interactive cleanup selection behavior
-- `fixes/` lane — stub-`PATH` exact command sequences for the five
-  macOS-only fix modules plus off-macOS refusals
-  (`tests/test_fixes_lane.bats`, harness in
-  `tests/helpers/fixes_lane.bash`)
+Coverage areas move with the suite — enumerate the live set instead of
+trusting a hand-maintained list:
+
+```bash
+ls tests/test_*.bats        # one file per coverage area, named for what it pins
+ls tests/helpers/           # shared harness (assertions, fixtures, PATH stubs)
+```
 
 Run shell lint policy (high-severity gate):
 
