@@ -320,6 +320,10 @@ oplog_ensure_file() {
   _cap="${MDOCTOR_OPLOG_MAX_BYTES:-}"
   if ! is_uint "$_cap"; then
     _cap=$(( ${MDOCTOR_KB_PER_MB:-1024} * ${MDOCTOR_BYTES_PER_KB:-1024} ))
+  else
+    # 10# forces decimal — is_uint accepts "08"/"09", invalid octal to
+    # arithmetic contexts.
+    _cap=$((10#$_cap))
   fi
   if is_uint "$_size" && [ "$_cap" -gt 0 ] && [ "$_size" -gt "$_cap" ]; then
     if mv -- "$OPLOGFILE" "${OPLOGFILE}.1" 2>/dev/null && ( : > "$OPLOGFILE" ) 2>/dev/null; then
