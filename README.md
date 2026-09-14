@@ -368,7 +368,7 @@ mdoctor/
 │   └── check_version.sh # Version consistency check
 ├── tests/
 │   ├── run.sh            # bats-core delegation, filter, JUnit, watchdog
-│   ├── helpers/          # assert.bash, fixture.bash, PATH stubs (bin/, bin-macos/)
+│   ├── helpers/          # assert.bash, fixture.bash, fixes_lane.bash, PATH stubs (bin/, bin-macos/)
 │   └── test_*.bats       # Regression coverage for parsing/safety/cleanup behavior
 ├── openspec/            # Task-scoped change artifacts and archived specs
 └── docs/                # Documentation (8 files)
