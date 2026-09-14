@@ -5,10 +5,12 @@
 # Every other version site must match it or this check fails:
 #   1. `mdoctor` constant itself (MDOCTOR_VERSION="X")
 #   2. no literal fallback in lib/json.sh (unset emits null, never a number)
-#   3. docs/CHANGELOG.md entry (## [X])
-#   4. RELEASE_NOTES.md title (## vX)
-#   5. RELEASE_NOTES.md changelog link (...vX)
-#   6. docs/DEPLOYMENT.md worked example (git tag -a vX)
+#   3. docs/CHANGELOG.md entry (## [X]) — the authoritative changelog
+#   4. docs/DEPLOYMENT.md worked example (git tag -a vX)
+#
+# RELEASE_NOTES.md is a pointer to docs/CHANGELOG.md and GitHub Releases
+# (Task 13.6): it carries no version literals and is intentionally not a
+# version site. tests/test_changelog_authority.bats keeps it that way.
 #
 # Usage:
 #   ./scripts/check_version.sh [EXPECTED_TAG]
@@ -56,21 +58,7 @@ else
   fail "docs/CHANGELOG.md lacks entry '## [$VERSION]'."
 fi
 
-# 4. Release-notes title.
-if grep -qF "## v$VERSION" RELEASE_NOTES.md 2>/dev/null; then
-  echo "check_version: RELEASE_NOTES.md has title '## v$VERSION'."
-else
-  fail "RELEASE_NOTES.md lacks title '## v$VERSION'."
-fi
-
-# 5. Release-notes changelog link.
-if grep -qF "...v$VERSION" RELEASE_NOTES.md 2>/dev/null; then
-  echo "check_version: RELEASE_NOTES.md changelog link ends at v$VERSION."
-else
-  fail "RELEASE_NOTES.md lacks changelog link ending '...v$VERSION'."
-fi
-
-# 6. Deployment worked example.
+# 4. Deployment worked example.
 if grep -qF "git tag -a v$VERSION" docs/DEPLOYMENT.md 2>/dev/null; then
   echo "check_version: docs/DEPLOYMENT.md example tags v$VERSION."
 else

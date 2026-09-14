@@ -408,12 +408,12 @@ project documents:
 - [Agent Environment](docs/AGENT_ENVIRONMENT.md) -- Agent runbook: environment quirks, Bash 3.2 floor
 - [Deployment](docs/DEPLOYMENT.md) -- Distribution and release process
 - [Safety & Recovery](docs/SAFETY.md) -- Cleanup safety model, recovery playbook, known limitations
-- [Linux Debian Plan](docs/LINUX_DEBIAN_PLAN.md) -- phased roadmap for Debian-based Linux support
+- [Linux Debian Plan](docs/LINUX_DEBIAN_PLAN.md) -- completed plan; Debian-based Linux support shipped in v3.0.0
 - [Changelog](docs/CHANGELOG.md) -- Version history
 - [Contributing](CONTRIBUTING.md) -- How to contribute
 - [Security](SECURITY.md) -- Vulnerability reporting
 - [Code of Conduct](CODE_OF_CONDUCT.md) -- Community standards
-- [Release Notes](RELEASE_NOTES.md) -- Release-by-release highlights
+- [Release Notes](RELEASE_NOTES.md) -- Pointer to the authoritative changelog (docs/CHANGELOG.md) and GitHub Releases
 - [Agents](AGENTS.md) -- Agent-facing project rules and conventions
 - [Claude](CLAUDE.md) -- Claude-specific commands (includes AGENTS.md)
 - [Code Review](CODE_REVIEW.md) -- Latest code-review artifact

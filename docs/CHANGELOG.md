@@ -66,7 +66,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [2.0.0] - 2026-02-14
 
 ### Added
-- 12 new check modules: battery, hardware, bluetooth, usb, security, startup, performance, storage, apps, git_config, containers, shell — total now 21
+- 11 new check modules: battery, hardware, bluetooth, usb, security, startup, performance, storage, apps, git_config, containers — total now 20
 - 4 new cleanup modules: crash_reports, ios_backups, xcode, dev_caches — total now 10
 - 4 new fix targets: bluetooth, audio, wifi, timemachine — total now 9
 - `mdoctor list` command with category & risk level display
