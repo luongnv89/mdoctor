@@ -9,17 +9,19 @@
 # (issue #102): the lib dir is the literal directory part of
 # ${BASH_SOURCE[0]} — no $(dirname)/cd probe.
 if ! declare -f is_dry_run >/dev/null 2>&1; then
-  _mdoctor_lib_dir="${BASH_SOURCE[0]%/*}"
-  if [ "$_mdoctor_lib_dir" = "${BASH_SOURCE[0]}" ]; then
-    _mdoctor_lib_dir="."
+  # The variable is named per-file because a sourced dependency unsets
+  # the shared _mdoctor_lib_dir name mid-bootstrap (issue #113).
+  _mdoctor_safety_lib_dir="${BASH_SOURCE[0]%/*}"
+  if [ "$_mdoctor_safety_lib_dir" = "${BASH_SOURCE[0]}" ]; then
+    _mdoctor_safety_lib_dir="."
   fi
   # shellcheck source=/dev/null
-  source "${_mdoctor_lib_dir}/common.sh"
+  source "${_mdoctor_safety_lib_dir}/common.sh"
   if ! declare -f is_truthy >/dev/null 2>&1; then
     # shellcheck source=/dev/null
-    source "${_mdoctor_lib_dir}/constants.sh"
+    source "${_mdoctor_safety_lib_dir}/constants.sh"
   fi
-  unset _mdoctor_lib_dir
+  unset _mdoctor_safety_lib_dir
 fi
 
 # -----------------------------------------------------------------------------
