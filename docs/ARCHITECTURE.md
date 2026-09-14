@@ -21,6 +21,7 @@ graph TD
   CLI --> CHECK[doctor.sh]
   CLI --> CLEAN[cleanup.sh]
   CLI --> FIX[fixes/*.sh]
+  CLI --> DIAGNOSE["diagnose → checks/diagnose_performance.sh"]
   CLI --> INFO[inline commands: info/list/history/benchmark/version/update]
 
   CHECK --> CHECKS[checks/*.sh (22 files)]
@@ -29,6 +30,7 @@ graph TD
   CHECKS --> LIB[lib/*.sh]
   CLEANUPS --> LIB
   FIX --> LIB
+  DIAGNOSE --> LIB
 
   LIB --> SAFETY[lib/safety.sh]
   LIB --> SCOPE[lib/cleanup_scope.sh]
@@ -69,6 +71,7 @@ Predicates (`is_macos`, `is_linux`, `is_debian`) gate platform-specific module l
 - Each file is focused on one concern
 - Modules are sourced (shared state, no extra process boundaries)
 - Platform-specific modules are conditionally sourced (e.g., `homebrew.sh` on macOS, `apt.sh` on Linux)
+- `checks/diagnose_performance.sh` is registered in `lib/registry.sh` as the `diagnose` module type (`System`, `[SAFE]`); `mdoctor diagnose` sources and runs it directly — no `doctor.sh` engine pass — sampling the shared `lib/perf_probes.sh` probes and printing prioritized remedies without executing them
 
 ### 4) Library Layer (`lib/*`)
 - `platform.sh` OS/distro detection predicates (`is_macos`, `is_linux`, `is_debian`) and platform-aware paths
@@ -96,6 +99,13 @@ Predicates (`is_macos`, `is_linux`, `is_debian`) gate platform-specific module l
 ### Update flow
 1. `mdoctor update --check` fetches and compares `origin/main`
 2. `mdoctor update` fast-forwards checkout when updates exist
+
+### Diagnose flow
+1. `mdoctor diagnose` → `cmd_diagnose` sources `lib/perf_probes.sh` and `checks/diagnose_performance.sh` directly (the `diagnose` module type — no `doctor.sh` pass)
+2. Capture-once prefill: `perf_capture_reset` clears the `_PERF_*` snapshots, then the shared samplers run once per process — `vm_stat`, `/proc/meminfo`, `/proc/loadavg`, `nproc`, swap and the `/proc/stat` iowait sample are each read at most once, and every consumer replays the cached copy
+3. Every external probe is timeout-capped via `mdoctor_timeout`/`tcap` (`MDOCTOR_CMD_TIMEOUT_S`, `MDOCTOR_NET_TIMEOUT_S`, `MDOCTOR_DU_TIMEOUT_S`), so a wedged daemon or a huge socket table cannot stall the run
+4. Read-only sections report CPU, memory, disk I/O, swap, zombies, FD limits and open connections, then a cross-check correlation
+5. The Diagnosis Summary prints prioritized remedies (critical first) — it never executes them
 
 ## Safety Model (summary)
 

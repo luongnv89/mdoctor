@@ -186,6 +186,21 @@ mdoctor fix apt            # [LOW]  Fix APT packages (update, upgrade, autoremov
 mdoctor fix all            # Run all fixes
 ```
 
+### Diagnose
+
+When the machine feels slow, run an active performance diagnosis
+(`[SAFE]`, read-only — it prints remedies, never runs them):
+
+```bash
+mdoctor diagnose
+mdoctor diagnose --debug   # structured debug diagnostics
+```
+
+Probes CPU load and top consumers, memory usage and pressure, disk I/O
+wait and usage hotspots, swap usage and thrashing, zombie processes,
+file-descriptor limits and open connections, then correlates the
+signals into a prioritized remedy list (critical first).
+
 ### History & Trends
 
 View health score history with trend arrows:

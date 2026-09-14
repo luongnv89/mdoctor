@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `mdoctor diagnose` — active performance diagnosis with bottleneck detection: samples CPU, memory, disk I/O, swap, zombie and connection metrics via the shared `lib/perf_probes.sh` samplers (capture-once, timeout-capped) and prints prioritized remedies without applying them (ab875d6, #8)
+
 ### Fixed
 - `mdoctor clean` no longer aborts on empty `EXCLUDE_GLOB` scope config under `set -u` (#14)
 - Docker prune failures when the daemon is unavailable are logged without stopping dev cache cleanup (#14)

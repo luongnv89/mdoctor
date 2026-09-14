@@ -41,7 +41,7 @@ mdoctor clean --force        # Actually free disk space
 | Problem | Command | Platform |
 |---------|---------|----------|
 | General system info (OS, memory, load) | `mdoctor check -m system` | Both |
-| Machine feels slow | `mdoctor check -m performance` | Both |
+| Machine feels slow | `mdoctor diagnose` | Both |
 | High CPU usage | `mdoctor check -m performance` | Both |
 | High memory pressure | `mdoctor check -m performance` | Both |
 | Thermal throttling / fans loud | `mdoctor check -m hardware` | Both |
@@ -166,6 +166,21 @@ mdoctor fix dns          # Flush DNS cache (runs on both platforms)
 mdoctor fix apt          # Linux only — repair APT packages
 mdoctor fix wifi         # macOS only — renew DHCP, flush DNS, cycle Wi-Fi
 mdoctor fix all          # Run all applicable fixes for this platform
+```
+
+---
+
+## Diagnose Cheat Sheet
+
+`mdoctor diagnose` is the active counterpart to `mdoctor check -m performance` — it samples the live metrics, correlates them and prints a prioritized remedy list. Read-only (`[SAFE]`): remedies are printed, never applied.
+
+| Command | What it does | Risk | Platform |
+|---------|--------------|------|----------|
+| `mdoctor diagnose` | Active performance diagnosis — CPU, memory, disk I/O, swap, zombies, FD limits and connection counts, plus cross-check correlation | SAFE | Both |
+
+```bash
+mdoctor diagnose          # Active performance diagnosis (read-only)
+mdoctor diagnose --debug  # Same run with structured debug diagnostics
 ```
 
 ---
