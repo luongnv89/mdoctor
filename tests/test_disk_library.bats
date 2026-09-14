@@ -82,7 +82,15 @@ teardown_file() {
 
 @test "timestamp and oplog_timestamp agree" {
   source "$ROOT_DIR/lib/logging.sh"
-  [ "$(oplog_timestamp)" = "$(timestamp)" ]
+  # Same-second sandwich (as in test_log_safe_perf): the two command
+  # substitutions can straddle a second boundary, so bracket the oplog
+  # read between two timestamp() reads instead of demanding equality.
+  local before mid after
+  before="$(timestamp)"
+  mid="$(oplog_timestamp)"
+  after="$(timestamp)"
+  { [ "$mid" = "$before" ] || [ "$mid" = "$after" ]; } \
+    || fail "oplog_timestamp '${mid}' outside [${before} .. ${after}]"
 }
 
 @test "cleanup.sh force preflight completes with poisoned subdir" {
