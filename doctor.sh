@@ -260,7 +260,7 @@ main() {
     md_append "_End of report._"
 
     local action
-    for action in "${ACTIONS[@]}"; do
+    for action in ${ACTIONS[@]+"${ACTIONS[@]}"}; do
       json_add_action "$action"
     done
     json_build_output "$score" "$rating" "$WARN_COUNT" "$FAIL_COUNT"

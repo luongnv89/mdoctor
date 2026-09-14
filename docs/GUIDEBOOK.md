@@ -1,6 +1,8 @@
-# Mac Doctor Guidebook
+# mdoctor Guidebook
 
-Quick problem-to-command reference. Find your symptom, run the command.
+Quick problem-to-command reference for **macOS** and **Debian-based Linux**. Find your symptom, run the command.
+
+**Platform labels.** Every row below is marked **Both**, **macOS only** or **Linux only** — the platform that problem or module applies to. A command that needs a module registered only on one platform is rejected on the other — `mdoctor list` always shows the exact module set for the machine you are on.
 
 ---
 
@@ -18,115 +20,122 @@ mdoctor clean --force        # Actually free disk space
 
 ### Disk & Storage
 
-| Problem | Command |
-|---------|---------|
-| Disk is almost full | `mdoctor check -m disk` |
-| Find what's eating space | `mdoctor check -m storage` |
-| Clear user caches | `mdoctor clean -m caches --force` |
-| Clean Xcode bloat (DerivedData, archives, simulators) | `mdoctor clean -m xcode --force` |
-| Clean dev dependency caches (npm, pip, Gradle, etc.) | `mdoctor clean -m dev_caches --force` |
-| Clean dev tool caches (Homebrew, Docker) | `mdoctor clean -m dev --force` |
-| Empty the Trash | `mdoctor clean -m trash --force` |
-| List large old files in Downloads (report only, never deletes) | `mdoctor clean -m downloads` |
-| Delete old crash/diagnostic reports | `mdoctor clean -m crash_reports --force` |
-| Clear browser caches | `mdoctor clean -m browser --force` |
-| Purge old log files | `mdoctor clean -m logs --force` |
-| Free disk space (combined fix) | `mdoctor fix disk` |
+| Problem | Command | Platform |
+|---------|---------|----------|
+| Disk is almost full | `mdoctor check -m disk` | Both |
+| Find what's eating space | `mdoctor check -m storage` | Both |
+| Clear user caches | `mdoctor clean -m caches --force` | Both |
+| Empty the Trash | `mdoctor clean -m trash --force` | Both |
+| List large old files in Downloads (report only, never deletes) | `mdoctor clean -m downloads` | Both |
+| Delete old crash/diagnostic reports | `mdoctor clean -m crash_reports --force` | Both |
+| Clear browser caches | `mdoctor clean -m browser --force` | Both |
+| Purge old log files | `mdoctor clean -m logs --force` | Both |
+| Clean dev dependency caches (npm, pip, Gradle, etc.) | `mdoctor clean -m dev_caches --force` | Both |
+| Clean dev tool caches (Homebrew, Docker) | `mdoctor clean -m dev --force` | Both |
+| Clean the APT package cache | `mdoctor clean -m apt --force` | Linux only |
+| Clean Xcode bloat (DerivedData, archives, simulators) | `mdoctor clean -m xcode --force` | macOS only |
+| Free disk space (combined fix) | `mdoctor fix disk` | macOS only |
 
 ### Performance
 
-| Problem | Command |
-|---------|---------|
-| General system info (OS, memory, load) | `mdoctor check -m system` |
-| Mac feels slow | `mdoctor check -m performance` |
-| High CPU usage | `mdoctor check -m performance` |
-| High memory pressure | `mdoctor check -m performance` |
-| Thermal throttling / fans loud | `mdoctor check -m hardware` |
-| Too many login items slowing boot | `mdoctor check -m startup` |
-| Spotlight using too much CPU | `mdoctor fix spotlight` |
+| Problem | Command | Platform |
+|---------|---------|----------|
+| General system info (OS, memory, load) | `mdoctor check -m system` | Both |
+| Machine feels slow | `mdoctor check -m performance` | Both |
+| High CPU usage | `mdoctor check -m performance` | Both |
+| High memory pressure | `mdoctor check -m performance` | Both |
+| Thermal throttling / fans loud | `mdoctor check -m hardware` | Both |
+| Too many startup items slowing boot | `mdoctor check -m startup` | Both |
+| Spotlight using too much CPU | `mdoctor fix spotlight` | macOS only |
 
 ### Network & Connectivity
 
-| Problem | Command |
-|---------|---------|
-| No internet connection | `mdoctor check -m network` |
-| Slow or broken DNS | `mdoctor fix dns` |
-| Weak Wi-Fi signal | `mdoctor check -m network` |
-| Wi-Fi keeps dropping | `mdoctor fix wifi` |
-| Bluetooth not working | `mdoctor check -m bluetooth` |
-| Bluetooth device won't connect | `mdoctor fix bluetooth` |
+| Problem | Command | Platform |
+|---------|---------|----------|
+| No internet connection | `mdoctor check -m network` | Both |
+| Slow or broken DNS | `mdoctor fix dns` | Both |
+| Weak Wi-Fi signal | `mdoctor check -m network` | Both |
+| Wi-Fi keeps dropping | `mdoctor fix wifi` | macOS only |
+| Bluetooth not working | `mdoctor check -m bluetooth` | macOS only |
+| Bluetooth device won't connect | `mdoctor fix bluetooth` | macOS only |
 
 ### Audio & Peripherals
 
-| Problem | Command |
-|---------|---------|
-| No sound / wrong audio output | `mdoctor fix audio` |
-| USB device not recognized | `mdoctor check -m usb` |
-| Bluetooth audio issues | `mdoctor fix bluetooth` |
+| Problem | Command | Platform |
+|---------|---------|----------|
+| No sound / wrong audio output | `mdoctor fix audio` | macOS only |
+| USB device not recognized | `mdoctor check -m usb` | macOS only |
+| Bluetooth audio issues | `mdoctor fix bluetooth` | macOS only |
 
 ### Security & Privacy
 
-| Problem | Command |
-|---------|---------|
-| Is my firewall on? | `mdoctor check -m security` |
-| Is FileVault enabled? | `mdoctor check -m security` |
-| Is SIP (System Integrity Protection) on? | `mdoctor check -m security` |
-| Gatekeeper status | `mdoctor check -m security` |
-| File permission issues | `mdoctor fix permissions` |
+| Problem | Command | Platform |
+|---------|---------|----------|
+| Is my firewall on? | `mdoctor check -m security` | Both |
+| Disk encryption status (FileVault / LUKS) | `mdoctor check -m security` | Both |
+| SSH / remote-login exposure | `mdoctor check -m security` | Both |
+| Is SIP (System Integrity Protection) on? | `mdoctor check -m security` | macOS only |
+| Gatekeeper status | `mdoctor check -m security` | macOS only |
+| File permission issues | `mdoctor fix permissions` | macOS only |
 
 ### Software & Dev Tools
 
-| Problem | Command |
-|---------|---------|
-| Homebrew errors or outdated | `mdoctor check -m homebrew` |
-| Update and fix Homebrew | `mdoctor fix homebrew` |
-| Node.js / npm issues | `mdoctor check -m node` |
-| Python / pip issues | `mdoctor check -m python` |
-| Docker not running or unhealthy | `mdoctor check -m containers` |
-| Git or SSH config problems | `mdoctor check -m git_config` |
-| Xcode CLT missing or outdated | `mdoctor check -m devtools` |
-| Shell config syntax errors | `mdoctor check -m shell` |
+| Problem | Command | Platform |
+|---------|---------|----------|
+| Node.js / npm issues | `mdoctor check -m node` | Both |
+| Python / pip issues | `mdoctor check -m python` | Both |
+| Docker not running or unhealthy | `mdoctor check -m containers` | Both |
+| Git or SSH config problems | `mdoctor check -m git_config` | Both |
+| Developer tools missing or outdated | `mdoctor check -m devtools` | Both |
+| Shell config syntax errors | `mdoctor check -m shell` | Both |
+| APT package problems | `mdoctor check -m apt` | Linux only |
+| Fix broken APT packages (update, upgrade, autoremove) | `mdoctor fix apt` | Linux only |
+| Homebrew errors or outdated | `mdoctor check -m homebrew` | macOS only |
+| Update and fix Homebrew | `mdoctor fix homebrew` | macOS only |
 
 ### Startup & Apps
 
-| Problem | Command |
-|---------|---------|
-| Slow boot / too many login items | `mdoctor check -m startup` |
-| App keeps crashing | `mdoctor check -m apps` |
-| macOS updates pending | `mdoctor check -m updates` |
+| Problem | Command | Platform |
+|---------|---------|----------|
+| Slow boot / too many startup items | `mdoctor check -m startup` | Both |
+| App keeps crashing | `mdoctor check -m apps` | Both |
+| System updates pending | `mdoctor check -m updates` | Both |
 
-### Backup
+### Backup (macOS only)
 
-| Problem | Command |
-|---------|---------|
-| Time Machine problems | `mdoctor fix timemachine` |
-| Old iOS backups wasting space | `mdoctor clean -m ios_backups --force` |
+| Problem | Command | Platform |
+|---------|---------|----------|
+| Time Machine problems | `mdoctor fix timemachine` | macOS only |
+| Old iOS backups wasting space | `mdoctor clean -m ios_backups --force` | macOS only |
 
 ---
 
 ## Cleanup Cheat Sheet
 
-Cleanup modules are risk-rated (`[SAFE]` modules only report — they never delete). Dry-run by default — add `--force` to actually delete.
+Cleanup modules are risk-rated (`[SAFE]` modules only report — they never delete). Dry-run by default — add `--force` to actually delete. The module set is platform-filtered: macOS registers 10 modules, Debian Linux registers 9.
 
-| Module | What it removes |
-|--------|-----------------|
-| `trash` | Files in Trash |
-| `caches` | User-level cache directories (`~/Library/Caches`) |
-| `logs` | Old log files |
-| `downloads` | Report only: lists large files in `~/Downloads` older than threshold (never deletes) |
-| `crash_reports` | Old crash and diagnostic reports |
-| `ios_backups` | Old iOS device backups |
-| `browser` | Browser cache files |
-| `dev` | Developer tool caches (Homebrew cache, Docker unused images) |
-| `xcode` | Xcode DerivedData, archives, old simulators |
-| `dev_caches` | Package manager caches (npm, Yarn, pnpm, pip, Composer, Gradle, Maven, Carthage, CocoaPods) |
+| Module | What it removes | Platform |
+|--------|-----------------|----------|
+| `trash` | Files in Trash (`~/.Trash` on macOS, freedesktop Trash on Linux) | Both |
+| `caches` | User-level cache directories — `~/Library/Caches` on macOS, `~/.cache` (the XDG cache home) on Linux | Both |
+| `logs` | Old log files | Both |
+| `downloads` | Report only: lists large files in `~/Downloads` older than threshold (never deletes) | Both |
+| `crash_reports` | Old crash and diagnostic reports | Both |
+| `apt` | APT package cache (`/var/cache/apt/archives`) plus autoremove | Linux only |
+| `ios_backups` | Old iOS device backups | macOS only |
+| `browser` | Browser cache files | Both |
+| `dev` | Developer tool caches (Docker unused images; Homebrew cache on macOS) | Both |
+| `dev_caches` | Package-manager caches (npm, Yarn, pnpm, pip, Conda, Maven, Gradle, Go, Cargo; plus Homebrew, CocoaPods and Xcode DerivedData on macOS) | Both |
+| `xcode` | Xcode DerivedData, archives, old simulators | macOS only |
 
 ```bash
-mdoctor clean                        # Dry-run all 10 modules
+mdoctor clean                        # Dry-run every module registered for this platform
 mdoctor clean --dry-run              # Same dry-run, stated explicitly
-mdoctor clean --force                # Run all 10 modules for real
-mdoctor clean -m <module>            # Dry-run one module
-mdoctor clean -m <module> --force    # Run one module for real
+mdoctor clean --force                # Run every module for real (asks to confirm)
+mdoctor clean -m caches              # Dry-run one module
+mdoctor clean -m caches --force      # Run one module for real
+mdoctor clean -m apt --force         # Linux only — clean the APT cache for real
+mdoctor clean -m xcode --force       # macOS only — clean Xcode data for real
 mdoctor clean --interactive          # Guided module selection
 mdoctor clean --interactive --force  # Guided destructive run
 ```
@@ -135,22 +144,40 @@ mdoctor clean --interactive --force  # Guided destructive run
 
 ## Fix Cheat Sheet
 
-| Target | What it does | Risk |
-|--------|-------------|------|
-| `homebrew` | Update, upgrade, and cleanup Homebrew | LOW |
-| `dns` | Flush DNS cache | LOW |
-| `disk` | Free disk space | LOW |
-| `bluetooth` | Reset Bluetooth module (devices may need re-pairing) | LOW |
-| `audio` | Restart Core Audio daemon | LOW |
-| `wifi` | Renew DHCP, flush DNS, cycle Wi-Fi | LOW |
-| `permissions` | Reset file permissions | MED |
-| `spotlight` | Rebuild Spotlight index | MED |
-| `timemachine` | Verify Time Machine backups (may take a long time) | MED |
+| Target | What it does | Risk | Platform |
+|--------|--------------|------|----------|
+| `dns` | Flush DNS cache | LOW | Both |
+| `apt` | Fix APT packages (update, upgrade, autoremove) | LOW | Linux only |
+| `homebrew` | Update, upgrade, and cleanup Homebrew | LOW | macOS only |
+| `disk` | Free disk space | LOW | macOS only |
+| `bluetooth` | Reset Bluetooth module (devices may need re-pairing) | LOW | macOS only |
+| `audio` | Restart Core Audio daemon | LOW | macOS only |
+| `wifi` | Renew DHCP, flush DNS, cycle Wi-Fi | LOW | macOS only |
+| `permissions` | Reset file permissions | MED | macOS only |
+| `spotlight` | Rebuild Spotlight index | MED | macOS only |
+| `timemachine` | Verify Time Machine backups (may take a long time) | MED | macOS only |
 
 ```bash
-mdoctor fix <target>    # Run a specific fix
-mdoctor fix all         # Run all fixes
+mdoctor fix dns          # Flush DNS cache (runs on both platforms)
+mdoctor fix apt          # Linux only — repair APT packages
+mdoctor fix wifi         # macOS only — renew DHCP, flush DNS, cycle Wi-Fi
+mdoctor fix all          # Run all applicable fixes for this platform
 ```
+
+---
+
+## Other Commands
+
+```bash
+mdoctor info             # System information summary
+mdoctor list             # All modules for this platform, with categories and risk levels
+mdoctor diagnose         # Active performance diagnosis (read-only — prints remedies, never runs them)
+mdoctor history          # Health score trends over time
+mdoctor version          # Print the version
+mdoctor help             # Full help and environment variables
+```
+
+Heavier operations (both platforms): `mdoctor benchmark` runs disk, network and CPU speed tests; `mdoctor update --check` checks for a stable update and `mdoctor update` applies it.
 
 ---
 
@@ -158,21 +185,20 @@ mdoctor fix all         # Run all fixes
 
 **Read safety + recovery guidance first** — See [SAFETY.md](SAFETY.md) for whitelist/scope controls, logs, recovery flow, and known limitations.
 
-**Preview before deleting** — All `mdoctor clean` commands run in dry-run mode by default. Review the output, then re-run with `--force` to actually delete.
+**Preview before deleting** — `mdoctor clean` runs in dry-run mode by default on both platforms. Review the output, then re-run with `--force` to actually delete.
 
-**Change the age threshold** — Cleanup modules each ship their own documented default (7 days for logs/downloads, 30 for crash_reports/xcode, 90 for ios_backups). Override every module at once with:
+**Change the age threshold** — Cleanup modules each ship their own documented default (7 days for logs/downloads, 30 for crash_reports and the macOS only `xcode` module, 90 for the macOS only `ios_backups` module). Override every module at once with:
 
 ```bash
-DAYS_OLD_OVERRIDE=14 mdoctor clean --force
+DAYS_OLD_OVERRIDE=14 mdoctor clean --force        # Override all module age thresholds
+DAYS_OLD_NODE_MODULES=60 mdoctor clean --force    # dev_caches stale node_modules (default 30)
 ```
-
-The `dev_caches` node_modules sweep has its own threshold — `DAYS_OLD_NODE_MODULES=60 mdoctor clean --force` (default 30).
 
 **JSON output for scripts** — Pipe check results into your tooling:
 
 ```bash
-mdoctor check --json
-mdoctor check --json | python3 -m json.tool   # pretty-print
+mdoctor check --json               # Full audit as JSON
+mdoctor check -m disk --json       # Single module as JSON
 ```
 
 **Run a single check** — Use `-m` to target one module:
@@ -180,15 +206,4 @@ mdoctor check --json | python3 -m json.tool   # pretty-print
 ```bash
 mdoctor check -m battery
 mdoctor check -m network
-```
-
-**Other commands:**
-
-```bash
-mdoctor info         # System information summary
-mdoctor list         # List all modules with categories and risk levels
-mdoctor history      # View health score trends over time
-mdoctor benchmark    # Run disk, network, CPU speed tests
-mdoctor update --check  # Check for stable updates
-mdoctor update         # Apply latest stable update
 ```
