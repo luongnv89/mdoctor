@@ -23,8 +23,8 @@ graph TD
   CLI --> FIX[fixes/*.sh]
   CLI --> INFO[inline commands: info/list/history/benchmark/version/update]
 
-  CHECK --> CHECKS[checks/*.sh (21)]
-  CLEAN --> CLEANUPS[cleanups/*.sh (10)]
+  CHECK --> CHECKS[checks/*.sh (22 files)]
+  CLEAN --> CLEANUPS[cleanups/*.sh (11 files)]
 
   CHECKS --> LIB[lib/*.sh]
   CLEANUPS --> LIB
