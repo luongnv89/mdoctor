@@ -82,11 +82,19 @@ HISTEOF
 # deletion root) and the canonical path is removed directly — never via
 # safe_remove, whose dry-run gate would make the bound unreachable from
 # `mdoctor check`, which always runs dry and has no --force flag.
+# The cleanup whitelist is still honored (review #223): it is the user's
+# declared protection list, and every other deletion path consults it.
+# The consult is gated on the whitelist file already existing (or the
+# engine having loaded it) so a dry-run check never creates the config
+# file as a side effect of pruning.
 history_prune() {
   [ -d "$HISTORY_DIR" ] || return 0
 
   local keep="${MDOCTOR_HISTORY_KEEP:-100}"
   is_uint "$keep" || keep=100
+  # 10# forces decimal — is_uint accepts "08"/"09", which are invalid
+  # octal to $(( )) and would abort the prune (and the save under -e).
+  keep=$((10#$keep))
 
   local files=()
   local f
@@ -100,11 +108,31 @@ history_prune() {
     return 0
   fi
 
-  local i=0 canon=""
-  while (( i < excess )); do
+  local whitelist_active=false
+  if declare -f is_whitelisted_cleanup_path >/dev/null 2>&1 &&
+    { [ -f "${MDOCTOR_CLEANUP_WHITELIST_FILE:-}" ] ||
+      [ "${_MDOCTOR_WHITELIST_LOADED:-}" = "true" ]; }; then
+    whitelist_active=true
+  fi
+
+  # Walk oldest-first until `excess` entries are actually gone: a
+  # whitelisted (or unremovable) entry counts toward the cap rather than
+  # letting the directory grow past it.
+  local i=0 removed=0 canon=""
+  while (( i < total && removed < excess )); do
+    f="${files[$i]}"
     canon=""
-    if validate_deletion_path "${files[$i]}" canon >/dev/null 2>&1 && [ -n "$canon" ]; then
-      rm -f -- "$canon" 2>/dev/null || true
+    if [ "$whitelist_active" = "true" ] && is_whitelisted_cleanup_path "$f"; then
+      if declare -f debug_log >/dev/null 2>&1; then
+        debug_log "history prune: skipping whitelisted ${f}"
+      fi
+    elif validate_deletion_path "$f" canon >/dev/null 2>&1 && [ -n "$canon" ]; then
+      if rm -f -- "$canon" 2>/dev/null; then
+        removed=$((removed + 1))
+        if declare -f debug_log >/dev/null 2>&1; then
+          debug_log "history prune: removed ${canon}"
+        fi
+      fi
     fi
     i=$((i + 1))
   done

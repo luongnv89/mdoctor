@@ -86,6 +86,60 @@ teardown_file() {
   grep -q '"score":88' "$newest" || fail "newest history entry is not the fresh save: $newest"
 }
 
+@test "history prune honors the cleanup whitelist" {
+  rm -rf "$TMPHOME/.mdoctor"
+  mkdir -p "$TMPHOME/.mdoctor/history"
+  local i
+  for i in 1 2 3 4 5; do
+    printf '{"timestamp":"2020-01-0%dT00:00:00Z","score":80,"rating":"ok","warnings":0,"failures":0}\n' "$i" \
+      > "$TMPHOME/.mdoctor/history/2020010${i}_000000-1-1.json"
+  done
+  # The whitelist is the user's declared protection list: the two oldest
+  # entries must survive pruning and still count toward the cap (review
+  # finding on #223 — every other deletion path consults it).
+  cat > "$TMPHOME/cleanup_whitelist" <<EOF
+$TMPHOME/.mdoctor/history/20200101_000000-1-1.json
+$TMPHOME/.mdoctor/history/20200102_000000-1-1.json
+EOF
+  (
+    HOME="$TMPHOME"
+    MDOCTOR_HISTORY_KEEP=3
+    MDOCTOR_CLEANUP_WHITELIST_FILE="$TMPHOME/cleanup_whitelist"
+    export HOME MDOCTOR_HISTORY_KEEP MDOCTOR_CLEANUP_WHITELIST_FILE
+    source "$ROOT_DIR/lib/history.sh"
+    history_save 88 "ok" 0 0
+  ) || fail "history_save failed"
+  assert_file_exists "$TMPHOME/.mdoctor/history/20200101_000000-1-1.json"
+  assert_file_exists "$TMPHOME/.mdoctor/history/20200102_000000-1-1.json"
+  # Bound still holds at keep=3: the two protected entries plus the
+  # just-saved one; the three unprotected oldest were removed.
+  assert_file_not_exists "$TMPHOME/.mdoctor/history/20200103_000000-1-1.json"
+  assert_file_not_exists "$TMPHOME/.mdoctor/history/20200105_000000-1-1.json"
+  local count
+  count="$(find "$TMPHOME/.mdoctor/history" -name '*.json' -type f | wc -l | tr -d ' ')"
+  [ "$count" -eq 3 ] || fail "expected 3 entries (2 protected + fresh), got $count"
+}
+
+@test "leading-zero caps are parsed as decimal, not octal" {
+  rm -rf "$TMPHOME/.mdoctor"
+  mkdir -p "$TMPHOME/.mdoctor/history"
+  local i
+  for i in $(seq 1 12); do
+    printf '{"timestamp":"2020-01-%02dT00:00:00Z","score":80,"rating":"ok","warnings":0,"failures":0}\n' "$i" \
+      > "$TMPHOME/.mdoctor/history/202001$(printf '%02d' "$i")_000000-1-1.json"
+  done
+  (
+    HOME="$TMPHOME"
+    MDOCTOR_HISTORY_KEEP=010
+    export HOME MDOCTOR_HISTORY_KEEP
+    source "$ROOT_DIR/lib/history.sh"
+    history_save 88 "ok" 0 0
+  ) || fail "history_save failed on leading-zero cap"
+  local count
+  count="$(find "$TMPHOME/.mdoctor/history" -name '*.json' -type f | wc -l | tr -d ' ')"
+  [ "$count" -eq 10 ] || fail "expected decimal keep=10 from '010', got $count"
+}
+
 @test "operations log rotates by size at MDOCTOR_OPLOG_MAX_BYTES" {
   rm -rf "$TMPHOME/.config"
   mkdir -p "$TMPHOME/.config/mdoctor"
