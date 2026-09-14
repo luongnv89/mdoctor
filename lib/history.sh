@@ -13,7 +13,7 @@ _mdoctor_history_lib_dir="${BASH_SOURCE[0]%/*}"
 if [ "$_mdoctor_history_lib_dir" = "${BASH_SOURCE[0]}" ]; then
   _mdoctor_history_lib_dir="."
 fi
-if ! declare -f is_uint >/dev/null 2>&1; then
+if ! declare -f is_uint >/dev/null 2>&1 || ! declare -f is_truthy >/dev/null 2>&1; then
   # shellcheck source=/dev/null
   source "${_mdoctor_history_lib_dir}/constants.sh"
 fi
@@ -111,7 +111,7 @@ history_prune() {
   local whitelist_active=false
   if declare -f is_whitelisted_cleanup_path >/dev/null 2>&1 &&
     { [ -f "${MDOCTOR_CLEANUP_WHITELIST_FILE:-}" ] ||
-      [ "${_MDOCTOR_WHITELIST_LOADED:-}" = "true" ]; }; then
+      is_truthy "${_MDOCTOR_WHITELIST_LOADED:-false}"; }; then
     whitelist_active=true
   fi
 
@@ -122,7 +122,7 @@ history_prune() {
   while (( i < total && removed < excess )); do
     f="${files[$i]}"
     canon=""
-    if [ "$whitelist_active" = "true" ] && is_whitelisted_cleanup_path "$f"; then
+    if is_truthy "$whitelist_active" && is_whitelisted_cleanup_path "$f"; then
       if declare -f debug_log >/dev/null 2>&1; then
         debug_log "history prune: skipping whitelisted ${f}"
       fi
