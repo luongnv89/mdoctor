@@ -7,7 +7,8 @@ Thanks for your interest in contributing to mdoctor! This guide will help you ge
 1. **Fork** the repository
 2. **Create** a feature branch from `main` (`feat/your-feature`)
 3. **Make** your changes
-4. **Test** your changes on macOS
+4. **Test** your changes — run the gates CI enforces on macOS, Linux
+   and Bash 3.2 (see [Testing](#testing)); macOS alone is not enough
 5. **Submit** a pull request
 
 ## Development Setup
@@ -68,35 +69,106 @@ CI step, and must exit 0.
 - `mdoctor` -- Unified CLI entry point
 - `doctor.sh` -- Health audit engine
 - `cleanup.sh` -- Cleanup engine
-- `lib/` -- Shared libraries (colors, logging, disk utils)
+- `lib/` -- Shared libraries (platform, logging, disk, safety, metadata)
+- `lib/registry.sh` -- Module registry, the single source of truth for
+  `mdoctor list`, `mdoctor help`, validation and dispatch
 - `checks/` -- Health check modules (one file per check)
 - `cleanups/` -- Cleanup modules (one file per cleanup task)
+- `fixes/` -- Fix modules (`mdoctor fix` targets)
+- `tests/` -- bats regression suite, run with `./tests/run.sh`
 
 ## Adding a New Health Check
 
-1. Create `checks/yourcheck.sh` with a function:
+1. Create `checks/yourcheck.sh` with a function. Every module file
+   opens with the module context contract (Task 9.1) — a
+   `Required checks inputs:` header naming the globals
+   `lib/context.sh` provides, plus the `_MDOCTOR_CONTEXT_READY` guard
+   that fails loudly when the file is sourced without
+   `mdoctor_context_init`. `test_module_context.bats` rejects any
+   module file missing either:
 
 ```bash
+# Required checks inputs: STEP_CURRENT, STEP_TOTAL, MDOCTOR_DEBUG, ACTIONS, WARN_COUNT, FAIL_COUNT, LOG_PATHS, LOG_DESCS, LOGFILE.
+if [ "${_MDOCTOR_CONTEXT_READY:-false}" != true ]; then
+  echo "${BASH_SOURCE[0]##*/}: module context not initialized (_MDOCTOR_CONTEXT_READY) — call mdoctor_context_init from lib/context.sh first" >&2
+  return 1 2>/dev/null || exit 1
+fi
+
 check_your_feature() {
   step "Your Feature Check"
   if command -v yourtool >/dev/null 2>&1; then
     status_ok "yourtool is installed"
   else
     status_warn "yourtool not found"
-    add_action "Install yourtool: brew install yourtool"
+    add_action "Install yourtool with your package manager"
   fi
 }
 ```
 
-2. Source it in `doctor.sh` and call the function from `main()`
-3. Increment `STEP_TOTAL` in `doctor.sh`
-4. Add the module name to `mdoctor`'s `cmd_check` case statement
+   Any probe call that can block — `npm`, `brew`, `docker info`,
+   `nslookup`, `apt list`, `softwareupdate`, `du -sk` — runs under
+   `mdoctor_timeout` or carries a `timeout` note on the same line:
+   `test_timeout_prefetch.bats` keeps a zero-uncapped census over
+   `checks/` and `lib/` (issue #101).
+
+Module names are lowercase letters, digits and underscores only —
+`check -m` rejects anything else before it ever reaches a file.
+
+2. Source it in `doctor.sh`, in the matching `checks/` category block.
+   A platform-specific module goes inside the existing `if is_macos` /
+   `if is_linux` guard (or self-gates inside the function, like
+   `checks/battery.sh` — still registered unconditionally).
+
+3. Register it in `lib/registry.sh`: add one `register_module` line to
+   `register_all_modules()`, in the matching category group and inside
+   the same platform conditional as the source line:
+
+```bash
+  register_module check yourcheck Software SAFE check_your_feature "One-line description"
+```
+
+   The signature is
+   `register_module TYPE NAME CATEGORY RISK FUNCTION DESCRIPTION`
+   (`lib/metadata.sh`); categories are `Hardware`, `System`, `Software`
+   and check modules are `SAFE` (read-only). Registration is what puts
+   the module in `mdoctor list` and `mdoctor help` and makes
+   `mdoctor check -m yourcheck` dispatch to it — an unregistered file
+   under `checks/` is invisible to all three.
+
+4. Call it from `main()` in `doctor.sh`, in the matching phase block:
+
+```bash
+  _set_check_context yourcheck
+  check_your_feature
+```
+
+   `_set_check_context` feeds the module's category/risk to the `--json`
+   report; wrap both lines in `if is_macos` / `if is_linux` when the
+   module is platform-specific. This is the line that makes the module
+   run inside the full `mdoctor check` audit.
+
+There is no total to bump and no dispatch table to edit: `doctor.sh`
+derives `STEP_TOTAL` from the registry, and `check -m` resolves the
+function name through `get_module_func`. Verify with:
+
+```bash
+./mdoctor list                # module listed, Check Modules count +1
+./mdoctor check -m yourcheck  # runs via registry dispatch
+```
 
 ## Adding a New Cleanup Module
 
-1. Create `cleanups/yourcleanup.sh` with a function:
+1. Create `cleanups/yourcleanup.sh` with a function. Same context
+   contract as check modules (above) — a `Required cleanups inputs:`
+   header plus the `_MDOCTOR_CONTEXT_READY` guard:
 
 ```bash
+# Required cleanups inputs: DRY_RUN, DAYS_OLD, LOGFILE, STEP_CURRENT, STEP_TOTAL, MDOCTOR_DEBUG.
+if [ "${_MDOCTOR_CONTEXT_READY:-false}" != true ]; then
+  echo "${BASH_SOURCE[0]##*/}: module context not initialized (_MDOCTOR_CONTEXT_READY) — call mdoctor_context_init from lib/context.sh first" >&2
+  return 1 2>/dev/null || exit 1
+fi
+
 clean_your_cache() {
   local rc=0
   header "Cleaning Your Cache"
@@ -120,10 +192,47 @@ clean_your_cache() {
 > with `|| true` — capture it into the per-module accumulator (below) so
 > partial failures propagate.
 
-2. Register it with `register_module` in `lib/registry.sh` (the single source
-   of truth — help text, validation, error messages and dispatch derive from
-   it; no hand-maintained case statement needs updating)
-3. Derive `PROGRESS_TOTAL` coverage in `cleanup.sh` from the module list
+2. Register it in `lib/registry.sh`: one `register_module` line in
+   `register_all_modules()`, inside the same `is_macos`/`is_linux`
+   conditional when the module is platform-specific:
+
+```bash
+  register_module cleanup yourcleanup System MED clean_your_cache "One-line description"
+```
+
+   Risk is `SAFE` (report-only — never deletes), `LOW`, `MED` or `HIGH`;
+   the badge in `mdoctor list`/`help` comes from this declaration, and
+   `mdoctor clean -m yourcleanup` plus the `--interactive` picker
+   resolve the function through the registry — no dispatch case to edit.
+
+3. To include a destructive module in a full `mdoctor clean` run, wire
+   it into `cleanup.sh` in three spots, all inside the matching
+   platform conditional:
+
+   - `source "${SCRIPT_DIR}/cleanups/yourcleanup.sh"` next to the other
+     `cleanups/` sources
+   - a `step "..."` + `clean_your_cache || _cleanup_rc=$?` pair in
+     `main()`
+   - bump `PROGRESS_TOTAL` — it is a hand-maintained count of the
+     modules the full run executes, with one arm per platform
+     (`if is_macos` / `else`); bump only the arm(s) your module runs in
+
+   A report-only module (`SAFE`, like `downloads`) skips all three: the
+   engine neither sources it nor counts it — it only ever runs via
+   `mdoctor clean -m`.
+
+4. For a destructive module, also add a `case` arm in
+   `cmd_clean_preflight_summary_module` (in `mdoctor`) listing its
+   touched targets, so the `--force` pre-flight summary can size them.
+
+Verify with `./mdoctor list` (the module and the Cleanup Modules count
+rise) and `./mdoctor clean -m yourcleanup` — dry-run is the default.
+
+Fix targets follow the same shape — a file under `fixes/`, a
+`register_module fix …` line — except `cmd_fix` still dispatches through
+hand-maintained `case` blocks and a `fix all` array in `mdoctor` (the
+platform gate and the dispatch itself), so those need the new target
+added too.
 
 ## Return-Code Contract
 
@@ -217,19 +326,43 @@ without `-e`, shared code must be **posture-agnostic** (issue #113):
 
 ## Testing
 
-Test your changes locally before submitting:
+Run the same gates CI runs — every lane below lives in
+`.github/workflows/ci.yml`:
+
+| Local command | CI lane that enforces it |
+|---------------|--------------------------|
+| `./scripts/lint_shell.sh` | **Lint** — ShellCheck `-S warning` plus a `bash -n` syntax pass over every shell file (the lane also runs `./scripts/check_bash32.sh`) |
+| `pre-commit install`, then the hooks fire per commit | **Hooks (pre-commit)** — runs `pre-commit run --all-files` |
+| `./tests/run.sh` | **Test (macOS)** and **Test (Linux/Ubuntu)** — the bats suite plus `mdoctor` smoke commands |
+| `./tests/run.sh` under Bash 3.2 | **Test (Bash 3.2 compat)** — the suite inside the digest-pinned `bash:3.2` container |
+| `./tests/run.sh` under kcov | **Coverage (kcov)** — enforces the `COVERAGE_MIN` floor |
+
+Two lanes have no local equivalent: **Release Sanity** (installer
+round trip on Ubuntu + macOS) and **Installer (curl-pipe)**. See
+`docs/DEVELOPMENT.md` "CI lanes map to local commands" for the full
+list, including the `bash:3.2` and Ubuntu `docker run` recipes for
+reproducing the other-platform lanes locally.
+
+The cross-platform expectation: `./tests/run.sh` and
+`./scripts/lint_shell.sh` must pass on every platform your change
+touches — a Linux-only or macOS-only change still has to pass both
+suites, because the suite itself is platform-aware. If you cannot run
+the other platform, say so in the PR; CI runs both.
+
+Smoke-test the commands your change touches (the test lanes run this
+same set):
 
 ```bash
-# Test the full health check
+# Full health audit (read-only)
 ./mdoctor check
 
-# Test a specific module
-./mdoctor check -m yourmodule
+# A single check module
+./mdoctor check -m system
 
-# Test cleanup in dry-run mode
+# Cleanup in dry-run mode (the default — safe)
 ./mdoctor clean
 
-# Test system info
+# System info
 ./mdoctor info
 ```
 
