@@ -38,14 +38,18 @@ installer flow.
   assume a macOS-only binary exists on Linux (guard with `is_macos`
   AND `command -v`). New modules follow the same shape: shared logic
   first, `if is_macos ... elif is_linux` arms after.
-- **Module registration flow:** check/cleanup modules do not
-  self-register. `mdoctor` calls `register_module` from
-  `lib/metadata.sh` (`register_module TYPE NAME CATEGORY RISK FUNCTION
-  DESCRIPTION`) in exactly two places — the check-registration block
-  and the cleanup-registration block. Adding a module means: create the
-  file, source it from the owning engine (`doctor.sh`/`cleanup.sh`),
-  add one `register_module` line in the matching block, bump the
-  corresponding `STEP_TOTAL`/`PROGRESS_TOTAL`.
+- **Module registration flow:** modules do not self-register.
+  `register_all_modules()` in `lib/registry.sh` holds every
+  `register_module` call (the signature lives in `lib/metadata.sh`:
+  `register_module TYPE NAME CATEGORY RISK FUNCTION DESCRIPTION`),
+  grouped by type and category inside the platform gates. Adding a
+  module means: create the file, add one `register_module` line in
+  the matching group and gate, source it and call it from the owning
+  engine's `main()` (`fixes/` targets go through `cmd_fix`'s case
+  blocks instead). `doctor.sh` derives `STEP_TOTAL` from the registry
+  — never bump it; `cleanup.sh` hand-maintains `PROGRESS_TOTAL`,
+  bumped only for destructive modules joining the full `clean` run.
+  The full walkthrough lives in `CONTRIBUTING.md`.
 - Commit style: Conventional Commits (`feat:`, `fix:`, `docs:`,
   `refactor:`, `test:`, `chore:`); feature branches off `main`.
 - Quote every expansion (`"$var"`), `set -uo pipefail` minimum

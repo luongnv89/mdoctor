@@ -79,19 +79,37 @@ CI step, and must exit 0.
 
 ## Adding a New Health Check
 
-1. Create `checks/yourcheck.sh` with a function:
+1. Create `checks/yourcheck.sh` with a function. Every module file
+   opens with the module context contract (Task 9.1) — a
+   `Required checks inputs:` header naming the globals
+   `lib/context.sh` provides, plus the `_MDOCTOR_CONTEXT_READY` guard
+   that fails loudly when the file is sourced without
+   `mdoctor_context_init`. `test_module_context.bats` rejects any
+   module file missing either:
 
 ```bash
+# Required checks inputs: STEP_CURRENT, STEP_TOTAL, MDOCTOR_DEBUG, ACTIONS, WARN_COUNT, FAIL_COUNT, LOG_PATHS, LOG_DESCS, LOGFILE.
+if [ "${_MDOCTOR_CONTEXT_READY:-false}" != true ]; then
+  echo "${BASH_SOURCE[0]##*/}: module context not initialized (_MDOCTOR_CONTEXT_READY) — call mdoctor_context_init from lib/context.sh first" >&2
+  return 1 2>/dev/null || exit 1
+fi
+
 check_your_feature() {
   step "Your Feature Check"
   if command -v yourtool >/dev/null 2>&1; then
     status_ok "yourtool is installed"
   else
     status_warn "yourtool not found"
-    add_action "Install yourtool: brew install yourtool"
+    add_action "Install yourtool with your package manager"
   fi
 }
 ```
+
+   Any probe call that can block — `npm`, `brew`, `docker info`,
+   `nslookup`, `apt list`, `softwareupdate`, `du -sk` — runs under
+   `mdoctor_timeout` or carries a `timeout` note on the same line:
+   `test_timeout_prefetch.bats` keeps a zero-uncapped census over
+   `checks/` and `lib/` (issue #101).
 
 Module names are lowercase letters, digits and underscores only —
 `check -m` rejects anything else before it ever reaches a file.
@@ -140,9 +158,17 @@ function name through `get_module_func`. Verify with:
 
 ## Adding a New Cleanup Module
 
-1. Create `cleanups/yourcleanup.sh` with a function:
+1. Create `cleanups/yourcleanup.sh` with a function. Same context
+   contract as check modules (above) — a `Required cleanups inputs:`
+   header plus the `_MDOCTOR_CONTEXT_READY` guard:
 
 ```bash
+# Required cleanups inputs: DRY_RUN, DAYS_OLD, LOGFILE, STEP_CURRENT, STEP_TOTAL, MDOCTOR_DEBUG.
+if [ "${_MDOCTOR_CONTEXT_READY:-false}" != true ]; then
+  echo "${BASH_SOURCE[0]##*/}: module context not initialized (_MDOCTOR_CONTEXT_READY) — call mdoctor_context_init from lib/context.sh first" >&2
+  return 1 2>/dev/null || exit 1
+fi
+
 clean_your_cache() {
   local rc=0
   header "Cleaning Your Cache"
