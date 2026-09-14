@@ -164,6 +164,12 @@ EOF
 }
 
 @test "unwritable config dir disables oplog with a warning under both postures" {
+  # chmod 500 cannot make a directory unwritable for root — the bash:3.2
+  # docker lane runs as root (CAP_DAC_OVERRIDE), same guard as
+  # test_disk_library.bats.
+  if [ "$(id -u)" -eq 0 ]; then
+    skip "root bypasses permission bits"
+  fi
   rm -rf "$TMPHOME/rohome"
   mkdir -p "$TMPHOME/rohome"
   chmod 500 "$TMPHOME/rohome"
@@ -187,6 +193,9 @@ EOF
 }
 
 @test "unwritable config dir warns on stderr and does not abort the call" {
+  if [ "$(id -u)" -eq 0 ]; then
+    skip "root bypasses permission bits"
+  fi
   rm -rf "$TMPHOME/rohome2"
   mkdir -p "$TMPHOME/rohome2"
   chmod 500 "$TMPHOME/rohome2"
@@ -206,6 +215,9 @@ EOF
 }
 
 @test "mdoctor clean completes with an unwritable HOME (errexit posture)" {
+  if [ "$(id -u)" -eq 0 ]; then
+    skip "root bypasses permission bits"
+  fi
   rm -rf "$TMPHOME/rohome3"
   mkdir -p "$TMPHOME/rohome3/.Trash"
   printf 'stale\n' > "$TMPHOME/rohome3/.Trash/old-file"
