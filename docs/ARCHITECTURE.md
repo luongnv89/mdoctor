@@ -103,7 +103,7 @@ Predicates (`is_macos`, `is_linux`, `is_debian`) gate platform-specific module l
 ### Diagnose flow
 1. `mdoctor diagnose` → `cmd_diagnose` sources `lib/perf_probes.sh` and `checks/diagnose_performance.sh` directly (the `diagnose` module type — no `doctor.sh` pass)
 2. Capture-once prefill: `perf_capture_reset` clears the `_PERF_*` snapshots, then the shared samplers run once per process — `vm_stat`, `/proc/meminfo`, `/proc/loadavg`, `nproc`, swap and the `/proc/stat` iowait sample are each read at most once, and every consumer replays the cached copy
-3. Every external probe is timeout-capped via `mdoctor_timeout`/`tcap` (`MDOCTOR_CMD_TIMEOUT_S`, `MDOCTOR_NET_TIMEOUT_S`, `MDOCTOR_DU_TIMEOUT_S`), so a wedged daemon or a huge socket table cannot stall the run
+3. Every blocking-class external probe is timeout-capped via `mdoctor_timeout`/`tcap` (`MDOCTOR_CMD_TIMEOUT_S`, `MDOCTOR_NET_TIMEOUT_S`, `MDOCTOR_DU_TIMEOUT_S`), so a wedged daemon or a huge socket table cannot stall the run
 4. Read-only sections report CPU, memory, disk I/O, swap, zombies, FD limits and open connections, then a cross-check correlation
 5. The Diagnosis Summary prints prioritized remedies (critical first) — it never executes them
 
