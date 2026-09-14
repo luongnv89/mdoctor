@@ -2,7 +2,7 @@
 
 Quick problem-to-command reference for **macOS** and **Debian-based Linux**. Find your symptom, run the command.
 
-**Platform labels.** Every row below is marked **Both**, **macOS only** or **Linux only**. A command on a platform-specific row is rejected on the other platform — `mdoctor list` always shows the exact module set for the machine you are on.
+**Platform labels.** Every row below is marked **Both**, **macOS only** or **Linux only** — the platform that problem or module applies to. A command that needs a module registered only on one platform is rejected on the other — `mdoctor list` always shows the exact module set for the machine you are on.
 
 ---
 
@@ -161,7 +161,7 @@ mdoctor clean --interactive --force  # Guided destructive run
 mdoctor fix dns          # Flush DNS cache (runs on both platforms)
 mdoctor fix apt          # Linux only — repair APT packages
 mdoctor fix wifi         # macOS only — renew DHCP, flush DNS, cycle Wi-Fi
-mdoctor fix all          # Every fix target registered for this platform
+mdoctor fix all          # Run all applicable fixes for this platform
 ```
 
 ---
