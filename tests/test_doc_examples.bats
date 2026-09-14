@@ -22,8 +22,10 @@
 #    Hermetic: HOME is a fixture sandbox and stdin is /dev/null (the
 #    interactive picker cancels cleanly on EOF). `clean` examples have
 #    --force/-f rewritten to --dry-run before execution — doc examples
-#    run dry-run only, never destructively — and `fix` examples run
-#    under DRY_RUN=true (the Task 4.4 opt-in every fix module honors).
+#    run dry-run only, never destructively — `fix` examples run under
+#    DRY_RUN=true (the Task 4.4 opt-in every fix module honors), and a
+#    bare `update` gains --check so the self-updater never applies for
+#    real.
 #    Env-assignment prefixes (DAYS_OLD_OVERRIDE=14 mdoctor ...) are
 #    passed through `env`. Lines with a `<placeholder>` are usage
 #    templates, not examples.
@@ -193,7 +195,7 @@ _rejection_seen() {
     fi
 
     # Safety normalization + the deterministic-rc subset.
-    local strict=0 had_force=0
+    local strict=0 had_force=0 has_check=0
     local -a norm=()
     case "${args[0]-}" in
       clean)
@@ -210,6 +212,14 @@ _rejection_seen() {
         ;;
       fix)
         envs+=("DRY_RUN=true")
+        ;;
+      update)
+        # A bare `update` applies a self-update for real — there is no
+        # --dry-run, so `--check` is its doc-safe form.
+        for tok in ${args[@]+"${args[@]}"}; do
+          [ "$tok" = "--check" ] && has_check=1
+        done
+        [ "$has_check" -eq 0 ] && args+=(--check)
         ;;
       info|list|history|version|help|diagnose)
         strict=1
