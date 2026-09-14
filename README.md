@@ -70,6 +70,44 @@ recommended first command.
 | `mdoctor version` | `[SAFE]` | Show version |
 | `mdoctor help` | `[SAFE]` | Show help |
 
+### Global Options
+
+Flags shared across commands (command-specific options live under each
+command's heading and in `mdoctor <command> --help`):
+
+| Option | Accepted by | Description |
+|--------|-------------|-------------|
+| `--debug` | `check`, `clean`, `fix`, `diagnose`, `update` | Enable structured debug diagnostics — sets `MDOCTOR_DEBUG=true` for the run |
+| `-h`, `--help` | `check`, `clean`, `fix`, `diagnose`, `update` | Print that command's usage |
+
+`MDOCTOR_DEBUG` is also an environment variable — the two forms are
+equivalent (the flag exists for one-off runs, the variable for scripts):
+
+```bash
+mdoctor check --debug             # flag form
+MDOCTOR_DEBUG=true mdoctor check  # environment form (same effect)
+```
+
+The version has three equivalent spellings:
+
+```bash
+mdoctor version
+mdoctor -v
+mdoctor --version
+```
+
+The update channel selects what `mdoctor update` tracks:
+
+```bash
+mdoctor update --channel stable   # newest verified vX.Y.Z release tag (default)
+mdoctor update --channel main     # track the main branch head
+```
+
+`MDOCTOR_CHANNEL` sets the default channel when `--channel` is not
+passed; `install.sh --channel` picks it at install time. Install-time
+variables (install dir, symlink location, channel, and more) are
+tabulated in [Deployment → Installer Environment Variables](docs/DEPLOYMENT.md#installer-environment-variables).
+
 ### Health Check
 
 Run a full system audit (read-only, changes nothing):
@@ -303,6 +341,13 @@ Update remote/branch override (advanced use):
 MDOCTOR_UPDATE_REMOTE=origin MDOCTOR_UPDATE_BRANCH=main mdoctor update --check
 ```
 
+Runtime diagnostics and the update channel (`MDOCTOR_DEBUG`,
+`MDOCTOR_CHANNEL`) are covered under
+[Global Options](#global-options). Install-time variables
+(`MDOCTOR_INSTALL_DIR`, `MDOCTOR_BIN_DIR`, `MDOCTOR_BINARY_NAME`, and
+the rest of the installer/uninstaller surface) are tabulated in
+[Deployment → Installer Environment Variables](docs/DEPLOYMENT.md#installer-environment-variables).
+
 ## Project Structure
 
 ```
@@ -440,6 +485,18 @@ Or manually:
 rm -f /usr/local/bin/mdoctor
 rm -rf ~/.mdoctor
 ```
+
+Installed with a custom prefix or binary name? Point the uninstaller at
+the same locations — it removes exactly `MDOCTOR_INSTALL_DIR` and
+`MDOCTOR_BIN_LINK`, so the defaults remove nothing when the install was
+customized:
+
+```bash
+MDOCTOR_INSTALL_DIR=/opt/mdoctor MDOCTOR_BIN_LINK="$HOME/.local/bin/mdoctor" ./uninstall.sh
+```
+
+The full override surface is tabulated in
+[Deployment → Installer Environment Variables](docs/DEPLOYMENT.md#installer-environment-variables).
 
 ## License
 

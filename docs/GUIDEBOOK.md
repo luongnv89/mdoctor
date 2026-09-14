@@ -220,6 +220,15 @@ mdoctor check --json               # Full audit as JSON
 mdoctor check -m disk --json       # Single module as JSON
 ```
 
+**See what a command is doing** — `--debug` turns on structured debug
+diagnostics (accepted by `check`, `clean`, `fix`, `diagnose`, `update`);
+`MDOCTOR_DEBUG=true` does the same from the environment:
+
+```bash
+mdoctor diagnose --debug
+MDOCTOR_DEBUG=true mdoctor check -m disk
+```
+
 **Run a single check** — Use `-m` to target one module:
 
 ```bash

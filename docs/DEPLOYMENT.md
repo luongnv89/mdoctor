@@ -18,6 +18,38 @@ curl -fsSL https://raw.githubusercontent.com/luongnv89/mdoctor/main/install.sh |
 
 > **Linux prerequisite:** `git` must be installed (`sudo apt install git`). Non-Debian distros are rejected with an informative error message.
 
+## Installer Environment Variables
+
+`install.sh` and `uninstall.sh` read no config file — every knob is an
+environment variable. This is the complete surface (the same list
+`install.sh --help` prints, plus the uninstaller-only and policy
+variables):
+
+| Variable | Consumed by | Default | Effect |
+|----------|-------------|---------|--------|
+| `MDOCTOR_REPO_URL` | `install.sh` | `https://github.com/luongnv89/mdoctor.git` | Git remote cloned into the install dir |
+| `MDOCTOR_INSTALL_DIR` | `install.sh`, `uninstall.sh` | `~/.mdoctor` | Install location; also the directory the uninstaller removes |
+| `MDOCTOR_BIN_DIR` | `install.sh` | `/usr/local/bin` | Directory holding the symlink — validated: allowlisted, or an existing directory ending in `/bin` |
+| `MDOCTOR_BINARY_NAME` | `install.sh` | `mdoctor` | Symlink name inside the bin dir — a plain filename (`A-Z a-z 0-9 _ . -`), never a path |
+| `MDOCTOR_CHANNEL` | `install.sh`, `mdoctor update` | `stable` | `stable` = newest verified `vX.Y.Z` tag; `main` = branch head |
+| `MDOCTOR_REQUIRE_TAG_SIGNATURE` | `install.sh`, `mdoctor update` | `false` | `true` refuses release tags without a verifiable signature |
+| `MDOCTOR_ASSUME_YES` | `install.sh`, `uninstall.sh` | `false` | `true` skips the interactive confirmation gates (custom symlink prompt, uninstall prompt) |
+| `MDOCTOR_BIN_LINK` | `uninstall.sh` | `/usr/local/bin/mdoctor` | Full path of the symlink the uninstaller removes |
+| `MDOCTOR_SKIP_PLATFORM_CHECK` | `install.sh` | `false` | `true` bypasses the macOS/Debian-family gate — a CI escape hatch, not a supported-install flag |
+| `MDOCTOR_NO_COLOR` | `install.sh`, `uninstall.sh` | unset | Any non-empty value disables colored output (same contract as `NO_COLOR`) |
+
+Two follow-on rules matter for custom installs:
+
+- Setting `MDOCTOR_BIN_DIR` or `MDOCTOR_BINARY_NAME` triggers a
+  confirmation gate — the installer prints the exact `ln -s` command and
+  needs an explicit `y` (or `MDOCTOR_ASSUME_YES=true` on a non-tty)
+  before writing the symlink.
+- The uninstaller removes exactly `MDOCTOR_INSTALL_DIR` and
+  `MDOCTOR_BIN_LINK` — nothing else. A custom install must re-declare
+  both at uninstall time or the defaults silently remove nothing (see
+  [Uninstalling](#uninstalling)). User config under
+  `~/.config/mdoctor` (whitelist, scope, history) is always retained.
+
 ## Updating
 
 Preferred path:
@@ -32,6 +64,13 @@ Check-only mode:
 mdoctor update --check
 ```
 
+Channel selection (`stable` is the default; `main` tracks the branch
+head — `MDOCTOR_CHANNEL` is the environment form):
+
+```bash
+mdoctor update --channel main
+```
+
 Fallback path (still supported): re-run installer. The installer detects the existing directory and runs `git pull --ff-only`.
 
 ## Uninstalling
@@ -41,6 +80,21 @@ curl -fsSL https://raw.githubusercontent.com/luongnv89/mdoctor/main/uninstall.sh
 ```
 
 This removes the symlink and `~/.mdoctor` directory.
+
+If the install used `MDOCTOR_INSTALL_DIR`, `MDOCTOR_BIN_DIR` or
+`MDOCTOR_BINARY_NAME` overrides, pass the matching uninstaller
+variables — the defaults would remove nothing:
+
+```bash
+MDOCTOR_INSTALL_DIR=/opt/mdoctor \
+MDOCTOR_BIN_LINK="${HOME}/.local/bin/mdoctor" \
+  ./uninstall.sh
+```
+
+(`MDOCTOR_BIN_LINK` is the full symlink path — the uninstall-side
+spelling of `MDOCTOR_BIN_DIR`/`MDOCTOR_BINARY_NAME`. See the
+[Installer Environment Variables](#installer-environment-variables)
+table.)
 
 ## Releasing a New Version
 
