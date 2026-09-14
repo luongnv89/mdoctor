@@ -1,6 +1,6 @@
 # Linux Support Plan (Debian-based first)
 
-Status: Planning
+Status: Shipped (v3.0.0) — all seven phases complete; retained as the historical record of the rollout
 Scope: Debian-based Linux only (Debian, Ubuntu, Pop!_OS, Linux Mint, etc.)
 
 ## Goals
@@ -17,7 +17,7 @@ Scope: Debian-based Linux only (Debian, Ubuntu, Pop!_OS, Linux Mint, etc.)
 
 ## Phase Plan
 
-### P6.1 Platform abstraction foundation
+### P6.1 Platform abstraction foundation — done (shipped in v3.0.0)
 - Add OS/distro detection helpers (`lib/platform.sh`).
 - Route platform-specific commands through adapters.
 - Keep explicit unsupported-message path for non-Debian Linux.
@@ -25,7 +25,7 @@ Scope: Debian-based Linux only (Debian, Ubuntu, Pop!_OS, Linux Mint, etc.)
 **Acceptance gate:**
 - `mdoctor info` reports platform type/distro reliably.
 
-### P6.2 Debian check modules (read-only first)
+### P6.2 Debian check modules (read-only first) — done (shipped in v3.0.0)
 - Port/implement Linux-safe checks first:
   - system, disk, updates, security, startup, network, performance, storage
   - homebrew equivalent detection replaced with apt-native package checks where relevant
@@ -34,7 +34,7 @@ Scope: Debian-based Linux only (Debian, Ubuntu, Pop!_OS, Linux Mint, etc.)
 **Acceptance gate:**
 - `mdoctor check` completes on Ubuntu/Debian without hard failures from missing macOS tools.
 
-### P6.3 Debian cleanup baseline
+### P6.3 Debian cleanup baseline — done (shipped in v3.0.0)
 - Add Debian-safe cleanup targets (dry-run default):
   - user cache directories, logs, trash equivalents, apt cache (careful), dev caches
 - Reuse safety primitives and whitelist controls.
@@ -42,7 +42,7 @@ Scope: Debian-based Linux only (Debian, Ubuntu, Pop!_OS, Linux Mint, etc.)
 **Acceptance gate:**
 - `mdoctor clean` dry-run and `--force` module mode work on Debian with no protected-path regressions.
 
-### P6.4 Debian fix targets
+### P6.4 Debian fix targets — done (shipped in v3.0.0)
 - Add Debian-compatible fix set:
   - DNS cache handling (resolver-specific), disk recommendations, package manager health checks
 - Preserve explicit risk labels.
@@ -50,21 +50,21 @@ Scope: Debian-based Linux only (Debian, Ubuntu, Pop!_OS, Linux Mint, etc.)
 **Acceptance gate:**
 - `mdoctor fix <target>` provides actionable behavior or clear unsupported guidance.
 
-### P6.5 Installer/update hardening for Linux
+### P6.5 Installer/update hardening for Linux — done (shipped in v3.0.0)
 - Extend installer/uninstaller for Debian paths and permissions.
 - Validate `mdoctor update` flow in Debian environment.
 
 **Acceptance gate:**
 - install → run → update → uninstall works on Ubuntu CI lane.
 
-### P6.6 CI matrix and regression gates
+### P6.6 CI matrix and regression gates — done (shipped in v3.0.0)
 - Add Ubuntu job matrix alongside macOS.
 - Run lint + regression tests + smoke checks on both platforms.
 
 **Acceptance gate:**
 - CI green on macOS and Ubuntu for baseline command set.
 
-### P6.7 Docs and release readiness
+### P6.7 Docs and release readiness — done (support scope/caveats shipped in v3.0.0; guidebook rewrite landed post-release, Task 13.1 / PR #224)
 - Document Debian support scope, caveats, and supported commands.
 - Update guidebook and troubleshooting entries.
 

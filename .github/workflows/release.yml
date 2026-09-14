@@ -26,8 +26,8 @@ jobs:
           # must be present (same flag as the release-sanity job).
           fetch-tags: true
 
-      # Fails when any of the six version sites disagrees with the
-      # MDOCTOR_VERSION constant (proven by a deliberate mismatch:
+      # Fails when any version site disagrees with the MDOCTOR_VERSION
+      # constant (proven by a deliberate mismatch:
       # ./scripts/check_version.sh v9.9.9 exits 1). The tag itself must
       # equal "v${MDOCTOR_VERSION}".
       - name: Check version agreement (Task 5.4)
