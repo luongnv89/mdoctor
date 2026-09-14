@@ -25,11 +25,19 @@ ensure_cleanup_scope_file() {
   local dir
   dir="$(dirname "$file")"
 
-  mkdir -p "$dir"
-  # Task 3.4: state is private (0700 dirs, 0600 files).
-  chmod 700 "$dir"
+  # Best-effort state (issue #113): an unwritable config dir warns and
+  # continues — under `set -e` an unchecked mkdir/chmod here used to
+  # abort the whole run. A missing scope file just means default scope.
+  if [ ! -d "$dir" ]; then
+    if ! mkdir -p "$dir" 2>/dev/null; then
+      echo "warning: cannot create config dir '${dir}' — cleanup scope config unavailable" >&2
+      return 0
+    fi
+    # Task 3.4: state is private (0700 dirs, 0600 files).
+    chmod 700 "$dir" 2>/dev/null || true
+  fi
   if [ ! -f "$file" ]; then
-    cat >"$file" <<'EOF'
+    if cat >"$file" 2>/dev/null <<'EOF'
 # mdoctor cleanup scope configuration
 #
 # Optional include paths for stale node_modules scan.
@@ -48,7 +56,11 @@ ensure_cleanup_scope_file() {
 # INCLUDE_PATH=~/Projects
 # EXCLUDE_GLOB=*node_modules/.cache*
 EOF
-    chmod 600 "$file"
+    then
+      chmod 600 "$file" 2>/dev/null || true
+    else
+      echo "warning: cannot create cleanup scope file '${file}' — using default scope" >&2
+    fi
   fi
 }
 
@@ -61,6 +73,19 @@ load_cleanup_scope() {
 
   _MDOCTOR_SCOPE_INCLUDE_PATHS=()
   _MDOCTOR_SCOPE_EXCLUDE_GLOBS=()
+
+  # Issue #113: when the config dir could not be created there is no file
+  # to read — `done < missing` would error and abort under `set -e`. An
+  # absent scope file means default scope.
+  if [ ! -f "$MDOCTOR_CLEANUP_SCOPE_FILE" ]; then
+    _MDOCTOR_SCOPE_LOADED=true
+    return 0
+  fi
+  if [ ! -r "$MDOCTOR_CLEANUP_SCOPE_FILE" ]; then
+    echo "warning: cleanup scope file '${MDOCTOR_CLEANUP_SCOPE_FILE}' is unreadable — using default scope" >&2
+    _MDOCTOR_SCOPE_LOADED=true
+    return 0
+  fi
 
   local line=""
   while IFS= read -r line || [ -n "$line" ]; do

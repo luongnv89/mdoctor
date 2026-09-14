@@ -46,6 +46,10 @@ function if they disagree — the code wins):
 - Linux Trash / logs / apport / pnpm: `~/.local/share/Trash`,
   `~/.local/share/mdoctor`, `~/.local/share/apport`,
   `~/.local/share/pnpm`
+- mdoctor's own bounded state: `~/.mdoctor/history` (issue #113 — the
+  history retention prune validates each entry through
+  `validate_deletion_path` and honors the cleanup whitelist; only this
+  subdirectory is carved out, not the rest of `~/.mdoctor`)
 - Developer caches: `~/.cache`, `~/.npm`, `~/.yarn`, `~/.m2`,
   `~/.gradle`, `~/.cargo`, `~/go`, `~/miniconda3`, `~/anaconda3`
 - Stale `node_modules`: any `<project>/node_modules` under `$HOME`

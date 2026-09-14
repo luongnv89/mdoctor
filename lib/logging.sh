@@ -5,19 +5,25 @@
 #
 
 # run_cmd_args needs is_dry_run (Task 1.6), md_init needs
-# mdoctor_mktemp_file (Task 4.3). Engines load lib/common.sh first, but
-# cmd_fix and standalone sourcing may not — pull it in. Zero-fork
-# (issue #102): the lib dir is the literal directory part of
-# ${BASH_SOURCE[0]} — no $(dirname)/cd probe.
-if ! declare -f is_dry_run >/dev/null 2>&1 || ! declare -f mdoctor_mktemp_file >/dev/null 2>&1; then
-  _mdoctor_lib_dir="${BASH_SOURCE[0]%/*}"
-  if [ "$_mdoctor_lib_dir" = "${BASH_SOURCE[0]}" ]; then
-    _mdoctor_lib_dir="."
-  fi
-  # shellcheck source=/dev/null
-  source "${_mdoctor_lib_dir}/common.sh"
-  unset _mdoctor_lib_dir
+# mdoctor_mktemp_file (Task 4.3), the oplog rotation bound needs is_uint
+# (issue #113). Engines load lib/common.sh first, but cmd_fix and
+# standalone sourcing may not — pull it in. Zero-fork (issue #102): the
+# lib dir is the literal directory part of ${BASH_SOURCE[0]} — no
+# $(dirname)/cd probe. The variable is named per-file because a sourced
+# dependency unsets the shared _mdoctor_lib_dir name (issue #113).
+_mdoctor_logging_lib_dir="${BASH_SOURCE[0]%/*}"
+if [ "$_mdoctor_logging_lib_dir" = "${BASH_SOURCE[0]}" ]; then
+  _mdoctor_logging_lib_dir="."
 fi
+if ! declare -f is_dry_run >/dev/null 2>&1 || ! declare -f mdoctor_mktemp_file >/dev/null 2>&1; then
+  # shellcheck source=/dev/null
+  source "${_mdoctor_logging_lib_dir}/common.sh"
+fi
+if ! declare -f is_uint >/dev/null 2>&1; then
+  # shellcheck source=/dev/null
+  source "${_mdoctor_logging_lib_dir}/constants.sh"
+fi
+unset _mdoctor_logging_lib_dir
 
 ########################################
 # MARKDOWN REPORT
@@ -194,7 +200,23 @@ log() {
   # Plain append replaces echo|tee -a (issue #99): two builtins, one
   # open/append/close, zero forks — stdout copy first, like tee.
   printf '%s\n' "$line"
-  printf '%s\n' "$line" >> "${LOGFILE:-/tmp/cleanup.log}"
+  _logfile_write "$line"
+}
+
+# _logfile_write LINE — append LINE to ${LOGFILE:-/tmp/cleanup.log}.
+# Best-effort (issue #113): the log file is an audit copy of lines already
+# printed to stdout, so an unwritable path warns once and is skipped — it
+# must never abort a run under `set -e` (cleanup.sh's deliberate errexit
+# posture; see CONTRIBUTING.md "Errexit posture").
+_MDOCTOR_LOG_WRITE_FAILED=""
+_logfile_write() {
+  [ -n "$_MDOCTOR_LOG_WRITE_FAILED" ] && return 0
+  if printf '%s\n' "${1-}" >> "${LOGFILE:-/tmp/cleanup.log}" 2>/dev/null; then
+    return 0
+  fi
+  _MDOCTOR_LOG_WRITE_FAILED=true
+  echo "warning: cannot write log file '${LOGFILE:-/tmp/cleanup.log}' — continuing without file logging" >&2
+  return 0
 }
 
 debug_enabled() {
@@ -210,7 +232,7 @@ debug_log() {
   _mdoctor_ts _ts
   line="[${_ts}] [DEBUG] ${msg}"
   echo "$line" >&2
-  printf '%s\n' "$line" >> "${LOGFILE:-/tmp/cleanup.log}"
+  _logfile_write "$line"
   if declare -f op_record >/dev/null 2>&1; then
     op_record "DEBUG" "mdoctor" "$msg"
   fi
@@ -241,6 +263,23 @@ oplog_timestamp() {
 # `dirname` plus a mkdir/stat pass on EVERY write.
 _MDOCTOR_OPLOG_READY=""
 
+# _oplog_disable REASON — turn the operations log off for this process
+# with a stderr warning (issue #113). The oplog is a best-effort audit
+# trail: any failure to create, rotate or write it disables logging and
+# returns 0 so a state problem can never abort a run — under cleanup.sh's
+# `set -e` posture an unchecked failure here used to kill the whole
+# cleanup (F-BUG-008).
+_oplog_disable() {
+  OPLOG_ENABLED=false
+  echo "warning: operations log disabled — ${1:-write failure} (${OPLOGFILE})" >&2
+  return 0
+}
+
+# _oplog_file_size PATH — byte size via GNU stat, BSD stat fallback.
+_oplog_file_size() {
+  stat -c %s "${1-}" 2>/dev/null || stat -f %z "${1-}" 2>/dev/null || echo 0
+}
+
 oplog_ensure_file() {
   oplog_enabled || return 0
   # Once per OPLOGFILE per process: hoisted to op_session_start and gated
@@ -254,14 +293,45 @@ oplog_ensure_file() {
   local dir
   dir="$(dirname "$OPLOGFILE")"
   # Task 3.4: state is private at creation (0700 dirs, 0600 files).
-  # Create-only (not unconditional chmod).
+  # Create-only (not unconditional chmod). Every step is guarded so a
+  # failure disables logging with a warning instead of aborting the run
+  # under `set -e` (issue #113).
   if [ ! -d "$dir" ]; then
-    mkdir -p "$dir"
-    chmod 700 "$dir"
+    if ! mkdir -p "$dir" 2>/dev/null; then
+      _oplog_disable "cannot create log directory '${dir}'"
+      return 0
+    fi
+    chmod 700 "$dir" 2>/dev/null || true
   fi
   if [ ! -f "$OPLOGFILE" ]; then
-    : > "$OPLOGFILE"
-    chmod 600 "$OPLOGFILE"
+    # stderr redirect first so a failed open redirection stays silent.
+    if ! ( : > "$OPLOGFILE" ) 2>/dev/null; then
+      _oplog_disable "cannot create operations log"
+      return 0
+    fi
+    chmod 600 "$OPLOGFILE" 2>/dev/null || true
+  fi
+  # Size-bounded (issue #113): rotate to ${OPLOGFILE}.1 (one generation
+  # kept) once the log exceeds MDOCTOR_OPLOG_MAX_BYTES. A missing or
+  # non-numeric cap falls back to the derived default — never to a bare
+  # literal (the 1 MiB literal is single-sourced in lib/constants.sh).
+  local _size _cap
+  _size="$(_oplog_file_size "$OPLOGFILE")"
+  _cap="${MDOCTOR_OPLOG_MAX_BYTES:-}"
+  if ! is_uint "$_cap"; then
+    _cap=$(( ${MDOCTOR_KB_PER_MB:-1024} * ${MDOCTOR_BYTES_PER_KB:-1024} ))
+  else
+    # 10# forces decimal — is_uint accepts "08"/"09", invalid octal to
+    # arithmetic contexts.
+    _cap=$((10#$_cap))
+  fi
+  if is_uint "$_size" && [ "$_cap" -gt 0 ] && [ "$_size" -gt "$_cap" ]; then
+    if mv -- "$OPLOGFILE" "${OPLOGFILE}.1" 2>/dev/null && ( : > "$OPLOGFILE" ) 2>/dev/null; then
+      chmod 600 "$OPLOGFILE" 2>/dev/null || true
+    else
+      _oplog_disable "cannot rotate operations log"
+      return 0
+    fi
   fi
   _MDOCTOR_OPLOG_READY="$OPLOGFILE"
 }
@@ -272,7 +342,11 @@ oplog_write() {
   # write — steady state is the builtin gate inside oplog_ensure_file
   # (which also catches a mid-session file deletion) plus this append.
   oplog_ensure_file
-  printf '%s\n' "$*" >> "$OPLOGFILE"
+  # The ensure may have just disabled logging (unwritable dir/file).
+  oplog_enabled || return 0
+  if ! printf '%s\n' "$*" >> "$OPLOGFILE" 2>/dev/null; then
+    _oplog_disable "cannot write operations log"
+  fi
 }
 
 op_session_start() {

@@ -347,6 +347,25 @@ export MDOCTOR_BENCH_HOST="${MDOCTOR_BENCH_HOST:-example.com}"
 # target (tmpfs/ramfs) is refused, never reported as disk I/O.
 export MDOCTOR_BENCH_DIR="${MDOCTOR_BENCH_DIR:-}"
 
+########################################
+# PERSISTENT STATE BOUNDS (issue #113)
+########################################
+#
+# mdoctor's own state files are append/create-only by design; these two
+# named caps bound them. Both are env-overridable (same convention as the
+# MDOCTOR_DIAG_* thresholds) so tests can shrink the caps.
+
+# Maximum entries kept in ${HOME}/.mdoctor/history — history_save prunes
+# the oldest files (name sort = chronological) back to this cap after
+# every write.
+export MDOCTOR_HISTORY_KEEP="${MDOCTOR_HISTORY_KEEP:-100}"
+
+# Maximum size of the operations log in bytes (default 1 MiB, derived —
+# the byte literal occurs exactly once in this file, at KB_PER_GB) —
+# oplog_ensure_file rotates ${OPLOGFILE} to ${OPLOGFILE}.1 (one
+# generation kept) once it exceeds this cap.
+export MDOCTOR_OPLOG_MAX_BYTES="${MDOCTOR_OPLOG_MAX_BYTES:-$(( MDOCTOR_KB_PER_MB * MDOCTOR_BYTES_PER_KB ))}"
+
 # sysfs power-supply root the Linux battery probe reads (issue #109).
 # Overridable so tests can stage a fixture tree instead of touching real
 # /sys/class/power_supply.

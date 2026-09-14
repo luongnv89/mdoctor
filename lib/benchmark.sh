@@ -17,36 +17,36 @@
 # ${BASH_SOURCE[0]} — parameter expansion replaces the old
 # $(cd "$(dirname …)" && pwd) probe, and the declare -f guards skip the
 # sources entirely once the base libs are loaded.
-_mdoctor_lib_dir="${BASH_SOURCE[0]%/*}"
-if [ "$_mdoctor_lib_dir" = "${BASH_SOURCE[0]}" ]; then
-  _mdoctor_lib_dir="."
+_mdoctor_bench_lib_dir="${BASH_SOURCE[0]%/*}"
+if [ "$_mdoctor_bench_lib_dir" = "${BASH_SOURCE[0]}" ]; then
+  _mdoctor_bench_lib_dir="."
 fi
 if ! declare -f is_truthy >/dev/null 2>&1; then
   # shellcheck source=/dev/null
-  source "${_mdoctor_lib_dir}/constants.sh"
+  source "${_mdoctor_bench_lib_dir}/constants.sh"
 fi
 if ! declare -f is_linux >/dev/null 2>&1; then
   # shellcheck source=/dev/null
-  source "${_mdoctor_lib_dir}/platform.sh"
+  source "${_mdoctor_bench_lib_dir}/platform.sh"
 fi
 if ! declare -f register_exit_hook >/dev/null 2>&1; then
   # shellcheck source=/dev/null
-  source "${_mdoctor_lib_dir}/common.sh"
+  source "${_mdoctor_bench_lib_dir}/common.sh"
 fi
 # safety.sh validators (_normalize_path / _canonical_path /
 # is_protected_deletion_path) gate the scratch dir: every path this file
 # creates or removes is safety.sh-validated first (issue #103).
 if ! declare -f is_protected_deletion_path >/dev/null 2>&1; then
   # shellcheck source=/dev/null
-  source "${_mdoctor_lib_dir}/safety.sh"
+  source "${_mdoctor_bench_lib_dir}/safety.sh"
 fi
 # mdoctor_timeout (issue #101): the DNS + HTTPS probes are capped even
 # without GNU timeout.
 if ! declare -f mdoctor_timeout >/dev/null 2>&1; then
   # shellcheck source=/dev/null
-  source "${_mdoctor_lib_dir}/timeout.sh"
+  source "${_mdoctor_bench_lib_dir}/timeout.sh"
 fi
-unset _mdoctor_lib_dir
+unset _mdoctor_bench_lib_dir
 
 _BENCH_TMP_DIR=""
 
