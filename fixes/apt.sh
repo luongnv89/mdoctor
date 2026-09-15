@@ -23,7 +23,18 @@ fix_apt() {
 
   if ! command -v apt-get >/dev/null 2>&1; then
     echo "APT not available on this system."
-    return 1
+    # Honest failure (issue #220, same class as #111 in fixes/dns.sh):
+    # nothing ran, so nothing was fixed. Only an actual apply (force) may
+    # fail here: a dry run performs no work, so it must not poison
+    # `fix all`'s aggregate rc — the Task 4.4 dry-run contract
+    # (tests/test_fix_dry_run.bats) requires `fix all` to exit 0 in
+    # dry-run. rc 2 (invalid DRY_RUN) fails closed to dry.
+    local _dry_rc=0
+    is_dry_run || _dry_rc=$?
+    if [ "$_dry_rc" -eq 1 ]; then
+      return 1
+    fi
+    return 0
   fi
 
   echo "Updating package lists..."
