@@ -199,8 +199,9 @@ ensure_cleanup_whitelist_file() {
 #
 # Rules:
 # - Exact path protects that path and its descendants.
-# - Use trailing /* to protect descendants of a path.
-# - ~ is expanded to your home directory.
+# - Use trailing /* to protect the base path itself and its descendants.
+# - A leading ~ is expanded to your home directory; a tilde anywhere
+#   else in the path stays literal.
 #
 # Examples:
 # ~/.ollama/models
