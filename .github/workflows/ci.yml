@@ -85,11 +85,13 @@ jobs:
     name: Test (macOS)
     runs-on: macos-26 # Task 2.4: pinned image
     # The regression suite's wall time on macOS runners has drifted past
-    # the old step budget (main's own leg timed out at 10m13s on
-    # 2114ef7): real brew/softwareupdate probes are capped but still
-    # cost up to their timeout each. 20/15 leaves headroom for the
-    # slower runner variance without masking a real hang.
-    timeout-minutes: 20
+    # every old step budget (10m13s on 2114ef7, then 15m+ and 18m+ on
+    # 34941845019): real brew/softwareupdate probes are capped but still
+    # cost up to their timeout each, and test_doc_examples executes every
+    # GUIDEBOOK command. 40/35 reflects the current ~30 min reality;
+    # the durable fix is stubbing real probes or sharding the suite —
+    # raise the budget again only after measuring, not by default.
+    timeout-minutes: 40
     needs: lint
 
     steps:
@@ -107,7 +109,7 @@ jobs:
           echo "$RUNNER_TEMP/ci-timeout-bin" >> "$GITHUB_PATH"
 
       - name: Run shell regression harness
-        timeout-minutes: 15
+        timeout-minutes: 35
         run: ./tests/run.sh
 
       - name: mdoctor help
