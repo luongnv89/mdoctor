@@ -21,7 +21,7 @@ find . \( -name '*.sh' -o -name 'mdoctor' -o -name 'cleanup.sh' -o -name 'doctor
 
 It must report 0 errors.
 
-## 2. Test: safe subset (full runner is destructive until Task 0.1)
+## 2. Test: `./tests/run.sh` (hermetic suite)
 
 The test command of record is:
 
@@ -32,16 +32,12 @@ The test command of record is:
 The suite is hermetic since Task 0.1 (force test stops after its
 pre-flight summary via `MDOCTOR_PREFLIGHT_ONLY=true`; `docker`,
 `apt-get` and `sudo` are stubbed on `PATH` by `tests/run.sh`), so
-`./tests/run.sh` is safe to run on a developer machine. The historical
-safe subset (every test file except the force-resilience one) is still
-available when you want a quicker signal:
+`./tests/run.sh` is safe to run on a developer machine. For a quicker
+signal, run a single file or a name filter:
+
 ```bash
-for f in tests/test_*.sh; do
-  case "$f" in
-    *test_force_preflight_resilience.sh) echo "SKIP (destructive until 0.1): $f" ;;
-    *) echo "== $f =="; bash "$f" ;;
-  esac
-done
+./tests/run.sh tests/test_command_parsing.bats
+./tests/run.sh -f 'parsing'
 ```
 
 ## 3. Lint: `scripts/lint_shell.sh` (ShellCheck installed separately)
@@ -52,8 +48,9 @@ The real lint entry point is:
 ./scripts/lint_shell.sh
 ```
 
-It runs `shellcheck -S error` over every tracked shell file. ShellCheck
-is **not** vendored: `command -v shellcheck` fails on a clean machine.
+It runs `shellcheck -S warning` over every tracked shell file.
+ShellCheck is **not** vendored: `command -v shellcheck` fails on a
+clean machine.
 Install it first:
 
 ```bash
@@ -63,7 +60,7 @@ brew install shellcheck
 sudo apt install -y shellcheck
 ```
 
-Current gate is `-S error` (Task 2.1 raises it to `-S warning`).
+Current gate is `-S warning` (raised from `-S error` under Task 2.1).
 
 ## 4. Pre-commit: install the hooks
 
@@ -86,7 +83,7 @@ Target Bash is **3.2** (ships with macOS). The floor is deliberate: this
 project ships no Bash of its own, the 3.2 path executes only on macOS
 where Apple's vendored Bash 3.2.57 cannot be upgraded by this project,
 and raising the floor would break the zero-dependencies promise on the
-primary platform. A full-text sweep of all 70 shell files found zero
+primary platform. A full-text sweep of all shell files found zero
 uses of any Bash 4+ construct. Bash 4+ constructs are banned:
 
 - associative arrays (`declare -A`)

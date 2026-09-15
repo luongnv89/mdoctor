@@ -22,7 +22,7 @@ find . \( -name '*.sh' -o -name 'mdoctor' -o -name 'cleanup.sh' -o -name 'doctor
 ## Test
 
 Command of record: `./tests/run.sh` (bats-core suite, per-assertion
-reporting, must pass 19/19 files). The runner self-provisions bats-core
+reporting, every file must pass). The runner self-provisions bats-core
 v1.14.0 at a pinned SHA into `~/.cache/mdoctor/` on first use (override:
 `MDOCTOR_BATS_BIN`, filter: `./tests/run.sh -f '<name>'`). Each file runs
 under a 300 s watchdog (`MDOCTOR_TEST_FILE_TIMEOUT`); JUnit output lands
@@ -44,10 +44,9 @@ machine. For a quicker signal, run a single test file directly:
 ./scripts/lint_shell.sh
 ```
 
-Runs `shellcheck -S error` over every tracked shell file. ShellCheck is
-not vendored — install first (`brew install shellcheck` on macOS,
-`sudo apt install -y shellcheck` on Debian/Ubuntu). Gate rises to
-`-S warning` under Task 2.1.
+Runs `shellcheck -S warning` over every tracked shell file. ShellCheck
+is not vendored — install first (`brew install shellcheck` on macOS,
+`sudo apt install -y shellcheck` on Debian/Ubuntu).
 
 Also run once per checkout: `pre-commit install` (plus
 `pre-commit install --hook-type pre-push`).

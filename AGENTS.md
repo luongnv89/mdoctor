@@ -25,7 +25,7 @@ installer flow.
 - `lib/` — shared libs (`platform.sh` first, then `common.sh`,
   `logging.sh`, `disk.sh`, `safety.sh`, `metadata.sh`, `json.sh`).
 - `checks/`, `cleanups/`, `fixes/` — one file per module/target.
-- `tests/` — `run.sh` runner + `test_*.sh` files + `helpers/`.
+- `tests/` — `run.sh` runner + `test_*.bats` files + `helpers/`.
 - `docs/` — user/developer docs; `docs/AGENT_ENVIRONMENT.md` is the
   agent-runbook source of truth.
 - `openspec/` — excluded from lint and build sweep.
@@ -47,8 +47,10 @@ installer flow.
   the matching group and gate, source it and call it from the owning
   engine's `main()` (`fixes/` targets go through `cmd_fix`'s case
   blocks instead). `doctor.sh` derives `STEP_TOTAL` from the registry
-  — never bump it; `cleanup.sh` hand-maintains `PROGRESS_TOTAL`,
-  bumped only for destructive modules joining the full `clean` run.
+  — never bump it; `cleanup.sh` derives its own `STEP_TOTAL` from
+  `CLEANUP_STEPS`, the hand-maintained list of destructive modules in
+  the full `clean` run — add a module inside the matching platform
+  gate and keep it mirrored with the `step` calls in `main()`.
   The full walkthrough lives in `CONTRIBUTING.md`.
 - Commit style: Conventional Commits (`feat:`, `fix:`, `docs:`,
   `refactor:`, `test:`, `chore:`); feature branches off `main`.
@@ -66,9 +68,9 @@ installer flow.
 
 ## Done when
 
-`bash -n` sweep reports 0 errors; `./tests/run.sh` passes 9/9;
-`./scripts/lint_shell.sh` exits
-0; `git status` shows only intended files.
+`bash -n` sweep reports 0 errors; `./tests/run.sh` passes;
+`./scripts/lint_shell.sh` exits 0; `git status` shows only intended
+files.
 
 ## Read when needed
 

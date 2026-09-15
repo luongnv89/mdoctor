@@ -37,7 +37,7 @@ graph TD
   LIB --> LOGGING[lib/logging.sh]
   LIB --> METADATA[lib/metadata.sh]
 
-  TESTS[tests/run.sh + test_*.sh] --> CLI
+  TESTS[tests/run.sh + test_*.bats] --> CLI
   CI[GitHub Actions CI] --> LINT[scripts/lint_shell.sh]
   CI --> TESTS
   CI --> RELEASE_SANITY[installer/uninstaller isolated-path sanity]

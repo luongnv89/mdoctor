@@ -213,9 +213,11 @@ clean_your_cache() {
      `cleanups/` sources
    - a `step "..."` + `clean_your_cache || _cleanup_rc=$?` pair in
      `main()`
-   - bump `PROGRESS_TOTAL` — it is a hand-maintained count of the
-     modules the full run executes, with one arm per platform
-     (`if is_macos` / `else`); bump only the arm(s) your module runs in
+   - add the module name to `CLEANUP_STEPS` — the hand-maintained
+     list of modules the full run executes, with platform-gated `+=`
+     entries (`if is_macos` / `if is_linux`); `STEP_TOTAL` derives
+     from the list, so add the module only under the gate(s) it runs
+     in and keep it mirrored with the `main()` step calls
 
    A report-only module (`SAFE`, like `downloads`) skips all three: the
    engine neither sources it nor counts it — it only ever runs via

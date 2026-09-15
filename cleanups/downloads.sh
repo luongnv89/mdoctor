@@ -22,7 +22,7 @@ clean_downloads_large_files() {
   # safe_find_delete call was commented out since import) and ~/Downloads
   # is outside the allowed deletion roots in lib/safety.sh, so this module
   # only ever lists matches. It is registered SAFE, runs no destructive
-  # pre-flight, and is excluded from the engine's PROGRESS_TOTAL. The
+  # pre-flight, and is excluded from the engine's CLEANUP_STEPS. The
   # find runs directly (not via dry-run-gated run_cmd_args) so the report
   # is produced in every mode. -size uses the byte suffix: +524288000c is
   # 500 MiB on GNU/BSD find AND BusyBox find (which rejects the M suffix,
