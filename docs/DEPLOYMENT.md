@@ -130,7 +130,7 @@ per-release statistics it used to hand-maintain no longer exist.
    the same version — no other file carries the version
 3. Run `./scripts/check_version.sh` locally — it must exit 0
 4. Commit and push to `main`
-5. Create/push release tag (e.g., `v3.0.0`) — the `Release` workflow
+5. Create/push release tag (e.g., `v3.1.0`) — the `Release` workflow
    (`push: tags: v*.*.*`) re-runs the agreement check against the tag
    and creates the GitHub release from `docs/CHANGELOG.md`
    automatically, with no further file edits
@@ -138,19 +138,19 @@ per-release statistics it used to hand-maintain no longer exist.
 Example (`gh` CLI):
 
 ```bash
-git tag -a v3.0.0 -m "mdoctor v3.0.0"
-git push origin v3.0.0
+git tag -a v3.1.0 -m "mdoctor v3.1.0"
+git push origin v3.1.0
 
-# The Release workflow then creates the release titled "mdoctor v3.0.0"
+# The Release workflow then creates the release titled "mdoctor v3.1.0"
 # with docs/CHANGELOG.md as the notes. Manual equivalent (fallback only):
-gh release create v3.0.0 \
+gh release create v3.1.0 \
   --repo luongnv89/mdoctor \
-  --title "mdoctor v3.0.0" \
+  --title "mdoctor v3.1.0" \
   --notes-file docs/CHANGELOG.md \
   --draft
 
 # publish draft when ready
-gh release edit v3.0.0 --repo luongnv89/mdoctor --draft=false
+gh release edit v3.1.0 --repo luongnv89/mdoctor --draft=false
 ```
 
 Users can then upgrade via `mdoctor update` (preferred) or by rerunning `install.sh`.

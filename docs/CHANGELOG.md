@@ -6,12 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-09-16
+
 ### Added
-- `mdoctor diagnose` — active performance diagnosis with bottleneck detection: samples CPU, memory, disk I/O, swap, zombie and connection metrics via the shared `lib/perf_probes.sh` samplers (capture-once, timeout-capped) and prints prioritized remedies without applying them (ab875d6, #8)
+- `mdoctor diagnose` — read-only, cross-platform performance diagnosis for CPU, memory, disk I/O, swap, zombie processes and connection pressure, with prioritized remedies and timeout-capped shared probes (#13)
+- An install-and-operate `mdoctor-agent` skill with dependency checks, local/remote install modes, verification and safe-use guidance (#8)
+- A centralized module registry, named threshold constants, explicit module context initialization and shared disk, preflight, help, timeout and performance-probe libraries (#184, #185, #186, #187, #190, #191, #198, #199)
+- Signed release-tag verification for install and update flows, plus a tag-triggered GitHub Release workflow with version-agreement checks (#156, #164)
+- Secret scanning in pre-commit and CI, Dependabot configuration and a kcov coverage lane (#133, #154, #165)
+
+### Changed
+- Cleanup and check dispatch now derive from the platform-filtered registry; the legacy `dev` cleanup was retired in favor of `dev_caches`, and command help reflects only modules available on the current platform (#184, #195, #200, #213)
+- `mdoctor clean` now accepts an explicit `--dry-run`, names the selected cleanup mode and always ends with a run summary; command badges, bare invocation guidance and installer risk labels are clearer (#209, #215, #216)
+- The regression suite migrated to bats-core and gained broad behavioral coverage for CLI parsing, checks, cleanups, fixes, installers, safety, JSON, cross-platform behavior and Bash 3.2 compatibility (#167–#179, #197, #234)
+- Contributor, safety, deployment, development, guidebook, README and agent-facing documentation now reflect the current two-platform behavior, release gates, module inventories and configuration rules (#121, #224–#232, #236)
+- CI now uses pinned actions and runner images, aligned ShellCheck gates, hardened permissions/timeouts/concurrency, hermetic release checks and sharded macOS test legs (#132, #138–#148, #238)
 
 ### Fixed
-- `mdoctor clean` no longer aborts on empty `EXCLUDE_GLOB` scope config under `set -u` (#14)
-- Docker prune failures when the daemon is unavailable are logged without stopping dev cache cleanup (#14)
+- `mdoctor clean` no longer aborts when cleanup scope configuration has no active `EXCLUDE_GLOB`; unavailable Docker daemons no longer stop later development-cache cleanup (#15)
+- Deletion safety now fails closed for invalid `HOME` values and unknown roots, validates install directories, rejects unsafe symlinks by default, canonicalizes targets and requires confirmation before destructive execution (#124–#129, #150, #151)
+- Check-module names are allowlisted before sourcing, string-evaluated command paths were removed, fix modules consistently honor dry-run, and platform-incompatible fixes are gated (#131, #152, #161, #162)
+- Linux and Bash 3.2 behavior is more reliable, including host-command guards, correct ping timeout units, empty-array handling, Arch compatibility, platform-specific advice and valid JSON output (#7, #142, #146, #180, #181, #218)
+- JSON status helpers now record checks correctly and fully escape output; numeric probes reject malformed readings and report collection failures instead of presenting misleading values (#180, #219)
+- Cleanup now honors per-module staleness thresholds, safely handles size-probe failures, scans stale `node_modules` with NUL delimiters, skips caches for running browsers, reports downloads honestly and de-duplicates physical scope roots (#155, #194, #196, #221, #237)
+- Benchmarking now measures real disk targets over HTTPS and refuses temporary filesystems (#212)
+- History validation, state-file modes, ordered exit hooks and decimal normalization prevent malformed state, hangs and leading-zero arithmetic errors (#153, #163, #223, #242)
+- CLI parsing now guards missing module arguments and rejects unknown global flags cleanly (#214, #240)
+- Color initialization now honors `NO_COLOR` and terminal detection (#217)
+- `fix all --dry-run` now succeeds on hosts where optional platform tools are unavailable (#235)
+
+### Performance
+- Network and daemon probes are time-capped, independent checks run in parallel, and slow command output is captured only once (#208, #210)
+- Check parsing and logging use fewer subprocesses, while the spinner uses one worker per run (#205, #207, #211)
+- Storage scans and force-cleanup size estimation collapse repeated traversals into shared passes with per-process caching (#201–#203)
+
+### Security
+- Installer overrides are validated without clobbering existing installs, temporary files use `mktemp`, and release/update flows verify signed tags (#157, #158, #156)
+- CI dependencies are pinned and automatically maintained; workflow permissions and destructive test paths are hardened (#122, #132, #133, #143)
+
+### Dependencies
+- Updated `actions/upload-artifact` from 4.6.2 to 7.0.1 and `pre-commit-hooks` from 5.0.0 to 6.0.0 (#222, #135)
 
 ## [3.0.0] - 2026-05-05
 

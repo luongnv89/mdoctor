@@ -166,7 +166,7 @@ _us_from_seconds() {
   local t="$TEST_BASE/version"
   mkdir -p "$t"
   _run_stubbed "$t/out.txt" "$t/log" "$ROOT_DIR/mdoctor" version
-  assert_contains "$t/out.txt" "mdoctor 3.0.0"
+  assert_contains "$t/out.txt" "mdoctor 3.1.0"
   local gitc
   gitc="$(_stub_count git "$t/log")"
   [ "$gitc" -le 1 ] || fail "mdoctor version ran git $gitc times (want <=1)"

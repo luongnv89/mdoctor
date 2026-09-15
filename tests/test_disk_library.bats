@@ -103,11 +103,14 @@ teardown_file() {
 
 @test "mdoctor single-module preflight completes with poisoned trash" {
   export HOME="$TMPHOME"
-  mkdir -p "$TMPHOME/.local/share/Trash/files/poisoned"
-  echo "data" > "$TMPHOME/.local/share/Trash/files/poisoned/file.txt"
-  chmod 000 "$TMPHOME/.local/share/Trash/files/poisoned"
+  source "$ROOT_DIR/lib/platform.sh"
+  local trash_dir
+  trash_dir="$(platform_trash_dir)"
+  mkdir -p "$trash_dir/poisoned"
+  echo "data" > "$trash_dir/poisoned/file.txt"
+  chmod 000 "$trash_dir/poisoned"
   out=$(printf 'n\n' | "$ROOT_DIR/mdoctor" clean -m trash --force 2>&1 || true)
   [[ "$out" == *"Pre-flight Safety Summary"* ]]
   [[ "$out" == *"(~"* ]]
-  chmod -R u+rwx "$TMPHOME/.local/share/Trash" 2>/dev/null || true
+  chmod -R u+rwx "$trash_dir" 2>/dev/null || true
 }
