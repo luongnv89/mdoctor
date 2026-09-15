@@ -72,6 +72,7 @@ trap '_mdoctor_run_signal 143' TERM
 
 FILTER=""
 SHARD=""
+SHARD_SEEN=0
 LIST_ONLY=0
 FILES=()
 _MDOCTOR_CHILD=""
@@ -79,14 +80,18 @@ while [ $# -gt 0 ]; do
   case "$1" in
     -f|--filter)
       FILTER="${2-}"
-      shift 2
+      # `shift 2` fails when the flag is last (no value) — shift once so
+      # the loop still consumes the flag instead of spinning on it.
+      shift 2 2>/dev/null || shift
       ;;
     --shard)
       SHARD="${2-}"
-      shift 2
+      SHARD_SEEN=1
+      shift 2 2>/dev/null || shift
       ;;
     --shard=*)
       SHARD="${1#*=}"
+      SHARD_SEEN=1
       shift
       ;;
     --list)
@@ -116,7 +121,7 @@ fi
 # list satisfies (p - I) % N == 0 — round-robin over the sorted glob (or the
 # caller's explicit list), so each of the N parallel CI legs runs ~1/N of the
 # suite and files added later distribute themselves without a manifest.
-if [ -n "$SHARD" ]; then
+if [ "$SHARD_SEEN" -eq 1 ]; then
   case "$SHARD" in
     */*) ;;
     *)

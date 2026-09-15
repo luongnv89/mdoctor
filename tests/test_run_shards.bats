@@ -115,10 +115,15 @@ _shard_list() {
 
 @test "malformed --shard specs fail non-zero" {
   local spec
-  for spec in "0/2" "3/2" "1/0" "x/2" "2/x" "2" "/2" "1/" "1/2/3"; do
+  for spec in "" "0/2" "3/2" "1/0" "x/2" "2/x" "2" "/2" "1/" "1/2/3"; do
     run ./tests/run.sh --shard "$spec" --list
     [ "$status" -ne 0 ] || fail "--shard '$spec' was accepted (status 0)"
   done
+
+  # A bare trailing --shard (no value at all) must error, not spin the
+  # arg loop or silently run the full suite on every leg.
+  run ./tests/run.sh --shard
+  [ "$status" -ne 0 ] || fail "bare --shard was accepted (status 0)"
 }
 
 @test "-h/--help documents --shard and --list" {
