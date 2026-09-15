@@ -29,6 +29,38 @@ export ROOT_DIR
 
 source "$ROOT_DIR/lib/platform.sh"
 
+# _write_nonzero_file PATH — write ~8 KB of non-zero bytes. The payload
+# must be non-zero so `du -sk` counts real blocks on every filesystem: an
+# absent or all-zero payload can measure 0 KB, which routes the modules
+# under test to their silent "empty" branch and hides the measured path
+# the tests assert on. A printf loop keeps this off BSD `head -c` (not
+# portable) and /dev/urandom.
+_write_nonzero_file() {
+  local target="$1" i=0
+  : >"$target" || return 1
+  while [ "$i" -lt 200 ]; do
+    printf 'mdoctor-fixture-nonzero-payload-%04d\n' "$i" >>"$target"
+    i=$((i + 1))
+  done
+}
+
+# _mk_derived_data_fixture — (re)create the poisoned Xcode DerivedData.
+# Called from setup_file and again inside the macOS test itself: the
+# full-engine force run in the first test executes the real clean_xcode
+# against this same HOME, and its safe_remove_children removes every
+# *readable* child of DerivedData (only the chmod-000 dir survives), so a
+# payload written once in setup_file is gone by the time the xcode test
+# runs — du then reports 0 and no "Xcode DerivedData:" line is printed.
+_mk_derived_data_fixture() {
+  local derived_data="$TMPHOME/Library/Developer/Xcode/DerivedData"
+  mkdir -p "$derived_data/poisoned"
+  # The dir may already exist unreadable from a prior test; ignore write
+  # errors — an empty unreadable child triggers the du failure the same.
+  echo "data" >"$derived_data/poisoned/file.txt" 2>/dev/null || true
+  _write_nonzero_file "$derived_data/readable.bin"
+  chmod 000 "$derived_data/poisoned"
+}
+
 setup_file() {
   cd "$ROOT_DIR" || return 1
   export TMPHOME
@@ -61,21 +93,17 @@ setup_file() {
 
   # Poisoned npm cache: a chmod-000 child makes `du -sk` exit non-zero
   # while still printing a partial total — the exact trigger the retired
-  # `du | awk` pipelines died on under pipefail.
+  # `du | awk` pipelines died on under pipefail. The readable sibling
+  # keeps the measured total non-zero so the module's measure-log-delete
+  # path runs instead of taking the "empty" shortcut.
   mkdir -p "$TMPHOME/.npm/poisoned"
   echo "data" >"$TMPHOME/.npm/poisoned/file.txt"
+  _write_nonzero_file "$TMPHOME/.npm/readable.bin"
   chmod 000 "$TMPHOME/.npm/poisoned"
 
   # Poisoned Xcode DerivedData (macOS-only module; created on Linux too
-  # — inert there, keeps setup branch-free). A readable sibling gives du
-  # a non-zero partial total so the module's measure-log-delete path runs
-  # against the poisoned tree instead of taking the "empty" shortcut.
-  local derived_data="$TMPHOME/Library/Developer/Xcode/DerivedData"
-  mkdir -p "$derived_data/poisoned"
-  echo "data" >"$derived_data/poisoned/file.txt"
-  head -c 8192 /dev/zero >"$derived_data/readable.bin" 2>/dev/null \
-    || dd if=/dev/zero of="$derived_data/readable.bin" bs=1024 count=8 2>/dev/null
-  chmod 000 "$derived_data/poisoned"
+  # — inert there, keeps setup branch-free).
+  _mk_derived_data_fixture
 }
 
 teardown_file() {
@@ -137,6 +165,11 @@ teardown_file() {
   if ! is_macos; then
     skip "the xcode module is macOS-only"
   fi
+  # Re-create the fixture: the full-engine force run above already ran the
+  # real clean_xcode against this HOME and removed DerivedData's readable
+  # payload (only the unreadable poisoned child survives cleanup), which
+  # would leave `du` reporting 0 and the DerivedData line unprinted.
+  _mk_derived_data_fixture
   local out_file="$TMPHOME/clean-xcode.out"
   MDOCTOR_ASSUME_YES=true \
     HOME="$TMPHOME" ./mdoctor clean --force -m xcode >"$out_file" 2>&1 || true
