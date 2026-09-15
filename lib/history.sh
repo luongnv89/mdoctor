@@ -157,6 +157,9 @@ _history_is_uint() {
 # Displays recent health scores with trend arrows
 history_show() {
   local count="${1:-10}"
+  # 10# forces decimal — is_uint accepts "08"/"09", which are invalid
+  # octal to (( )) and leaked an arithmetic error to stderr (issue #241).
+  count=$((10#$count))
   local files=()
   local f
 
