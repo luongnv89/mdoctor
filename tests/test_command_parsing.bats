@@ -150,6 +150,65 @@ teardown_file() {
   assert_not_contains "$TEST_TMP/clean_module_missing.txt" "unbound variable"
 }
 
+@test "history rejects global and unknown flags without an unbound-variable crash" {
+  # Issue #233: a raw flag reached history_show as COUNT and
+  # `(( total > count ))` evaluated it as a variable under set -u —
+  # `mdoctor history --debug` died with "debug: unbound variable".
+  for flag in --debug -h --help --not-a-real-option; do
+    local rc=0
+    ./mdoctor history "$flag" >"$TEST_TMP/history_flag.txt" 2>&1 || rc=$?
+    [ "$rc" -ne 0 ] || fail "Expected non-zero exit for 'history $flag'"
+    assert_contains "$TEST_TMP/history_flag.txt" "Unknown option"
+    assert_not_contains "$TEST_TMP/history_flag.txt" "unbound variable"
+  done
+}
+
+@test "history rejects a non-numeric count and extra positionals" {
+  local rc=0
+  ./mdoctor history bogus >"$TEST_TMP/history_bogus.txt" 2>&1 || rc=$?
+  [ "$rc" -ne 0 ] || fail "Expected non-zero exit for 'history bogus'"
+  assert_contains "$TEST_TMP/history_bogus.txt" "Invalid count"
+  assert_not_contains "$TEST_TMP/history_bogus.txt" "unbound variable"
+
+  rc=0
+  ./mdoctor history 5 3 >"$TEST_TMP/history_extra.txt" 2>&1 || rc=$?
+  [ "$rc" -ne 0 ] || fail "Expected non-zero exit for 'history 5 3'"
+  assert_contains "$TEST_TMP/history_extra.txt" "Unknown argument"
+}
+
+@test "history still accepts no args and a bare count" {
+  mkdir -p "$TEST_TMP/home"
+  local rc=0
+  HOME="$TEST_TMP/home" ./mdoctor history >"$TEST_TMP/history_ok.txt" 2>&1 || rc=$?
+  [ "$rc" -eq 0 ] || fail "Expected exit 0 for bare 'history', got $rc"
+  assert_contains "$TEST_TMP/history_ok.txt" "Health Score History"
+
+  rc=0
+  HOME="$TEST_TMP/home" ./mdoctor history 5 >"$TEST_TMP/history_count.txt" 2>&1 || rc=$?
+  [ "$rc" -eq 0 ] || fail "Expected exit 0 for 'history 5', got $rc"
+  assert_contains "$TEST_TMP/history_count.txt" "Health Score History"
+}
+
+@test "info, list, benchmark, version and help reject unknown args cleanly" {
+  # Issue #233: these commands bypass parse_common_args and used to
+  # silently drop every argument (or crash on it). The Global Options
+  # are documented only for the commands that parse them, so every
+  # other command fails with a clean usage error instead.
+  for cmd in info list benchmark version help; do
+    local rc=0
+    ./mdoctor "$cmd" --debug >"$TEST_TMP/${cmd}_debug.txt" 2>&1 || rc=$?
+    [ "$rc" -ne 0 ] || fail "Expected non-zero exit for '$cmd --debug'"
+    assert_contains "$TEST_TMP/${cmd}_debug.txt" "Unknown option"
+    assert_not_contains "$TEST_TMP/${cmd}_debug.txt" "unbound variable"
+
+    rc=0
+    ./mdoctor "$cmd" -h >"$TEST_TMP/${cmd}_h.txt" 2>&1 || rc=$?
+    [ "$rc" -ne 0 ] || fail "Expected non-zero exit for '$cmd -h'"
+    assert_contains "$TEST_TMP/${cmd}_h.txt" "Unknown option"
+    assert_not_contains "$TEST_TMP/${cmd}_h.txt" "unbound variable"
+  done
+}
+
 @test "apt is accepted on Linux and listed in help and error text" {
   if [ "$(uname -s)" != "Linux" ]; then
     skip "Linux-only module"
