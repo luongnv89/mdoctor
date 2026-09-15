@@ -189,6 +189,36 @@ teardown_file() {
   assert_contains "$TEST_TMP/history_count.txt" "Health Score History"
 }
 
+@test "history treats leading-zero counts as decimal, not octal" {
+  # Issue #241: `mdoctor history 08`/`09` passed the is_uint gate but
+  # reached history_show's `(( total > count ))` as invalid octal,
+  # leaking "value too great for base" to stderr while still exiting 0.
+  # The arithmetic path only runs once history entries exist, so the
+  # sandbox HOME below carries three fixture entries.
+  mkdir -p "$TEST_TMP/home-octal/.mdoctor/history"
+  local i
+  for i in 1 2 3; do
+    printf '{"timestamp":"2026-09-15T10:0%s:00Z","score":8%s,"rating":"good","warnings":%s,"failures":0}\n' \
+      "$i" "$i" "$i" >"$TEST_TMP/home-octal/.mdoctor/history/20260915_10000${i}-1-${i}.json"
+  done
+
+  for n in 08 09; do
+    local rc=0
+    HOME="$TEST_TMP/home-octal" ./mdoctor history "$n" >"$TEST_TMP/history_octal_${n}.txt" 2>&1 || rc=$?
+    [ "$rc" -eq 0 ] || fail "Expected exit 0 for 'history $n', got $rc"
+    assert_contains "$TEST_TMP/history_octal_${n}.txt" "Health Score History"
+    assert_not_contains "$TEST_TMP/history_octal_${n}.txt" "value too great for base"
+    assert_not_contains "$TEST_TMP/history_octal_${n}.txt" "unbound variable"
+  done
+
+  # Leading-zero counts must render exactly like their decimal forms.
+  local rc=0
+  HOME="$TEST_TMP/home-octal" ./mdoctor history 8 >"$TEST_TMP/history_8.txt" 2>&1 || rc=$?
+  [ "$rc" -eq 0 ] || fail "Expected exit 0 for 'history 8', got $rc"
+  cmp -s "$TEST_TMP/history_8.txt" "$TEST_TMP/history_octal_08.txt" ||
+    fail "Expected 'history 08' output to equal 'history 8'"
+}
+
 @test "info, list, benchmark, version and help reject unknown args cleanly" {
   # Issue #233: these commands bypass parse_common_args and used to
   # silently drop every argument (or crash on it). The Global Options
