@@ -25,7 +25,7 @@ installer flow.
 - `lib/` — shared libs (`platform.sh` first, then `common.sh`,
   `logging.sh`, `disk.sh`, `safety.sh`, `metadata.sh`, `json.sh`).
 - `checks/`, `cleanups/`, `fixes/` — one file per module/target.
-- `tests/` — `run.sh` runner + `test_*.sh` files + `helpers/`.
+- `tests/` — `run.sh` runner + `test_*.bats` files + `helpers/`.
 - `docs/` — user/developer docs; `docs/AGENT_ENVIRONMENT.md` is the
   agent-runbook source of truth.
 - `openspec/` — excluded from lint and build sweep.
@@ -66,9 +66,9 @@ installer flow.
 
 ## Done when
 
-`bash -n` sweep reports 0 errors; `./tests/run.sh` passes 9/9;
-`./scripts/lint_shell.sh` exits
-0; `git status` shows only intended files.
+`bash -n` sweep reports 0 errors; `./tests/run.sh` passes;
+`./scripts/lint_shell.sh` exits 0; `git status` shows only intended
+files.
 
 ## Read when needed
 
