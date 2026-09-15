@@ -653,6 +653,9 @@ cmd_fix() {
 ########################################
 
 cmd_info() {
+  # No options defined — any arg is a usage error (issue #233).
+  reject_extra_args "$@" || return 1
+
   echo "${BOLD}${BLUE}== System Information ==${RESET}"
   echo
 
@@ -818,6 +821,9 @@ cmd_info() {
 
 
 cmd_list() {
+  # No options defined — any arg is a usage error (issue #233).
+  reject_extra_args "$@" || return 1
+
   source "${MDOCTOR_DIR}/lib/metadata.sh"
   source "${MDOCTOR_DIR}/lib/registry.sh"
 
@@ -848,11 +854,42 @@ cmd_list() {
 ########################################
 
 cmd_history() {
+  # history accepts a single optional row COUNT; every flag — including
+  # the documented Global Options, which are scoped to the commands
+  # routed through parse_common_args — is a usage error here
+  # (issue #233). A raw flag passed through to history_show used to be
+  # evaluated as arithmetic under set -u ('--debug' crashed on
+  # `debug: unbound variable`).
+  local count=10
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      -*)
+        error "Unknown option: $arg"
+        echo "Usage: mdoctor history [count]"
+        return 1
+        ;;
+    esac
+  done
+  if [[ $# -gt 1 ]]; then
+    error "Unknown argument: $2"
+    echo "Usage: mdoctor history [count]"
+    return 1
+  fi
+  if [[ $# -eq 1 ]]; then
+    if ! is_uint "$1"; then
+      error "Invalid count: $1 (expected a non-negative integer)"
+      echo "Usage: mdoctor history [count]"
+      return 1
+    fi
+    count="$1"
+  fi
+
   source "${MDOCTOR_DIR}/lib/history.sh"
 
   echo "${BOLD}${BLUE}== Health Score History ==${RESET}"
   echo
-  history_show "${1:-10}"
+  history_show "$count"
 }
 
 ########################################
@@ -860,6 +897,9 @@ cmd_history() {
 ########################################
 
 cmd_benchmark() {
+  # No options defined — any arg is a usage error (issue #233).
+  reject_extra_args "$@" || return 1
+
   source "${MDOCTOR_DIR}/lib/common.sh"
   source "${MDOCTOR_DIR}/lib/benchmark.sh"
   run_benchmark
@@ -912,6 +952,9 @@ cmd_diagnose() {
 ########################################
 
 cmd_version() {
+  # No options defined — any arg is a usage error (issue #233).
+  reject_extra_args "$@" || return 1
+
   echo "mdoctor $(mdoctor_version_full)"
 }
 
@@ -1176,6 +1219,9 @@ update_from_branch() {
 ########################################
 
 cmd_help() {
+  # No options defined — any arg is a usage error (issue #233).
+  reject_extra_args "$@" || return 1
+
   banner
   register_all_modules
   echo "Usage: ${BOLD}mdoctor${RESET} <command> [options]"
@@ -1288,14 +1334,14 @@ main() {
     clean)     cmd_clean "$@" ;;
     fix)       cmd_fix "$@" ;;
     diagnose)  cmd_diagnose "$@" ;;
-    info)      cmd_info ;;
-    list)      cmd_list ;;
+    info)      cmd_info "$@" ;;
+    list)      cmd_list "$@" ;;
     history)   cmd_history "$@" ;;
-    benchmark) cmd_benchmark ;;
+    benchmark) cmd_benchmark "$@" ;;
     update)    cmd_update "$@" ;;
-    version)   cmd_version ;;
-    -v|--version) cmd_version ;;
-    help|-h|--help) cmd_help ;;
+    version)   cmd_version "$@" ;;
+    -v|--version) cmd_version "$@" ;;
+    help|-h|--help) cmd_help "$@" ;;
     "")        cmd_orient ;;
     *)
       error "Unknown command: ${command}"

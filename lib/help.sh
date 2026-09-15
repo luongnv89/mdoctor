@@ -67,6 +67,26 @@ parse_common_args() {
   return 0
 }
 
+# reject_extra_args [ARGS...]
+# Shared usage-error gate for the commands that define no options of
+# their own — info, list, benchmark, version, help (issue #233). The
+# Global Options flags (--debug, -h/--help) are accepted only by the
+# commands routed through parse_common_args; everywhere else any
+# argument — global flag or stray positional — is a clean 'unknown
+# option' error, never a value passed through to an inner function that
+# would misinterpret it under set -u (a bare '--debug' reached
+# history_show's `(( total > count ))` as the variable `debug`).
+reject_extra_args() {
+  [ "$#" -eq 0 ] && return 0
+  if declare -f error >/dev/null 2>&1; then
+    error "Unknown option: $1"
+  else
+    echo "Error: Unknown option: $1" >&2
+  fi
+  echo "Run 'mdoctor help' for usage."
+  return 1
+}
+
 # usage_check — check command help (counts from the registry).
 usage_check() {
   register_all_modules
