@@ -171,8 +171,8 @@ outright. The summary itself is informational, not an approval step.
 
 A full `mdoctor clean` does not run every registered module — it runs a
 fixed step list of 7 on macOS / 6 on Linux. The opted-out modules —
-`downloads` (report-only: lists large files, never deletes), `browser`
-and `dev` — run via `mdoctor clean -m <name>` or
+`downloads` (report-only: lists large files, never deletes) and
+`browser` — run via `mdoctor clean -m <name>` or
 `mdoctor clean --interactive`.
 
 Clean a specific target only:
