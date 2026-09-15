@@ -48,6 +48,45 @@ setup_file() {
   export FIXTURE_ROOT
   TEST_TMP="$(mktemp -d "$FIXTURE_ROOT/mdoctor-test-fixes-lane.$(fixture_run_id).XXXXXX")"
   fixture_trap_cleanup "$TEST_TMP"
+
+  # --- Tool-less farm (issue #220): every host binary EXCEPT the fix
+  # tools (brew, apt-get, resolvectl, systemd-resolve), so `command -v`
+  # misses them deterministically on any host — the same pattern as the
+  # resolver-free farm in test_numeric_validation.bats. ---
+  mkdir -p "$TEST_TMP/farm-notool"
+  local _d _f _b _need _p
+  for _d in /usr/bin /bin /usr/sbin /sbin; do
+    [ -d "$_d" ] || continue
+    for _f in "$_d"/*; do
+      [ -f "$_f" ] || continue
+      _b="$(basename "$_f")"
+      case "$_b" in
+        brew|apt-get|resolvectl|systemd-resolve) continue ;;
+      esac
+      [ -e "$TEST_TMP/farm-notool/$_b" ] || ln -s "$_f" "$TEST_TMP/farm-notool/$_b"
+    done
+  done
+  # Keep the farm executable on minimal images (bash/env/sh must exist).
+  for _need in bash env sh; do
+    if [ ! -e "$TEST_TMP/farm-notool/$_need" ]; then
+      _p="$(command -v "$_need" 2>/dev/null || true)"
+      [ -n "$_p" ] && ln -s "$_p" "$TEST_TMP/farm-notool/$_need"
+    fi
+  done
+  export TOOLLESS_FARM="$TEST_TMP/farm-notool"
+
+  # --- macOS stub dir WITHOUT brew (issue #220): the same recording
+  # stubs as tests/helpers/bin-macos minus brew, plus the hermetic sudo
+  # stub (never helpers/bin wholesale — it carries an apt-get stub that
+  # must stay missing from these PATH layers). ---
+  mkdir -p "$TEST_TMP/binmac-nobrew"
+  for _f in "$ROOT_DIR"/tests/helpers/bin-macos/*; do
+    _b="$(basename "$_f")"
+    [ "$_b" = "brew" ] && continue
+    ln -sf "$_f" "$TEST_TMP/binmac-nobrew/$_b"
+  done
+  ln -sf "$ROOT_DIR/tests/helpers/bin/sudo" "$TEST_TMP/binmac-nobrew/sudo"
+  export BINMAC_NOBREW="$TEST_TMP/binmac-nobrew"
 }
 
 teardown_file() {
@@ -380,4 +419,129 @@ Ethernet Address: aa:bb:cc:dd:ee:ff"
     echo "$_out" | grep -q "macOS-only" || fail "Expected macOS-only refusal message for fix $_m"
     [ ! -s "$_log" ] || fail "macOS-only binary executed by fix $_m off-macOS: $(cat "$_log")"
   done
+}
+
+# ---------------------------------------------------------------------
+# Issue #220 — dry-run rc-1 pollution on tool-less hosts. Missing-tool
+# branches (brew in homebrew/permissions, apt-get in apt) must return
+# non-zero only in force mode; a dry run performs no work, so it may not
+# poison `fix all`'s aggregate rc — the same contract #111 restored for
+# fix_dns. The tool-less farm PATH makes `command -v` miss the tool
+# deterministically on every CI lane.
+# ---------------------------------------------------------------------
+
+@test "fixes lane: dry-run fix homebrew stays green without brew (issue #220)" {
+  fix_lane_as_macos
+  fix_lane_begin "$STUB_LOG"
+  export DRY_RUN=true
+  # shellcheck source=/dev/null
+  source "$ROOT_DIR/fixes/homebrew.sh"
+  local rc=0
+  PATH="$TOOLLESS_FARM" fix_homebrew >"$TEST_TMP/$BATS_TEST_NUMBER/out.txt" 2>&1 || rc=$?
+  [ "$rc" -eq 0 ] || { cat "$TEST_TMP/$BATS_TEST_NUMBER/out.txt"; fail "fix_homebrew dry-run rc=$rc without brew — poisons fix all"; }
+  assert_contains "$TEST_TMP/$BATS_TEST_NUMBER/out.txt" "Homebrew is not installed."
+  assert_not_contains "$TEST_TMP/$BATS_TEST_NUMBER/out.txt" "Homebrew fixes complete."
+}
+
+@test "fixes lane: fix homebrew without brew fails honestly in force mode (issue #220)" {
+  fix_lane_as_macos
+  fix_lane_begin "$STUB_LOG"   # DRY_RUN=false — force mode
+  # shellcheck source=/dev/null
+  source "$ROOT_DIR/fixes/homebrew.sh"
+  local rc=0
+  PATH="$TOOLLESS_FARM" fix_homebrew >"$TEST_TMP/$BATS_TEST_NUMBER/out.txt" 2>&1 || rc=$?
+  [ "$rc" -eq 1 ] || fail "expected honest rc 1 for fix_homebrew force-mode without brew, got $rc"
+  assert_contains "$TEST_TMP/$BATS_TEST_NUMBER/out.txt" "Homebrew is not installed."
+}
+
+@test "fixes lane: fix homebrew without brew fails closed to dry on invalid DRY_RUN (issue #220)" {
+  fix_lane_as_macos
+  fix_lane_begin "$STUB_LOG"
+  # shellcheck source=/dev/null
+  source "$ROOT_DIR/fixes/homebrew.sh"
+  local rc=0
+  PATH="$TOOLLESS_FARM" DRY_RUN=banana fix_homebrew >"$TEST_TMP/$BATS_TEST_NUMBER/out.txt" 2>&1 || rc=$?
+  [ "$rc" -eq 0 ] || fail "invalid DRY_RUN must fail closed to dry — fix_homebrew rc=$rc"
+}
+
+@test "fixes lane: dry-run fix permissions stays green without brew (issue #220)" {
+  fix_lane_as_macos
+  fix_lane_begin "$STUB_LOG"
+  export DRY_RUN=true
+  # shellcheck source=/dev/null
+  source "$ROOT_DIR/fixes/permissions.sh"
+  local rc=0
+  PATH="$TOOLLESS_FARM" fix_permissions >"$TEST_TMP/$BATS_TEST_NUMBER/out.txt" 2>&1 || rc=$?
+  [ "$rc" -eq 0 ] || { cat "$TEST_TMP/$BATS_TEST_NUMBER/out.txt"; fail "fix_permissions dry-run rc=$rc without brew — poisons fix all"; }
+  assert_contains "$TEST_TMP/$BATS_TEST_NUMBER/out.txt" "Homebrew not installed, skipping."
+  assert_not_contains "$TEST_TMP/$BATS_TEST_NUMBER/out.txt" "Permissions reset complete."
+}
+
+@test "fixes lane: fix permissions without brew fails honestly in force mode (issue #220)" {
+  fix_lane_as_macos
+  fix_lane_begin "$STUB_LOG"   # DRY_RUN=false — force mode
+  # shellcheck source=/dev/null
+  source "$ROOT_DIR/fixes/permissions.sh"
+  local rc=0
+  PATH="$TOOLLESS_FARM" fix_permissions >"$TEST_TMP/$BATS_TEST_NUMBER/out.txt" 2>&1 || rc=$?
+  [ "$rc" -eq 1 ] || fail "expected honest rc 1 for fix_permissions force-mode without brew, got $rc"
+  assert_contains "$TEST_TMP/$BATS_TEST_NUMBER/out.txt" "Homebrew not installed, skipping."
+}
+
+@test "fixes lane: dry-run fix apt stays green without apt-get (issue #220)" {
+  fix_lane_as_linux
+  fix_lane_begin "$STUB_LOG"
+  export DRY_RUN=true
+  # shellcheck source=/dev/null
+  source "$ROOT_DIR/fixes/apt.sh"
+  local rc=0
+  PATH="$TOOLLESS_FARM" fix_apt >"$TEST_TMP/$BATS_TEST_NUMBER/out.txt" 2>&1 || rc=$?
+  [ "$rc" -eq 0 ] || { cat "$TEST_TMP/$BATS_TEST_NUMBER/out.txt"; fail "fix_apt dry-run rc=$rc without apt-get — poisons fix all"; }
+  assert_contains "$TEST_TMP/$BATS_TEST_NUMBER/out.txt" "APT not available on this system."
+  assert_not_contains "$TEST_TMP/$BATS_TEST_NUMBER/out.txt" "APT package manager fix complete."
+}
+
+@test "fixes lane: fix apt without apt-get fails honestly in force mode (issue #220)" {
+  fix_lane_as_linux
+  fix_lane_begin "$STUB_LOG"   # DRY_RUN=false — force mode
+  # shellcheck source=/dev/null
+  source "$ROOT_DIR/fixes/apt.sh"
+  local rc=0
+  PATH="$TOOLLESS_FARM" fix_apt >"$TEST_TMP/$BATS_TEST_NUMBER/out.txt" 2>&1 || rc=$?
+  [ "$rc" -eq 1 ] || fail "expected honest rc 1 for fix_apt force-mode without apt-get, got $rc"
+  assert_contains "$TEST_TMP/$BATS_TEST_NUMBER/out.txt" "APT not available on this system."
+}
+
+@test "fixes lane: dry-run fix all exits 0 on a brew-less macOS host (issue #220)" {
+  # The reported repro: `mdoctor fix all` dry-run on macOS without
+  # Homebrew. OSTYPE forces the macOS lane in the mdoctor subprocess on
+  # any CI host (platform.sh reads OSTYPE first, issue #102); the farm +
+  # binmac-nobrew PATH keeps every macOS probe stubbed while `command -v
+  # brew` misses.
+  local t="$TEST_TMP/$BATS_TEST_NUMBER/fixall-macos"
+  mkdir -p "$t/home/.Trash" "$t/home/Library/Caches" "$t/home/Library/Logs"
+  local rc=0
+  OSTYPE="darwin24.0" \
+    PATH="$BINMAC_NOBREW:$TOOLLESS_FARM" \
+    HOME="$t/home" MDOCTOR_STUB_LOG="$STUB_LOG" \
+    DRY_RUN=true bash "$ROOT_DIR/mdoctor" fix all \
+    >"$t/out.txt" 2>"$t/err.txt" || rc=$?
+  [ "$rc" -eq 0 ] || { tail -n 20 "$t/out.txt" >&2; fail "dry-run fix all rc=$rc on brew-less macOS"; }
+  assert_contains "$t/out.txt" "Homebrew is not installed."
+  assert_contains "$t/out.txt" "Homebrew not installed, skipping."
+}
+
+@test "fixes lane: dry-run fix all exits 0 on an apt-less Linux host (issue #220)" {
+  # Same class on the Linux lane: helpers/bin normally stubs apt-get, so
+  # a PATH without it exercises fix_apt's no-tool branch for real.
+  is_linux || skip "apt is a Linux fix target"
+  local t="$TEST_TMP/$BATS_TEST_NUMBER/fixall-linux"
+  mkdir -p "$t/home"
+  local rc=0
+  PATH="$BINMAC_NOBREW:$TOOLLESS_FARM" \
+    HOME="$t/home" MDOCTOR_STUB_LOG="$STUB_LOG" \
+    DRY_RUN=true bash "$ROOT_DIR/mdoctor" fix all \
+    >"$t/out.txt" 2>"$t/err.txt" || rc=$?
+  [ "$rc" -eq 0 ] || { tail -n 20 "$t/out.txt" >&2; fail "dry-run fix all rc=$rc on apt-less Linux"; }
+  assert_contains "$t/out.txt" "APT not available on this system."
 }
