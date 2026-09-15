@@ -59,7 +59,7 @@ recommended first command.
 |---------|-------|-------------|
 | `mdoctor check` | `[SAFE]` | Run full system health audit (20 checks on macOS / 18 on Linux, read-only) |
 | `mdoctor check --json` | `[SAFE]` | JSON output for automation |
-| `mdoctor clean` | `[HIGH]` | Run system cleanup (dry-run by default, 10 on macOS / 9 on Linux) |
+| `mdoctor clean` | `[HIGH]` | Run system cleanup (dry-run by default, 9 on macOS / 8 on Linux) |
 | `mdoctor fix <target>` | `[MED]` | Apply common fixes (9 on macOS / 2 on Linux) |
 | `mdoctor diagnose` | `[SAFE]` | Run active performance diagnosis (read-only — prints remedies, never runs them) |
 | `mdoctor info` | `[SAFE]` | Show system information summary |
@@ -171,8 +171,8 @@ outright. The summary itself is informational, not an approval step.
 
 A full `mdoctor clean` does not run every registered module — it runs a
 fixed step list of 7 on macOS / 6 on Linux. The opted-out modules —
-`downloads` (report-only: lists large files, never deletes), `browser`
-and `dev` — run via `mdoctor clean -m <name>` or
+`downloads` (report-only: lists large files, never deletes) and
+`browser` — run via `mdoctor clean -m <name>` or
 `mdoctor clean --interactive`.
 
 Clean a specific target only:
@@ -195,7 +195,7 @@ mdoctor clean --interactive --force
 | Category | macOS | Linux (Debian) |
 |----------|-------|----------------|
 | **System** | `trash` [MED], `caches` [LOW], `logs` [MED], `downloads` [SAFE] (report-only), `crash_reports` [MED], `ios_backups` [HIGH] | `trash` [MED], `caches` [LOW], `logs` [MED], `downloads` [SAFE] (report-only), `crash_reports` [MED], `apt` [MED] |
-| **Software** | `browser` [LOW], `dev` [MED], `xcode` [MED], `dev_caches` [MED] | `browser` [LOW], `dev` [MED], `dev_caches` [MED] |
+| **Software** | `browser` [LOW], `xcode` [MED], `dev_caches` [MED] | `browser` [LOW], `dev_caches` [MED] |
 
 ### Fix
 
@@ -356,7 +356,7 @@ mdoctor/
 ├── install.sh           # One-line installer
 ├── uninstall.sh         # Uninstaller
 ├── doctor.sh            # Health check engine (20 on macOS / 18 on Linux)
-├── cleanup.sh           # Cleanup engine (10 on macOS / 9 on Linux)
+├── cleanup.sh           # Cleanup engine (9 modules on macOS / 8 on Linux)
 ├── lib/                 # Shared libraries (18 files)
 │   ├── platform.sh      # OS/distro detection (macOS, Debian, Ubuntu, etc.)
 │   ├── constants.sh     # Named thresholds/timeouts + truthy predicate
@@ -399,13 +399,12 @@ mdoctor/
 │   ├── git_config.sh    # Git & SSH config
 │   ├── containers.sh    # Docker & containers
 │   └── apt.sh           # APT package manager health (Linux)
-├── cleanups/            # Cleanup modules (11 files)
+├── cleanups/            # Cleanup modules (10 files)
 │   ├── trash.sh         # Trash cleanup
 │   ├── caches.sh        # User caches
 │   ├── logs.sh          # Old logs
 │   ├── downloads.sh     # Large files in Downloads (report-only)
 │   ├── browser.sh       # Browser caches (opt-in via -m)
-│   ├── dev.sh           # Developer tool caches (opt-in via -m)
 │   ├── crash_reports.sh # Old crash/diagnostic reports
 │   ├── ios_backups.sh   # Old iOS device backups (macOS)
 │   ├── xcode.sh         # Xcode DerivedData, archives, simulators (macOS)

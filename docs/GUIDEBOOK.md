@@ -30,8 +30,7 @@ mdoctor clean --force        # Actually free disk space
 | Delete old crash/diagnostic reports | `mdoctor clean -m crash_reports --force` | Both |
 | Clear browser caches | `mdoctor clean -m browser --force` | Both |
 | Purge old log files | `mdoctor clean -m logs --force` | Both |
-| Clean dev dependency caches (npm, pip, Gradle, etc.) | `mdoctor clean -m dev_caches --force` | Both |
-| Clean dev tool caches (Homebrew, Docker) | `mdoctor clean -m dev --force` | Both |
+| Clean dev dependency/tool caches (npm, pip, Yarn, Gradle, Homebrew, Docker) | `mdoctor clean -m dev_caches --force` | Both |
 | Clean the APT package cache | `mdoctor clean -m apt --force` | Linux only |
 | Clean Xcode bloat (DerivedData, archives, simulators) | `mdoctor clean -m xcode --force` | macOS only |
 | Free disk space (combined fix) | `mdoctor fix disk` | macOS only |
@@ -114,9 +113,9 @@ mdoctor clean --force        # Actually free disk space
 
 Cleanup modules are risk-rated (`[SAFE]` modules only report — they never delete). Dry-run by default — add `--force` to actually delete.
 
-The registered cleanup set is platform-filtered: 10 on macOS / 9 on Linux (`mdoctor list` shows the live set for your machine).
+The registered cleanup set is platform-filtered: 9 on macOS / 8 on Linux (`mdoctor list` shows the live set for your machine).
 
-A full `mdoctor clean` does not run every registered module — it runs a fixed step list of 7 on macOS / 6 on Linux. The opted-out modules — `downloads` (report-only: it lists large files, never deletes), `browser` and `dev` — run via `mdoctor clean -m <name>` or `mdoctor clean --interactive`.
+A full `mdoctor clean` does not run every registered module — it runs a fixed step list of 7 on macOS / 6 on Linux. The opted-out modules — `downloads` (report-only: it lists large files, never deletes) and `browser` — run via `mdoctor clean -m <name>` or `mdoctor clean --interactive`.
 
 | Module | What it removes | Platform |
 |--------|-----------------|----------|
@@ -128,8 +127,7 @@ A full `mdoctor clean` does not run every registered module — it runs a fixed 
 | `apt` | APT package cache (`/var/cache/apt/archives`) plus autoremove | Linux only |
 | `ios_backups` | Old iOS device backups | macOS only |
 | `browser` | Browser cache files | Both |
-| `dev` | Developer tool caches (Docker unused images; Homebrew cache on macOS) | Both |
-| `dev_caches` | Package-manager caches (npm, Yarn, pnpm, pip, Conda, Maven, Gradle, Go, Cargo; plus Homebrew, CocoaPods and Xcode DerivedData on macOS) | Both |
+| `dev_caches` | Package-manager caches (npm, Yarn, pnpm, pip, Conda, Maven, Gradle, Go, Cargo), stale `node_modules`, `brew cleanup`/`autoremove`, Docker prune (opt-in only); plus CocoaPods and Xcode DerivedData on macOS | Both |
 | `xcode` | Xcode DerivedData, archives, old simulators | macOS only |
 
 ```bash
