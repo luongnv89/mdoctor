@@ -10,11 +10,12 @@
 # then verifies the script still completes the preflight summary without
 # silently exiting.
 #
-# Scope: this test only exercises the preflight summary in `cleanup.sh`. The
-# same `du -sk ... | awk` pattern exists in several cleanup-phase modules
+# Scope: this test only exercises the preflight summary in `cleanup.sh`.
+# The cleanup-phase `du -sk` sites that shared the vulnerable pattern
 # (cleanups/xcode.sh, cleanups/dev_caches.sh, cleanups/ios_backups.sh,
-# checks/storage.sh) and is similarly vulnerable. A follow-up issue tracks
-# hardening those sites; this test does not cover them.
+# checks/storage.sh) now route through the shared hardened du_size_kb /
+# size_cache_kb probe; their runtime coverage lives in
+# test_force_cleanup_resilience.bats (issue #10).
 
 load 'helpers/assert'
 load 'helpers/fixture'
