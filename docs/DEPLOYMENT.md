@@ -119,7 +119,7 @@ per-release statistics it used to hand-maintain no longer exist.
 | `docs/DEPLOYMENT.md` | Retarget the worked example below to `vX.Y.Z` (manual) | `scripts/check_version.sh` requires `git tag -a vX.Y.Z` |
 | `lib/json.sh` | None — the version flows from `MDOCTOR_VERSION` (derived) | `scripts/check_version.sh` forbids a `MDOCTOR_VERSION:-<digit>` literal fallback |
 | `RELEASE_NOTES.md` | None — pointer only (Task 13.6) | `tests/test_changelog_authority.bats` forbids `## v` headings, stats and compare links |
-| `README.md`, `docs/GUIDEBOOK.md`, `docs/ARCHITECTURE.md` | None per release — per-platform module/step counts change only when `lib/registry.sh` or `PROGRESS_TOTAL` in `cleanup.sh` changes | `tests/test_doc_counts.bats` derives every count claim from the registry and `cleanup.sh` |
+| `README.md`, `docs/GUIDEBOOK.md`, `docs/ARCHITECTURE.md` | None per release — per-platform module/step counts change only when `lib/registry.sh` or `CLEANUP_STEPS` in `cleanup.sh` changes | `tests/test_doc_counts.bats` derives every count claim from the registry and `cleanup.sh` |
 | release tag `vX.Y.Z` | `git tag -a vX.Y.Z` (manual) | Release workflow runs `check_version.sh "$tag"` — tag must equal `v${MDOCTOR_VERSION}` |
 
 ### Steps

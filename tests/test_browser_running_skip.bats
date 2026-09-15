@@ -6,7 +6,7 @@
 #  1. `downloads` is a report-only module: it is registered SAFE, carries
 #     no destructive pre-flight, needs no confirmation under --force and
 #     its --force run still lists — but never deletes — matching files.
-#     The full engine drops it from PROGRESS_TOTAL and the destructive
+#     The full engine drops it from CLEANUP_STEPS and the destructive
 #     pre-flight.
 #  2. `browser` skips each of its six cache targets when pgrep finds the
 #     browser running (the skip is logged and happens before the safety

@@ -47,8 +47,10 @@ installer flow.
   the matching group and gate, source it and call it from the owning
   engine's `main()` (`fixes/` targets go through `cmd_fix`'s case
   blocks instead). `doctor.sh` derives `STEP_TOTAL` from the registry
-  — never bump it; `cleanup.sh` hand-maintains `PROGRESS_TOTAL`,
-  bumped only for destructive modules joining the full `clean` run.
+  — never bump it; `cleanup.sh` derives its own `STEP_TOTAL` from
+  `CLEANUP_STEPS`, the hand-maintained list of destructive modules in
+  the full `clean` run — add a module inside the matching platform
+  gate and keep it mirrored with the `step` calls in `main()`.
   The full walkthrough lives in `CONTRIBUTING.md`.
 - Commit style: Conventional Commits (`feat:`, `fix:`, `docs:`,
   `refactor:`, `test:`, `chore:`); feature branches off `main`.
