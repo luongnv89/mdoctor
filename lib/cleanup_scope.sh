@@ -114,14 +114,38 @@ load_cleanup_scope() {
   _MDOCTOR_SCOPE_LOADED=true
 }
 
+# cleanup_scope_get_search_dirs — dirs the dev_caches scan walks:
+# INCLUDE_PATH lines when configured, else the default candidate list.
+# Each physical directory is emitted once: on a case-insensitive
+# filesystem (default APFS) "${HOME}/projects" resolves to the same
+# directory as "${HOME}/Projects", and a doubled root would be traversed
+# once per spelling — double-counting every node_modules match (issue
+# #204; same dedup as checks/storage.sh::_storage_search_dirs, #97).
+# device:inode keys (stat -L, so symlinks alias too) are spelling-proof.
+# A candidate that cannot be stat'd (e.g. does not exist) yields no key
+# and passes through — the consumer owns the [ -d ] filter.
 cleanup_scope_get_search_dirs() {
   load_cleanup_scope
 
-  if [ "${#_MDOCTOR_SCOPE_INCLUDE_PATHS[@]}" -gt 0 ]; then
-    printf '%s\n' "${_MDOCTOR_SCOPE_INCLUDE_PATHS[@]}"
-  else
-    _mdoctor_scope_default_dirs
-  fi
+  local d key s
+  local -a seen=()
+  {
+    if [ "${#_MDOCTOR_SCOPE_INCLUDE_PATHS[@]}" -gt 0 ]; then
+      printf '%s\n' "${_MDOCTOR_SCOPE_INCLUDE_PATHS[@]}"
+    else
+      _mdoctor_scope_default_dirs
+    fi
+  } | while IFS= read -r d; do
+    [ -z "$d" ] && continue
+    key="$(stat -Lc '%d:%i' "$d" 2>/dev/null || stat -Lf '%d:%i' "$d" 2>/dev/null)"
+    if [ -n "$key" ]; then
+      for s in ${seen[@]+"${seen[@]}"}; do
+        [ "$s" = "$key" ] && continue 2
+      done
+      seen+=("$key")
+    fi
+    printf '%s\n' "$d"
+  done
 }
 
 cleanup_scope_is_excluded() {
