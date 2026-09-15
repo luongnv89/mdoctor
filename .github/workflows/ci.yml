@@ -82,17 +82,23 @@ jobs:
           pre-commit run --all-files --show-diff-on-failure
 
   test:
-    name: Test (macOS)
+    name: Test (macOS, shard ${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: macos-26 # Task 2.4: pinned image
-    # The regression suite's wall time on macOS runners has drifted past
-    # every old step budget (10m13s on 2114ef7, then 15m+ and 18m+ on
-    # 34941845019): real brew/softwareupdate probes are capped but still
-    # cost up to their timeout each, and test_doc_examples executes every
-    # GUIDEBOOK command. 40/35 reflects the current ~30 min reality;
-    # the durable fix is stubbing real probes or sharding the suite —
-    # raise the budget again only after measuring, not by default.
-    timeout-minutes: 40
+    # Issue #206: the durable fix is sharding, not another budget bump —
+    # the single leg outgrew 10, 15 and 18 min caps (last green ~23m2s job
+    # / ~21 min harness on run 34941845019) because real brew /
+    # softwareupdate / system_profiler probes are capped but still cost up
+    # to their timeout each, and test_doc_examples executes every
+    # GUIDEBOOK command. `tests/run.sh --shard I/N` splits the sorted file
+    # list round-robin, so each leg runs half the suite and files added
+    # later distribute themselves. 30/25 covers ~half the ~21 min harness
+    # plus the shard-1 smoke steps; raise only after measuring.
+    timeout-minutes: 30
     needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -109,25 +115,34 @@ jobs:
           echo "$RUNNER_TEMP/ci-timeout-bin" >> "$GITHUB_PATH"
 
       - name: Run shell regression harness
-        timeout-minutes: 35
-        run: ./tests/run.sh
+        timeout-minutes: 25
+        run: ./tests/run.sh --shard "${{ matrix.shard }}/${{ strategy.job-total }}"
 
+      # Smoke steps run once, on the first shard — they exercise the real
+      # CLI on the real macOS host; duplicating them on every shard would
+      # only re-pay the same real-probe costs.
       - name: mdoctor help
+        if: matrix.shard == 1
         run: ./mdoctor help
 
       - name: mdoctor version
+        if: matrix.shard == 1
         run: ./mdoctor version
 
       - name: mdoctor info
+        if: matrix.shard == 1
         run: ./mdoctor info
 
       - name: mdoctor check (full health audit)
+        if: matrix.shard == 1
         run: ./mdoctor check
 
       - name: mdoctor clean (dry-run)
+        if: matrix.shard == 1
         run: ./mdoctor clean
 
       - name: mdoctor check single module
+        if: matrix.shard == 1
         run: ./mdoctor check -m network
 
   test-linux:

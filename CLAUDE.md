@@ -24,7 +24,8 @@ find . \( -name '*.sh' -o -name 'mdoctor' -o -name 'cleanup.sh' -o -name 'doctor
 Command of record: `./tests/run.sh` (bats-core suite, per-assertion
 reporting, every file must pass). The runner self-provisions bats-core
 v1.14.0 at a pinned SHA into `~/.cache/mdoctor/` on first use (override:
-`MDOCTOR_BATS_BIN`, filter: `./tests/run.sh -f '<name>'`). Each file runs
+`MDOCTOR_BATS_BIN`, filter: `./tests/run.sh -f '<name>'`, CI sharding:
+`./tests/run.sh --shard 1/2` / `--list`). Each file runs
 under a 300 s watchdog (`MDOCTOR_TEST_FILE_TIMEOUT`); JUnit output lands
 in `test-results/junit.xml`.
 
