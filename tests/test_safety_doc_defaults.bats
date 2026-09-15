@@ -113,6 +113,10 @@ _doc_roots() {
   # The generated template's own wording is what the doc must mirror.
   grep -qF '~ is expanded to your home directory' "$ROOT_DIR/lib/safety.sh" \
     || fail "generated whitelist template lost its tilde-expansion note"
+  # Issue #230: the template itself must state the leading-only rule —
+  # the drift this file guards against ran template-vs-doc too.
+  grep -qF 'leading ~ is expanded to your home directory' "$ROOT_DIR/lib/safety.sh" \
+    || fail "generated whitelist template does not state tilde expansion is leading-only"
   _whitelist_section | grep -q 'is expanded to your home directory' \
     || fail "SAFETY.md whitelist rules do not mirror the template's tilde wording"
   _whitelist_section | grep -qi 'leading' \
@@ -124,6 +128,14 @@ _doc_roots() {
   # equals the base itself or sits under it.
   grep -qF 'if [ "$path" = "$base" ] || [[ "$path" == "$base/"* ]]' "$ROOT_DIR/lib/safety.sh" \
     || fail "trailing-glob implementation no longer matches the base path"
+  # Issue #230: the generated template must carry the same base-path rule.
+  local template_glob
+  template_glob="$(grep -F 'trailing /*' "$ROOT_DIR/lib/safety.sh" || true)"
+  [ -n "$template_glob" ] || fail "generated whitelist template lost its /* rule"
+  printf '%s\n' "$template_glob" | grep -qi 'base path' \
+    || fail "generated template /* rule does not name the base path"
+  printf '%s\n' "$template_glob" | grep -qi 'itself' \
+    || fail "generated template /* rule does not protect the base path itself"
   local glob_line
   glob_line="$(_whitelist_section | grep -F '/*' | grep -i 'protect' || true)"
   [ -n "$glob_line" ] || fail "no /* protection rule found in SAFETY.md whitelist rules"

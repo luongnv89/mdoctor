@@ -48,7 +48,8 @@ ensure_cleanup_scope_file() {
 #   EXCLUDE_GLOB=*keep-project*/node_modules*
 #
 # Notes:
-# - ~ is expanded to your home directory.
+# - A leading ~ is expanded to your home directory; a tilde anywhere
+#   else in the path stays literal.
 # - EXCLUDE_GLOB uses shell-style glob matching against full candidate path.
 # - Keep file minimal; one rule per line.
 
