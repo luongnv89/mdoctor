@@ -4,9 +4,12 @@
 # for per-assertion reporting, a named filter, JUnit output for CI and a
 # per-file watchdog so a hanging test fails instead of blocking the run.
 #
-# Usage: ./tests/run.sh [-f PATTERN] [file.bats ...]
-#   -f PATTERN   only run tests whose name matches the extended regex
-#   files...     run only these .bats files (default: tests/*.bats)
+# Usage: ./tests/run.sh [-f PATTERN] [--shard I/N] [--list] [file.bats ...]
+#   -f PATTERN    only run tests whose name matches the extended regex
+#   --shard I/N   run only shard I of N (1-based; files split round-robin
+#                 over the resolved list — issue #206, the macOS CI legs)
+#   --list        print the resolved .bats file list and exit (runs nothing)
+#   files...      run only these .bats files (default: tests/*.bats)
 #
 # The runner self-provisions bats-core at a pinned SHA into the user cache
 # on first use (no vendored dependency; MDOCTOR_BATS_BIN overrides the
@@ -68,16 +71,35 @@ trap '_mdoctor_run_signal 143' TERM
 # registration — a second `trap ... EXIT` would replace this chain).
 
 FILTER=""
+SHARD=""
+SHARD_SEEN=0
+LIST_ONLY=0
 FILES=()
 _MDOCTOR_CHILD=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -f|--filter)
       FILTER="${2-}"
-      shift 2
+      # `shift 2` fails when the flag is last (no value) — shift once so
+      # the loop still consumes the flag instead of spinning on it.
+      shift 2 2>/dev/null || shift
+      ;;
+    --shard)
+      SHARD="${2-}"
+      SHARD_SEEN=1
+      shift 2 2>/dev/null || shift
+      ;;
+    --shard=*)
+      SHARD="${1#*=}"
+      SHARD_SEEN=1
+      shift
+      ;;
+    --list)
+      LIST_ONLY=1
+      shift
       ;;
     -h|--help)
-      sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -86,6 +108,65 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+
+# --- Collect test files ----------------------------------------------------
+if [ "${#FILES[@]}" -eq 0 ]; then
+  shopt -s nullglob
+  FILES=("$SCRIPT_DIR"/test_*.bats)
+  shopt -u nullglob
+fi
+
+# --- Shard selection (issue #206) -------------------------------------------
+# `--shard I/N` keeps only the files whose 1-based position p in the resolved
+# list satisfies (p - I) % N == 0 — round-robin over the sorted glob (or the
+# caller's explicit list), so each of the N parallel CI legs runs ~1/N of the
+# suite and files added later distribute themselves without a manifest.
+if [ "$SHARD_SEEN" -eq 1 ]; then
+  case "$SHARD" in
+    */*) ;;
+    *)
+      echo "Invalid --shard spec '$SHARD' (expected I/N, 1 <= I <= N)" >&2
+      exit 2
+      ;;
+  esac
+  shard_i="${SHARD%/*}"
+  shard_n="${SHARD#*/}"
+  case "$shard_i" in ''|*[!0-9]*)
+    echo "Invalid --shard spec '$SHARD' (I must be a number)" >&2
+    exit 2
+    ;;
+  esac
+  case "$shard_n" in ''|*[!0-9]*)
+    echo "Invalid --shard spec '$SHARD' (N must be a number)" >&2
+    exit 2
+    ;;
+  esac
+  if [ "$shard_n" -lt 1 ] || [ "$shard_i" -lt 1 ] || [ "$shard_i" -gt "$shard_n" ]; then
+    echo "Invalid --shard spec '$SHARD' (expected 1 <= I <= N)" >&2
+    exit 2
+  fi
+  _sharded=()
+  _pos=0
+  for _f in ${FILES[@]+"${FILES[@]}"}; do
+    _pos=$((_pos + 1))
+    if [ $(( (_pos - shard_i) % shard_n )) -eq 0 ]; then
+      _sharded+=("$_f")
+    fi
+  done
+  FILES=(${_sharded[@]+"${_sharded[@]}"})
+fi
+
+if [ "${#FILES[@]}" -eq 0 ]; then
+  echo "No test files found in $SCRIPT_DIR"
+  exit 1
+fi
+
+# --list resolves the file list (default glob + shard) without provisioning
+# or running bats — the CI legs and tests assert the partition from this.
+if [ "$LIST_ONLY" -eq 1 ]; then
+  printf '%s\n' "${FILES[@]}"
+  exit 0
+fi
 
 # --- Locate or provision bats-core (pinned) -------------------------------
 if [ -n "${MDOCTOR_BATS_BIN:-}" ] && [ -x "${MDOCTOR_BATS_BIN:-}" ]; then
@@ -108,17 +189,6 @@ else
     git -C "$BATS_HOME" checkout --quiet "$BATS_SHA" || exit 1
   fi
   BATS_BIN="$BATS_HOME/bin/bats"
-fi
-
-# --- Collect test files ----------------------------------------------------
-if [ "${#FILES[@]}" -eq 0 ]; then
-  shopt -s nullglob
-  FILES=("$SCRIPT_DIR"/test_*.bats)
-  shopt -u nullglob
-fi
-if [ "${#FILES[@]}" -eq 0 ]; then
-  echo "No test files found in $SCRIPT_DIR"
-  exit 1
 fi
 
 RESULT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/mdoctor-bats-results.XXXXXX")"

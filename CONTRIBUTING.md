@@ -335,7 +335,7 @@ Run the same gates CI runs — every lane below lives in
 |---------------|--------------------------|
 | `./scripts/lint_shell.sh` | **Lint** — ShellCheck `-S warning` plus a `bash -n` syntax pass over every shell file (the lane also runs `./scripts/check_bash32.sh`) |
 | `pre-commit install`, then the hooks fire per commit | **Hooks (pre-commit)** — runs `pre-commit run --all-files` |
-| `./tests/run.sh` | **Test (macOS)** and **Test (Linux/Ubuntu)** — the bats suite plus `mdoctor` smoke commands |
+| `./tests/run.sh` | **Test (macOS)** (two `--shard I/2` legs) and **Test (Linux/Ubuntu)** — the bats suite plus `mdoctor` smoke commands |
 | `./tests/run.sh` under Bash 3.2 | **Test (Bash 3.2 compat)** — the suite inside the digest-pinned `bash:3.2` container |
 | `./tests/run.sh` under kcov | **Coverage (kcov)** — enforces the `COVERAGE_MIN` floor |
 
