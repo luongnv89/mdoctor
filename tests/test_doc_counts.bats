@@ -20,14 +20,14 @@
 #    platform-dependent, so a single number is always wrong somewhere.
 #
 #    Classification (first hit wins): "files" → directory inventory;
-#    "full*clean"/"step list" → cleanup.sh PROGRESS_TOTAL; "fix"/
+#    "full*clean"/"step list" → cleanup.sh CLEANUP_STEPS; "fix"/
 #    "target" → fix targets; "diagnos" → diagnose; "check" → checks;
 #    "clean"/"module" → cleanup modules.
 #
 #    References: `mdoctor list` headers for the running lane, plus a
 #    predicate-stubbed register_all_modules() for both lanes (the
 #    registry is the single source of truth — Task 8.1/8.4), and the
-#    PROGRESS_TOTAL arms in cleanup.sh for the full-clean step list.
+#    CLEANUP_STEPS block in cleanup.sh for the full-clean step list.
 #
 # 3. Inventories stay complete: every checks/*.sh file appears in the
 #    README project-structure tree (label and entries agree), and every
@@ -78,13 +78,27 @@ _list_counts() {
 		"$(printf '%s\n' "$out" | sed -n 's/^Diagnose Modules (\([0-9][0-9]*\).*/\1/p')"
 }
 
-# _progress_pair — "macOS_total Linux_total" from cleanup.sh. The
-# PROGRESS_TOTAL assignments sit in an `if is_macos … else … fi` block;
-# the first assignment is the macOS arm, the second the else arm.
+# _progress_pair — "macOS_total Linux_total" for the full-clean step
+# list. cleanup.sh derives STEP_TOTAL from the CLEANUP_STEPS array
+# (issue #89), so the pair is computed by evaluating that assignment
+# block under each stubbed lane rather than grepping a literal.
 _progress_pair() {
-	grep -o 'PROGRESS_TOTAL=[0-9][0-9]*' "$ROOT_DIR/cleanup.sh" \
-		| grep -o '[0-9][0-9]*$' \
-		| awk 'NR == 1 { m = $0 } NR == 2 { l = $0 } END { print m, l }'
+	local block mac lin
+	block="$(sed -n '/^CLEANUP_STEPS=(/,/^export STEP_TOTAL=/p' "$ROOT_DIR/cleanup.sh" | grep -v '^export ')"
+	[ -n "$block" ] || return 1
+	mac="$(
+		is_macos() { return 0; }
+		is_linux() { return 1; }
+		eval "$block"
+		printf '%s' "${#CLEANUP_STEPS[@]}"
+	)"
+	lin="$(
+		is_macos() { return 1; }
+		is_linux() { return 0; }
+		eval "$block"
+		printf '%s' "${#CLEANUP_STEPS[@]}"
+	)"
+	printf '%s %s\n' "$mac" "$lin"
 }
 
 # _doc_claim_lines — "file:lineno:text" for every line in README.md and
@@ -244,7 +258,7 @@ teardown_file() {
 @test "README and GUIDEBOOK state the full-clean step counts and the -m opt-in" {
 	local pair
 	pair="$(_progress_pair)"
-	[ -n "$pair" ] || fail "could not parse PROGRESS_TOTAL from cleanup.sh"
+	[ -n "$pair" ] || fail "could not derive CLEANUP_STEPS from cleanup.sh"
 	for doc in "$ROOT_DIR/README.md" "$ROOT_DIR/docs/GUIDEBOOK.md"; do
 		grep -q 'on macOS / .*on Linux' "$doc" \
 			|| fail "$doc lacks a per-platform count pair"
