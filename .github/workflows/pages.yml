@@ -24,7 +24,7 @@ jobs:
         run: |
           mkdir -p site/assets
           cp -r assets/logo site/assets/
-          sed -i 's#\.\./assets/logo#./assets#g' site/index.html
+          sed -i 's#\.\./assets/logo#./assets/logo#g' site/index.html
           test -f site/index.html
       - name: Upload site artifact
         uses: actions/upload-pages-artifact@v3
