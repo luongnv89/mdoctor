@@ -67,7 +67,7 @@ body {
 a { color: hsl(var(--primary)); text-decoration: none; }
 a:hover { text-decoration: underline; }
 :focus-visible {
-  outline: 2px solid currentColor;
+  outline: 2px solid hsl(var(--ring));
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -157,6 +157,14 @@ p.lead { color: hsl(var(--muted-foreground)); font-size: 1.1rem; max-width: 62ch
 .grid-3 { grid-template-columns: repeat(3, 1fr); }
 .grid-2 { grid-template-columns: repeat(2, 1fr); }
 @media (max-width: 820px) { .grid-3, .grid-2 { grid-template-columns: 1fr; } .nav-links { display: none; } }
+@media (max-width: 560px) {
+  .wrap { padding: 0 16px; }
+  .nav-inner { gap: 12px; }
+  .nav-right { gap: 8px; }
+  .nav-right .btn-ghost { display: none; }
+  .nav-right .btn-primary { padding: 8px 12px; font-size: 0.85rem; white-space: nowrap; }
+  .brand img { height: 22px; }
+}
 .card {
   background: hsl(var(--card)); color: hsl(var(--card-foreground));
   border: 1px solid hsl(var(--border)); border-radius: 0.5rem;
