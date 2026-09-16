@@ -384,7 +384,7 @@ if command -v mdoctor >/dev/null 2>&1; then
   echo "  mdoctor check      # Run health audit (read-only)"
   echo "  mdoctor info       # Quick system overview (read-only)"
   echo "  mdoctor clean      # Preview cleanup (dry-run)"
-  echo "  mdoctor fix all    # Apply common fixes [MED] — modifies the system"
+  echo "  mdoctor fix all    # Preview common fixes [MED] (dry-run only)"
   echo
 else
   warn "mdoctor was installed but '${BIN_DIR}' may not be in your PATH."
