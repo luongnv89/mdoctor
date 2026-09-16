@@ -126,7 +126,7 @@ register_all_modules() {
   # read-only / modifies / deletes classes the help output names.
   register_command check     SAFE "Run system health audit (read-only, ${_REG_COUNT_CHECK} checks)"
   register_command clean     HIGH "Run system cleanup (dry-run by default, ${_REG_COUNT_CLEANUP} modules)"
-  register_command fix       MED  "Apply common fixes (${_REG_COUNT_FIX} targets)"
+  register_command fix       MED  "Preview common fixes (dry-run only, ${_REG_COUNT_FIX} targets)"
   register_command diagnose  SAFE "Run active performance diagnosis with bottleneck detection"
   register_command info      SAFE "Show system information summary"
   register_command list      SAFE "List all modules with category & risk level"

@@ -1,0 +1,42 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths: [site/**, assets/logo/**]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Copy logos into site
+        run: |
+          mkdir -p site/assets
+          cp -r assets/logo site/assets/
+          sed -i 's#\.\./assets/logo#./assets/logo#g' site/index.html
+          test -f site/index.html
+      - name: Upload site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

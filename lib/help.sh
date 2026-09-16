@@ -136,11 +136,11 @@ usage_fix() {
   register_all_modules
   echo "Usage: mdoctor fix [--debug] <target>"
   echo
-  echo "Apply common fixes for system issues."
+  echo "Preview common fixes for system issues (dry-run only — commands print with a [DRY RUN] prefix and are never executed)."
   echo
   echo "Targets (${_REG_COUNT_FIX}):"
   registry_target_lines fix
-  echo "  all             Run all applicable fixes"
+  echo "  all             Run all applicable fixes (except timemachine — standalone only)"
   echo
   echo "Options:"
   echo "  --debug       Enable structured debug diagnostics"
