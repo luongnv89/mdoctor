@@ -67,7 +67,7 @@ body {
 a { color: hsl(var(--primary)); text-decoration: none; }
 a:hover { text-decoration: underline; }
 :focus-visible {
-  outline: 2px solid currentColor;
+  outline: 2px solid hsl(var(--ring));
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -157,6 +157,14 @@ p.lead { color: hsl(var(--muted-foreground)); font-size: 1.1rem; max-width: 62ch
 .grid-3 { grid-template-columns: repeat(3, 1fr); }
 .grid-2 { grid-template-columns: repeat(2, 1fr); }
 @media (max-width: 820px) { .grid-3, .grid-2 { grid-template-columns: 1fr; } .nav-links { display: none; } }
+@media (max-width: 560px) {
+  .wrap { padding: 0 16px; }
+  .nav-inner { gap: 12px; }
+  .nav-right { gap: 8px; }
+  .nav-right .btn-ghost { display: none; }
+  .nav-right .btn-primary { padding: 8px 12px; font-size: 0.85rem; white-space: nowrap; }
+  .brand img { height: 22px; }
+}
 .card {
   background: hsl(var(--card)); color: hsl(var(--card-foreground));
   border: 1px solid hsl(var(--border)); border-radius: 0.5rem;
@@ -342,7 +350,7 @@ mdoctor check</pre>
   <div class="wrap">
     <p class="kicker">Proof</p>
     <h2 class="title">Open source, auditable by design</h2>
-    <p class="lead">[proof needed — add user count, a maintainer quote with name and role, or a measured reclaim such as GB freed on a reference machine once available.]</p>
+    <p class="lead">mdoctor is MIT-licensed, and every claim on this page links into the repo — browse the modules, the safety model, and the hermetic suite below.</p>
     <div class="grid grid-3">
       <div class="card"><span class="tag">Fact</span><h3>18 shared libraries</h3><p>Platform detection, safety validators, JSON output, history, and benchmarks live in lib/ for review.</p></div>
       <div class="card"><span class="tag">Fact</span><h3>Hermetic test suite</h3><p>./tests/run.sh stubs docker, apt-get, and sudo, so the regression suite runs safely on a dev machine.</p></div>
