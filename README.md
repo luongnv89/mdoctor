@@ -60,7 +60,7 @@ recommended first command.
 | `mdoctor check` | `[SAFE]` | Run full system health audit (20 checks on macOS / 18 on Linux, read-only) |
 | `mdoctor check --json` | `[SAFE]` | JSON output for automation |
 | `mdoctor clean` | `[HIGH]` | Run system cleanup (dry-run by default, 9 on macOS / 8 on Linux) |
-| `mdoctor fix <target>` | `[MED]` | Apply common fixes (9 on macOS / 2 on Linux) |
+| `mdoctor fix <target>` | `[MED]` | Preview common fixes (dry-run only, 9 on macOS / 2 on Linux) |
 | `mdoctor diagnose` | `[SAFE]` | Run active performance diagnosis (read-only — prints remedies, never runs them) |
 | `mdoctor info` | `[SAFE]` | Show system information summary |
 | `mdoctor list` | `[SAFE]` | List all modules with category & risk level |
@@ -199,7 +199,9 @@ mdoctor clean --interactive --force
 
 ### Fix
 
-Apply common fixes for system issues:
+Preview common fixes for system issues (dry-run only: each command is
+printed with a `[DRY RUN]` prefix and never executed — there is
+currently no `--force` flag to apply a fix from the CLI):
 
 **macOS:**
 
@@ -212,8 +214,8 @@ mdoctor fix audio          # [LOW]  Restart Core Audio
 mdoctor fix wifi           # [LOW]  Renew DHCP, flush DNS, cycle Wi-Fi
 mdoctor fix permissions    # [MED]  Reset file permissions
 mdoctor fix spotlight      # [MED]  Rebuild Spotlight index
-mdoctor fix timemachine    # [MED]  Verify Time Machine backup
-mdoctor fix all            # Run all fixes
+mdoctor fix timemachine    # [MED]  Verify Time Machine backup (standalone only — excluded from `fix all`)
+mdoctor fix all            # Run all fixes except timemachine
 ```
 
 **Linux (Debian):**
