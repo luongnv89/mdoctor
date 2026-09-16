@@ -145,7 +145,15 @@ a:hover { text-decoration: underline; }
 }
 .terminal-bar { display: flex; gap: 8px; align-items: center; padding: 12px 16px; border-bottom: 1px solid hsl(var(--border)); }
 .dot { width: 12px; height: 12px; border-radius: 50%; }
-.terminal pre { margin: 0; padding: 20px 22px; font-size: 0.86rem; line-height: 1.65; overflow-x: auto; }
+.terminal pre { margin: 0; padding: 20px 22px; font-size: 0.86rem; line-height: 1.65; overflow-x: auto; position: relative; }
+.copy-btn {
+  position: absolute; top: 8px; right: 12px; background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border)); border-radius: 4px; padding: 4px 10px;
+  font-size: 0.72rem; font-weight: 600; color: hsl(var(--muted-foreground));
+  cursor: pointer; transition: background .15s ease;
+}
+.copy-btn:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+.copy-btn.copied { background: #22c55e; color: #fff; border-color: #22c55e; }
 .ok { color: #22c55e; } .warn { color: #eab308; } .dim { color: hsl(var(--muted-foreground)); }
 /* Sections */
 section.block { padding: 72px 0; border-top: 1px solid hsl(var(--border)); }
@@ -186,6 +194,7 @@ p.lead { color: hsl(var(--muted-foreground)); font-size: 1.1rem; max-width: 62ch
 pre.install {
   background: hsl(var(--card)); border: 1px solid hsl(var(--input));
   border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; font-size: 0.9rem;
+  position: relative;
 }
 /* Table */
 table.cmds { width: 100%; border-collapse: collapse; font-size: 0.93rem; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 0.5rem; overflow: hidden; }
@@ -246,6 +255,7 @@ footer .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; ju
   </div>
   <div class="terminal" role="img" aria-label="Sample mdoctor check output with a health score">
     <div class="terminal-bar"><span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span><span class="dot" style="background:#28c840"></span><span class="dim mono" style="margin-left:8px;font-size:.8rem">mdoctor check — read-only</span></div>
+<button class="copy-btn" onclick="copyText(this, '$ mdoctor check\n$ mdoctor clean --dry-run   # nothing deleted until --force + y')">Copy</button>
 <pre class="mono"><span class="dim">$ mdoctor check</span>
 <span class="ok">[PASS]</span> disk        38% used, 212 GB free
 <span class="ok">[PASS]</span> security    FileVault on, firewall on
@@ -315,7 +325,7 @@ Score <strong>82/100</strong> <span class="dim">→ report saved to /tmp/mdoctor
     <div id="install" style="margin-top:24px" class="card">
       <span class="tag">Install</span>
       <h3>Copy this into your terminal</h3>
-<pre class="install mono">curl -fsSL https://raw.githubusercontent.com/luongnv89/mdoctor/main/install.sh | bash
+<pre class="install mono"><button class="copy-btn" onclick="copyText(this, 'curl -fsSL https://raw.githubusercontent.com/luongnv89/mdoctor/main/install.sh | bash\nmdoctor check')">Copy</button>curl -fsSL https://raw.githubusercontent.com/luongnv89/mdoctor/main/install.sh | bash
 mdoctor check</pre>
       <p style="margin-top:12px">Prefer a clone? <span class="mono">git clone https://github.com/luongnv89/mdoctor.git ~/.mdoctor &amp;&amp; ~/.mdoctor/install.sh</span></p>
       <p><a class="btn btn-primary" href="https://github.com/luongnv89/mdoctor">Get mdoctor on GitHub</a></p>
@@ -406,6 +416,22 @@ mdoctor check</pre>
 </footer>
 
 <script>
+function copyText(btn, text) {
+  navigator.clipboard.writeText(text).then(function () {
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(function () { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  }).catch(function () {
+    /* fallback for older browsers */
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed'; ta.style.left = '-9999px';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); btn.textContent = 'Copied!'; btn.classList.add('copied');
+      setTimeout(function () { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000); }
+    finally { document.body.removeChild(ta); }
+  });
+}
 (function () {
   var root = document.documentElement;
   var logo = document.getElementById('brandLogo');
