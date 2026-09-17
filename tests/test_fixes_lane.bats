@@ -342,7 +342,7 @@ EOF
   fix_pacman >"$TEST_TMP/$BATS_TEST_NUMBER/out.txt" 2>&1 || rc=$?
   [ "$rc" -eq 0 ] || { cat "$TEST_TMP/$BATS_TEST_NUMBER/out.txt"; fail "fix pacman exited $rc"; }
   printf '%s\n' \
-    "sudo pacman -S --needed --noconfirm archlinux-keyring" \
+    "sudo pacman -Sy --needed --noconfirm archlinux-keyring" \
     "sudo pacman -Syu --noconfirm" >"$TEST_TMP/$BATS_TEST_NUMBER/expected.log"
   fix_lane_assert_sequence "$STUB_LOG" "$TEST_TMP/$BATS_TEST_NUMBER/expected.log"
 }
@@ -563,7 +563,9 @@ EOF
 @test "fixes lane: dry-run fix all exits 0 on an apt-less Linux host (issue #220)" {
   # Same class on the Linux lane: helpers/bin normally stubs apt-get, so
   # a PATH without it exercises fix_apt's no-tool branch for real. On
-  # Arch-family hosts fix all runs pacman instead of apt.
+  # Arch-family hosts fix all runs pacman instead of apt — pacman is a
+  # host binary, so the TOOLLESS_FARM symlinks it and the dry-run
+  # sequence runs (run_cmd_args short-circuits before exec).
   is_linux || skip "apt is a Linux fix target"
   local t="$TEST_TMP/$BATS_TEST_NUMBER/fixall-linux"
   mkdir -p "$t/home"
@@ -575,7 +577,13 @@ EOF
   [ "$rc" -eq 0 ] || { tail -n 20 "$t/out.txt" >&2; fail "dry-run fix all rc=$rc on apt-less Linux"; }
   if is_arch; then
     assert_contains "$t/out.txt" "Pacman package manager fix complete."
-  else
+  elif is_debian; then
     assert_contains "$t/out.txt" "APT not available on this system."
+  else
+    # Third lane (e.g. the Alpine bash:3.2 image): neither apt nor pacman
+    # is registered, so fix all runs dns only. BINMAC_NOBREW carries the
+    # resolvectl stub, so fix_dns takes its resolver branch in dry-run.
+    assert_contains "$t/out.txt" "Flushing Linux DNS cache"
+    assert_contains "$t/out.txt" "DNS cache flushed."
   fi
 }

@@ -1262,8 +1262,10 @@ cmd_help() {
     echo "  mdoctor check -m battery         # Check only battery health"
   elif is_arch; then
     echo "  mdoctor check -m pacman          # Check only pacman package health"
-  else
+  elif is_debian; then
     echo "  mdoctor check -m apt             # Check only APT package health"
+  else
+    echo "  mdoctor check -m storage         # Check only storage analysis"
   fi
   echo "  mdoctor check --json             # JSON output for automation"
   echo "  mdoctor check --debug            # Check with structured debug diagnostics"
@@ -1281,8 +1283,11 @@ cmd_help() {
     echo "  mdoctor fix pacman               # Fix pacman packages"
     echo "  mdoctor fix dns                  # Flush DNS cache"
     echo "  mdoctor fix --debug dns          # Fix with structured debug diagnostics"
-  else
+  elif is_debian; then
     echo "  mdoctor fix apt                  # Fix APT packages"
+    echo "  mdoctor fix dns                  # Flush DNS cache"
+    echo "  mdoctor fix --debug dns          # Fix with structured debug diagnostics"
+  else
     echo "  mdoctor fix dns                  # Flush DNS cache"
     echo "  mdoctor fix --debug dns          # Fix with structured debug diagnostics"
   fi

@@ -162,8 +162,10 @@ cleanup_force_preflight_summary() {
     echo "Modules touched: trash, caches, logs, crash_reports, ios_backups, xcode, dev_caches"
   elif is_arch; then
     echo "Modules touched: trash, caches, logs, crash_reports, dev_caches, pacman"
-  else
+  elif is_debian; then
     echo "Modules touched: trash, caches, logs, crash_reports, dev_caches, apt"
+  else
+    echo "Modules touched: trash, caches, logs, crash_reports, dev_caches"
   fi
   echo "Touched targets:"
 

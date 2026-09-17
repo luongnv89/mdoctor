@@ -38,14 +38,27 @@ fix_pacman() {
   fi
 
   echo "Refreshing keyring..."
-  run_cmd_args sudo pacman -S --needed --noconfirm archlinux-keyring || step_rc=$?
+  # Distro-specific keyring package; fall back to archlinux-keyring.
+  # MDOCTOR_DISTRO is exported by lib/platform.sh (and honors the
+  # MDOCTOR_OS_RELEASE override), so never re-source /etc/os-release here.
+  local _keyring="archlinux-keyring"
+  case "$MDOCTOR_DISTRO" in
+    endeavouros) _keyring="endeavouros-keyring" ;;
+    manjaro)     _keyring="manjaro-keyring" ;;
+    cachyos)     _keyring="cachyos-keyring" ;;
+    garuda)      _keyring="garuda-keyring" ;;
+  esac
+  # -Sy syncs the package db before judging --needed: an expired keyring
+  # normally pairs with a stale db, and -S --needed against it would skip
+  # or install the stale version so the following -Syu fails signatures.
+  run_cmd_args sudo pacman -Sy --needed --noconfirm "$_keyring" || step_rc=$?
 
   echo "Upgrading packages..."
   run_cmd_args sudo pacman -Syu --noconfirm || step_rc=$?
 
   # Unmerged configs are read-only findings, never auto-merged.
   local _pacnew="" _pn_rc=0
-  _pacnew=$(find /etc -name '*.pacnew' -o -name '*.pacsave' 2>/dev/null) || _pn_rc=$?
+  _pacnew=$(mdoctor_timeout "$MDOCTOR_CMD_TIMEOUT_S" find /etc -name '*.pacnew' -o -name '*.pacsave' 2>/dev/null) || _pn_rc=$?
   if [ "$_pn_rc" -ne 0 ]; then
     _pacnew=""
   fi

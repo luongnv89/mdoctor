@@ -52,8 +52,14 @@ setup() {
     is_valid_cleanup_module "$LIST" pacman
     run is_valid_cleanup_module "$LIST" apt
     [ "$status" -ne 0 ]
-  else
+  elif is_debian; then
     is_valid_cleanup_module "$LIST" apt
+    run is_valid_cleanup_module "$LIST" pacman
+    [ "$status" -ne 0 ]
+  else
+    # Non-Debian, non-Arch Linux: neither apt nor pacman is registered.
+    run is_valid_cleanup_module "$LIST" apt
+    [ "$status" -ne 0 ]
     run is_valid_cleanup_module "$LIST" pacman
     [ "$status" -ne 0 ]
   fi
@@ -77,8 +83,12 @@ setup() {
     [[ "$out" == *"xcode"* ]]
   elif is_arch; then
     [[ "$out" == *"pacman"* ]]
-  else
+  elif is_debian; then
     [[ "$out" == *"apt"* ]]
+  else
+    # Non-Debian, non-Arch Linux: neither apt nor pacman is registered.
+    [[ "$out" != *"apt"* ]]
+    [[ "$out" != *"pacman"* ]]
   fi
   printf '\n' | select_interactive_modules "$LIST" >/dev/null 2>&1 || rc=$?
   [ "${rc:-0}" -eq 1 ]
