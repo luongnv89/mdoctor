@@ -320,6 +320,10 @@ Ethernet Address: aa:bb:cc:dd:ee:ff"
 
 @test "fixes lane: fix pacman runs exactly the keyring-refresh + full-upgrade sequence on Linux" {
   fix_lane_as_linux
+  # Pin the distro so the keyring map emits the default archlinux-keyring
+  # on every dev host (a Manjaro-class host would otherwise emit
+  # manjaro-keyring and fail the exact-sequence assertion).
+  export MDOCTOR_DISTRO=arch
   # Test-local pacman stub (records argv, succeeds): helpers/bin carries
   # no pacman stub, and the hermetic sudo stub refuses non-whitelisted
   # commands with rc 0 after recording — so the sequence below proves

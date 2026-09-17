@@ -38,20 +38,30 @@ fix_pacman() {
   fi
 
   echo "Refreshing keyring..."
-  # Distro-specific keyring package; fall back to archlinux-keyring.
+  # Per-distro keyring package list; default archlinux-keyring. Garuda
+  # has no garuda-keyring package — its keys ship in chaotic-keyring
+  # alongside archlinux-keyring; Artix/ArcoLinux carry their own keyrings
+  # on top of Arch's.
   # MDOCTOR_DISTRO is exported by lib/platform.sh (and honors the
   # MDOCTOR_OS_RELEASE override), so never re-source /etc/os-release here.
-  local _keyring="archlinux-keyring"
+  local -a _keyrings
   case "$MDOCTOR_DISTRO" in
-    endeavouros) _keyring="endeavouros-keyring" ;;
-    manjaro)     _keyring="manjaro-keyring" ;;
-    cachyos)     _keyring="cachyos-keyring" ;;
-    garuda)      _keyring="garuda-keyring" ;;
+    endeavouros) _keyrings=(endeavouros-keyring) ;;
+    manjaro)     _keyrings=(manjaro-keyring) ;;
+    cachyos)     _keyrings=(cachyos-keyring) ;;
+    garuda)      _keyrings=(archlinux-keyring chaotic-keyring) ;;
+    artix)       _keyrings=(artix-keyring archlinux-keyring) ;;
+    arcolinux)   _keyrings=(arcolinux-keyring archlinux-keyring) ;;
+    *)           _keyrings=(archlinux-keyring) ;;
   esac
   # -Sy syncs the package db before judging --needed: an expired keyring
   # normally pairs with a stale db, and -S --needed against it would skip
   # or install the stale version so the following -Syu fails signatures.
-  run_cmd_args sudo pacman -Sy --needed --noconfirm "$_keyring" || step_rc=$?
+  # One package per call so a missing repo package can't sink the rest.
+  local _kr
+  for _kr in "${_keyrings[@]}"; do
+    run_cmd_args sudo pacman -Sy --needed --noconfirm "$_kr" || step_rc=$?
+  done
 
   echo "Upgrading packages..."
   run_cmd_args sudo pacman -Syu --noconfirm || step_rc=$?
