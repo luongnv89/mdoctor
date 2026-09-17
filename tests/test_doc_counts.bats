@@ -51,10 +51,14 @@ _registry_counts() {
 			is_macos() { return 0; }
 			is_linux() { return 1; }
 			is_debian() { return 1; }
+			is_arch() { return 1; }
+			is_omarchy() { return 1; }
 		else
 			is_macos() { return 1; }
 			is_linux() { return 0; }
 			is_debian() { return 0; }
+			is_arch() { return 1; }
+			is_omarchy() { return 1; }
 		fi
 		source "$ROOT_DIR/lib/metadata.sh"
 		source "$ROOT_DIR/lib/registry.sh"
@@ -89,12 +93,18 @@ _progress_pair() {
 	mac="$(
 		is_macos() { return 0; }
 		is_linux() { return 1; }
+		is_debian() { return 1; }
+		is_arch() { return 1; }
+		is_omarchy() { return 1; }
 		eval "$block"
 		printf '%s' "${#CLEANUP_STEPS[@]}"
 	)"
 	lin="$(
 		is_macos() { return 1; }
 		is_linux() { return 0; }
+		is_debian() { return 0; }
+		is_arch() { return 1; }
+		is_omarchy() { return 1; }
 		eval "$block"
 		printf '%s' "${#CLEANUP_STEPS[@]}"
 	)"

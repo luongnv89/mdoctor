@@ -42,6 +42,7 @@ case "$_MDOCTOR_UNAME" in
   Darwin)
     MDOCTOR_PLATFORM="macos"
     MDOCTOR_DISTRO=""
+    MDOCTOR_DISTRO_LIKE=""
     MDOCTOR_DISTRO_VER=""
     _product_name="$(sw_vers -productName 2>/dev/null || echo "macOS")"
     _product_ver="$(sw_vers -productVersion 2>/dev/null || echo "")"
@@ -55,6 +56,11 @@ case "$_MDOCTOR_UNAME" in
       # shellcheck source=/dev/null
       . "$_os_release"
       MDOCTOR_DISTRO="${ID:-unknown}"
+      # ID_LIKE is optional in the os-release spec (Arch-family hosts
+      # like Omarchy report ID=omarchy ID_LIKE=arch) — default it like
+      # VERSION_ID below so `set -u` never aborts on distros that omit
+      # it, and keep it exported for the is_arch/is_omarchy predicates.
+      MDOCTOR_DISTRO_LIKE="${ID_LIKE:-}"
       # VERSION_ID is optional in the os-release spec — default it before
       # the suffix strip or `set -u` aborts the whole CLI on distros that
       # omit it (issue #111).
@@ -63,6 +69,7 @@ case "$_MDOCTOR_UNAME" in
       MDOCTOR_OS_NAME="${PRETTY_NAME:-Linux}"
     else
       MDOCTOR_DISTRO="unknown"
+      MDOCTOR_DISTRO_LIKE=""
       MDOCTOR_DISTRO_VER=""
       MDOCTOR_OS_NAME="Linux (unknown distro)"
     fi
@@ -70,13 +77,14 @@ case "$_MDOCTOR_UNAME" in
   *)
     MDOCTOR_PLATFORM="unknown"
     MDOCTOR_DISTRO=""
+    MDOCTOR_DISTRO_LIKE=""
     MDOCTOR_DISTRO_VER=""
     MDOCTOR_OS_NAME="Unknown OS ($_MDOCTOR_UNAME)"
     ;;
 esac
 unset _MDOCTOR_UNAME _os_release
 
-export MDOCTOR_PLATFORM MDOCTOR_DISTRO MDOCTOR_DISTRO_VER MDOCTOR_OS_NAME
+export MDOCTOR_PLATFORM MDOCTOR_DISTRO MDOCTOR_DISTRO_LIKE MDOCTOR_DISTRO_VER MDOCTOR_OS_NAME
 
 # ---------------------------------------------------------------------------
 # Predicates (return 0 = true, 1 = false)
@@ -95,6 +103,34 @@ is_debian() {
   is_linux || return 1
   case "$MDOCTOR_DISTRO" in
     debian|ubuntu|linuxmint|pop|raspbian|elementary|zorin|kali) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Returns true for Arch-family: arch, omarchy, endeavouros, manjaro,
+# cachyos, garuda, etc. Matches ID directly, plus ID_LIKE (Omarchy
+# reports ID=omarchy ID_LIKE=arch), so derivatives are covered without
+# enumerating every one.
+is_arch() {
+  is_linux || return 1
+  case "$MDOCTOR_DISTRO" in
+    arch|omarchy|endeavouros|manjaro|cachyos|garuda|artix|arcolinux) return 0 ;;
+  esac
+  case " ${MDOCTOR_DISTRO_LIKE:-} ${ID_LIKE:-} " in
+    *" arch "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Returns true on Omarchy specifically (ID=omarchy, or ID_LIKE=omarchy
+# for future re-spins that keep an Arch ID).
+is_omarchy() {
+  is_linux || return 1
+  case "$MDOCTOR_DISTRO" in
+    omarchy) return 0 ;;
+  esac
+  case " ${MDOCTOR_DISTRO_LIKE:-} ${ID_LIKE:-} " in
+    *" omarchy "*) return 0 ;;
     *) return 1 ;;
   esac
 }

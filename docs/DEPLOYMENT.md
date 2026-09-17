@@ -2,7 +2,7 @@
 
 ## Distribution
 
-mdoctor is distributed via GitHub and supports macOS and Debian-based Linux (Debian, Ubuntu, Pop!_OS, Linux Mint, Raspbian, Elementary OS, Zorin, Kali). Users install it with a single command:
+mdoctor is distributed via GitHub and supports macOS, Debian-based Linux (Debian, Ubuntu, Pop!_OS, Linux Mint, Raspbian, Elementary OS, Zorin, Kali) and Arch-based Linux (Omarchy, Arch, EndeavourOS, Manjaro, CachyOS, Garuda). Users install it with a single command:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/luongnv89/mdoctor/main/install.sh | bash
@@ -10,13 +10,13 @@ curl -fsSL https://raw.githubusercontent.com/luongnv89/mdoctor/main/install.sh |
 
 ## What the Installer Does
 
-1. Detects the platform (macOS or Debian-based Linux via `uname -s` and `/etc/os-release`)
+1. Detects the platform (macOS or Debian/Arch-based Linux via `uname -s` and `/etc/os-release` `ID`/`ID_LIKE`)
 2. Clones the repo to `~/.mdoctor` (shallow clone, `--depth 1`)
 3. Makes the main scripts executable
 4. Creates a symlink: `/usr/local/bin/mdoctor` -> `~/.mdoctor/mdoctor`
 5. Verifies the installation
 
-> **Linux prerequisite:** `git` must be installed (`sudo apt install git`). Non-Debian distros are rejected with an informative error message.
+> **Linux prerequisite:** `git` must be installed (`sudo apt install git` on Debian-family, `sudo pacman -S git` on Arch-family). Distros outside both families are rejected with an informative error message.
 
 ## Installer Environment Variables
 
@@ -35,7 +35,7 @@ variables):
 | `MDOCTOR_REQUIRE_TAG_SIGNATURE` | `install.sh`, `mdoctor update` | `false` | `true` refuses release tags without a verifiable signature |
 | `MDOCTOR_ASSUME_YES` | `install.sh`, `uninstall.sh` | `false` | `true` skips the interactive confirmation gates (custom symlink prompt, uninstall prompt) |
 | `MDOCTOR_BIN_LINK` | `uninstall.sh` | `/usr/local/bin/mdoctor` | Full path of the symlink the uninstaller removes |
-| `MDOCTOR_SKIP_PLATFORM_CHECK` | `install.sh` | `false` | `true` bypasses the macOS/Debian-family gate — a CI escape hatch, not a supported-install flag |
+| `MDOCTOR_SKIP_PLATFORM_CHECK` | `install.sh` | `false` | `true` bypasses the macOS/Debian/Arch-family gate — a CI escape hatch, not a supported-install flag |
 | `MDOCTOR_NO_COLOR` | `install.sh`, `uninstall.sh` | unset | Any non-empty value disables colored output (same contract as `NO_COLOR`) |
 
 Two follow-on rules matter for custom installs:

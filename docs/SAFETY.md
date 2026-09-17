@@ -76,6 +76,11 @@ the guarded helpers, so `validate_deletion_path` and the whitelist do
   `cleanups/apt.sh:19,22,26`. Runs the system package manager with
   privilege, including an unattended `autoremove` that uninstalls
   packages. Not filtered by any path check.
+- `sudo paccache -r` / `pacman -Sc --noconfirm` / `pacman -Rns
+  --noconfirm <orphans>` — `cleanups/pacman.sh`. Same class on
+  Arch-family: privileged package-manager runs, including an unattended
+  orphan removal that uninstalls packages. Not filtered by any path
+  check.
 
 Both are additionally covered by the layer-2 confirmation gate
 (Task 0.5): an interactive `--force` asks `[y/N]` after the pre-flight
@@ -183,8 +188,10 @@ If you suspect an unwanted cleanup:
 - `--force` deletions are not automatically undoable.
 - Reclaim estimates are approximate (some command-driven cleanup cannot be sized in advance).
 - Some system paths are intentionally blocked by safety policy.
-- `docker system prune -af --volumes` and `sudo apt-get
-  clean/autoclean/autoremove -y` run outside the safety primitives (see
+- `docker system prune -af --volumes` and the privileged package-manager
+  runs (`sudo apt-get clean/autoclean/autoremove -y` on Debian,
+  `sudo paccache -r` / `pacman -Sc` / orphan `pacman -Rns` on Arch) run
+  outside the safety primitives (see
   "Operations outside the safety primitives" above) — the whitelist and
   protected-path checks do not filter them; only the Docker opt-in flag
   and the confirmation gate constrain them.
@@ -194,7 +201,7 @@ If you suspect an unwanted cleanup:
 
 ## Platform Differences
 
-| Aspect | macOS | Linux (Debian) |
+| Aspect | macOS | Linux (Debian / Arch) |
 |--------|-------|----------------|
 | Trash location | `~/.Trash` | `~/.local/share/Trash/files` |
 | User cache dir | `~/Library/Caches` | `~/.cache` |

@@ -43,8 +43,13 @@ setup() {
   if is_macos; then
     [[ "$output" == *"xcode [MED]"* ]]
     [[ "$output" != *"apt [MED]"* ]]
-  else
+    [[ "$output" != *"pacman [MED]"* ]]
+  elif is_debian; then
     [[ "$output" == *"apt [MED]"* ]]
+    [[ "$output" != *"pacman [MED]"* ]]
+  elif is_arch; then
+    [[ "$output" == *"pacman [MED]"* ]]
+    [[ "$output" != *"apt [MED]"* ]]
   fi
   run "$REPO_ROOT/mdoctor" clean -m bogus_nope_xyz
   local derived

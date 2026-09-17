@@ -67,7 +67,7 @@ need_cmd() {
 
 OS="$(uname -s)"
 if [[ "$OS" != "Darwin" && "$OS" != "Linux" ]]; then
-  echo "Unsupported OS: $OS (mdoctor supports macOS + Debian-family Linux)" >&2
+  echo "Unsupported OS: $OS (mdoctor supports macOS + Debian/Arch-family Linux)" >&2
   exit 1
 fi
 
@@ -79,10 +79,21 @@ if [[ "$OS" == "Linux" ]]; then
   # shellcheck disable=SC1091
   . /etc/os-release
   case "${ID:-}" in
-    debian|ubuntu|linuxmint|pop|raspbian|elementary|zorin|kali) ;;
+    debian|ubuntu|linuxmint|pop|raspbian|elementary|zorin|kali)
+      MDOCTOR_PKG_FAMILY="debian"
+      ;;
+    arch|omarchy|endeavouros|manjaro|cachyos|garuda|artix|arcolinux)
+      MDOCTOR_PKG_FAMILY="arch"
+      ;;
     *)
-      echo "Unsupported Linux distro for mdoctor installer: ${ID:-unknown}" >&2
-      exit 1
+      case " ${ID_LIKE:-} " in
+        *" debian "*) MDOCTOR_PKG_FAMILY="debian" ;;
+        *" arch "*) MDOCTOR_PKG_FAMILY="arch" ;;
+        *)
+          echo "Unsupported Linux distro for mdoctor installer: ${ID:-unknown}" >&2
+          exit 1
+          ;;
+      esac
       ;;
   esac
 fi
@@ -121,8 +132,13 @@ if (( ${#missing[@]} > 0 )); then
   fi
 
   if [[ "$OS" == "Linux" ]]; then
-    run "sudo apt update"
-    run "sudo apt install -y ${missing[*]} ca-certificates"
+    if [ "${MDOCTOR_PKG_FAMILY:-debian}" = "arch" ]; then
+      run "sudo pacman -Sy"
+      run "sudo pacman -S --needed --noconfirm ${missing[*]} ca-certificates"
+    else
+      run "sudo apt update"
+      run "sudo apt install -y ${missing[*]} ca-certificates"
+    fi
   else
     echo "On macOS, install missing tools via Xcode Command Line Tools or Homebrew:" >&2
     echo "  xcode-select --install" >&2

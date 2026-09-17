@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>mdoctor — Keep your Mac and Linux running fast</title>
-<meta name="description" content="mdoctor is a pure-Bash CLI that audits, cleans, fixes, and benchmarks macOS and Debian Linux. Read-only checks, dry-run cleanup, risk-rated modules, zero dependencies.">
+  <meta name="description" content="mdoctor is a pure-Bash CLI that audits, cleans, fixes, and benchmarks macOS, Debian and Arch Linux. Read-only checks, dry-run cleanup, risk-rated modules, zero dependencies.">
 <link rel="icon" type="image/svg+xml" href="../assets/logo/favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -249,7 +249,7 @@ footer .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; ju
   </div>
   <div class="trustbar" aria-label="Facts">
     <span>MIT · free forever</span>
-    <span>macOS + Debian/Ubuntu</span>
+    <span>macOS + Debian/Ubuntu + Arch/Omarchy</span>
     <span>Read-only checks by default</span>
     <span>Dry-run cleanup by default</span>
   </div>
@@ -271,7 +271,7 @@ Score <strong>82/100</strong> <span class="dim">→ report saved to /tmp/mdoctor
   <div class="wrap">
     <p class="kicker">Problem</p>
     <h2 class="title">Disks fill up at the worst moment</h2>
-    <p class="lead">mdoctor is for developers and power users on macOS or Debian Linux whose machine slows down and who do not trust opaque cleaner apps with delete access.</p>
+    <p class="lead">mdoctor is for developers and power users on macOS, Debian or Arch Linux whose machine slows down and who do not trust opaque cleaner apps with delete access.</p>
     <div class="grid grid-3">
       <div class="card"><span class="tag">Scenario 1</span><h3>Deploy blocked by 800 MB free</h3><p>Xcode DerivedData, node_modules, and old logs eat the disk. You hunt folders by hand before a release.</p></div>
       <div class="card"><span class="tag">Scenario 2</span><h3>Boot takes minutes, fan never stops</h3><p>Login items pile up, a runaway process pins CPU, swap grows. Activity Monitor shows symptoms, not causes.</p></div>
@@ -388,7 +388,7 @@ mdoctor check</pre>
     <div style="margin-top:24px">
       <details class="faq" open><summary>Does mdoctor change anything when I run check?</summary><p>No. All check modules are [SAFE] and read-only. Reports go to /tmp and score history stays in your home directory.</p></details>
       <details class="faq"><summary>How do I avoid accidental deletion?</summary><p>Stay on the default: mdoctor clean runs in dry-run and lists what would go. Deletion needs --force plus an explicit y, or MDOCTOR_ASSUME_YES=true for scripts. Piping from a non-tty without that variable refuses outright.</p></details>
-      <details class="faq"><summary>Which systems are supported?</summary><p>macOS and Debian-family Linux (Ubuntu, Pop!_OS, Mint, Raspbian). Modules gate on lib/platform.sh predicates, never on raw uname checks.</p></details>
+      <details class="faq"><summary>Which systems are supported?</summary><p>macOS, Debian-family Linux (Ubuntu, Pop!_OS, Mint, Raspbian) and Arch-family Linux (Omarchy, Arch, EndeavourOS, Manjaro, CachyOS). Modules gate on lib/platform.sh predicates, never on raw uname checks.</p></details>
       <details class="faq"><summary>What does it need installed?</summary><p>Bash 3.2 or newer, git on Linux for install, and standard system tools. No vendored dependencies and no build step.</p></details>
       <details class="faq"><summary>Can I target one thing instead of everything?</summary><p>Yes. mdoctor check -m battery, mdoctor clean -m trash, mdoctor fix dns, and mdoctor list for the live module set on your OS.</p></details>
       <details class="faq"><summary>How do I remove it?</summary><p>Run the uninstaller or delete two paths: the install dir (~/.mdoctor by default) and the binary link (/usr/local/bin/mdoctor). Custom prefixes use MDOCTOR_INSTALL_DIR and MDOCTOR_BIN_LINK.</p></details>

@@ -2,11 +2,11 @@
 
 ## Overview
 
-mdoctor is a modular Bash CLI for macOS and Debian-based Linux diagnostics, cleanup, fixes, and maintenance.
+mdoctor is a modular Bash CLI for macOS and Debian/Arch-based Linux diagnostics, cleanup, fixes, and maintenance.
 
 Core properties:
 - CLI-first command router (`mdoctor`)
-- Platform-aware module loading via `lib/platform.sh` (macOS, Debian, Ubuntu, etc.)
+- Platform-aware module loading via `lib/platform.sh` (macOS, Debian, Arch/Omarchy, etc.)
 - Engine scripts for full workflows (`doctor.sh`, `cleanup.sh`)
 - Module-based checks/cleanups/fixes with platform-conditional sourcing
 - Centralized safety + logging primitives
@@ -24,8 +24,8 @@ graph TD
   CLI --> DIAGNOSE["diagnose → checks/diagnose_performance.sh"]
   CLI --> INFO[inline commands: info/list/history/benchmark/version/update]
 
-  CHECK --> CHECKS[checks/*.sh (22 files)]
-  CLEAN --> CLEANUPS[cleanups/*.sh (10 files)]
+  CHECK --> CHECKS[checks/*.sh (23 files)]
+  CLEAN --> CLEANUPS[cleanups/*.sh (11 files)]
 
   CHECKS --> LIB[lib/*.sh]
   CLEANUPS --> LIB
@@ -50,10 +50,11 @@ graph TD
 | Global | Example values |
 |--------|---------------|
 | `MDOCTOR_PLATFORM` | `macos`, `linux` |
-| `MDOCTOR_DISTRO` | `""` (macOS), `ubuntu`, `debian`, `pop` |
+| `MDOCTOR_DISTRO` | `""` (macOS), `ubuntu`, `debian`, `omarchy`, `arch` |
+| `MDOCTOR_DISTRO_LIKE` | `""` (macOS), `debian` (Ubuntu/Mint), `arch` (Omarchy) |
 | `MDOCTOR_OS_NAME` | `macOS 15.3`, `Ubuntu 24.04 LTS` |
 
-Predicates (`is_macos`, `is_linux`, `is_debian`) gate platform-specific module loading and logic branches. Platform-aware path helpers (`platform_trash_dir`, `platform_cache_dir`, `platform_log_dir`, `platform_crash_dirs`) abstract OS differences in file locations.
+Predicates (`is_macos`, `is_linux`, `is_debian`, `is_arch`, `is_omarchy`) gate platform-specific module loading and logic branches. Platform-aware path helpers (`platform_trash_dir`, `platform_cache_dir`, `platform_log_dir`, `platform_crash_dirs`) abstract OS differences in file locations.
 
 ## Layer Responsibilities
 
@@ -70,11 +71,11 @@ Predicates (`is_macos`, `is_linux`, `is_debian`) gate platform-specific module l
 ### 3) Module Layer (`checks/*`, `cleanups/*`, `fixes/*`)
 - Each file is focused on one concern
 - Modules are sourced (shared state, no extra process boundaries)
-- Platform-specific modules are conditionally sourced (e.g., `homebrew.sh` on macOS, `apt.sh` on Linux)
+- Platform-specific modules are conditionally sourced (e.g., `homebrew.sh` on macOS, `apt.sh` on Debian, `pacman.sh` on Arch)
 - `checks/diagnose_performance.sh` is registered in `lib/registry.sh` as the `diagnose` module type (`System`, `[SAFE]`); `mdoctor diagnose` sources and runs it directly — no `doctor.sh` engine pass — sampling the shared `lib/perf_probes.sh` probes and printing prioritized remedies without executing them
 
 ### 4) Library Layer (`lib/*`)
-- `platform.sh` OS/distro detection predicates (`is_macos`, `is_linux`, `is_debian`) and platform-aware paths
+- `platform.sh` OS/distro detection predicates (`is_macos`, `is_linux`, `is_debian`, `is_arch`, `is_omarchy`) and platform-aware paths
 - `common.sh` UI/status/progress helpers
 - `logging.sh` report + operation session logging
 - `safety.sh` guarded deletion APIs and destructive error taxonomy

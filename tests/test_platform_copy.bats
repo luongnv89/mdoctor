@@ -191,10 +191,13 @@ teardown_file() {
   [ -n "$xc" ] || fail "git_config.sh lost its xcode-select install advice"
   _in_gate "$f" "$xc" 'is_macos' \
     || fail "'xcode-select' (line $xc) is not inside an is_macos arm"
-  # A Linux arm must exist — apt on Debian-family, generic advice
-  # elsewhere (same shape as checks/devtools.sh).
+  # A Linux arm must exist — apt on Debian-family, pacman on
+  # Arch-family, generic advice elsewhere (same shape as
+  # checks/devtools.sh).
   grep -q 'is_debian' "$f" || fail "git_config.sh has no is_debian arm"
+  grep -q 'is_arch' "$f" || fail "git_config.sh has no is_arch arm"
   grep -q 'apt install git' "$f" || fail "git_config.sh missing 'apt install git' Linux advice"
+  grep -q 'pacman -S git' "$f" || fail "git_config.sh missing 'pacman -S git' Linux advice"
 }
 
 # ---------------------------------------------------------------------------
@@ -273,6 +276,9 @@ teardown_file() {
   assert_contains "$out" "Git is not installed"
   if is_macos; then
     assert_contains "$out" "xcode-select --install"
+  elif is_arch; then
+    assert_contains "$out" "pacman -S git"
+    assert_not_contains "$out" "xcode-select"
   elif is_debian; then
     assert_contains "$out" "apt install git"
     assert_not_contains "$out" "xcode-select"

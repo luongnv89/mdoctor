@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Arch-family Linux support (Omarchy, Arch, EndeavourOS, Manjaro, CachyOS): new `pacman` check/cleanup/fix modules (`checks/pacman.sh`, `cleanups/pacman.sh`, `fixes/pacman.sh`), `is_arch`/`is_omarchy` predicates in `lib/platform.sh` (with `MDOCTOR_DISTRO_LIKE` from `ID_LIKE`), installer and agent-skill support, and Arch-specific install/upgrade advice in the devtools and git_config checks
+
 ## [3.1.0] - 2026-09-16
 
 ### Added

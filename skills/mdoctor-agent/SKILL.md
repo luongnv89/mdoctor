@@ -1,6 +1,6 @@
 ---
 name: mdoctor-agent
-description: Install, verify, and operate mdoctor on macOS and Debian-based Linux. Use when users ask to set up mdoctor, install dependencies, test branch builds on the current machine, run first health checks, troubleshoot install/runtime issues, or perform safe cleanup/fix workflows with mdoctor commands.
+description: Install, verify, and operate mdoctor on macOS and Debian/Arch-based Linux. Use when users ask to set up mdoctor, install dependencies, test branch builds on the current machine, run first health checks, troubleshoot install/runtime issues, or perform safe cleanup/fix workflows with mdoctor commands.
 ---
 
 # mdoctor Agent
@@ -31,13 +31,14 @@ bash skills/mdoctor-agent/scripts/install_mdoctor_with_deps.sh --method local
 ## Workflow
 
 ### 1) Preflight
-- Detect OS (`Darwin` or Debian-family Linux only).
+- Detect OS (`Darwin` or Debian/Arch-family Linux only).
 - Validate method (`auto|dev|local|remote`).
 - Check required dependencies:
   - `git` for local/remote methods
   - `curl` for remote method
 - If dependencies are missing:
-  - Linux: install via `sudo apt update && sudo apt install -y ...`
+  - Debian-family Linux: install via `sudo apt update && sudo apt install -y ...`
+  - Arch-family Linux (incl. Omarchy): install via `sudo pacman -S --needed ...`
   - macOS: instruct user to run `xcode-select --install` (or Homebrew install)
 
 ### 2) Install mdoctor
@@ -81,8 +82,8 @@ mdoctor clean --force
 ### 5) Troubleshooting
 - If `mdoctor` is not found: verify symlink target and PATH.
 - If `/usr/local/bin` is not writable: rerun with `--user-bin`.
-- If Linux distro unsupported: stop and explain Debian-family limitation.
-- If `sudo` is unavailable in remote sessions: provide exact commands for user to run locally.
+- If Linux distro unsupported: stop and explain the Debian/Arch-family limitation.
+- If `sudo` is unavailable in remote sessions: provide exact commands for user to run locally (`apt` on Debian-family, `pacman -S` on Arch-family).
 
 ## Command reference
 
@@ -103,4 +104,4 @@ mdoctor update
 ## Guardrails
 - Ask before state-changing operations (`clean --force`, `fix *`, package installs).
 - Prefer read-only diagnosis first, then targeted fixes.
-- Do not claim support for non-Debian Linux.
+- Do not claim support for Linux outside Debian/Arch families.

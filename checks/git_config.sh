@@ -25,6 +25,8 @@ check_git_config() {
     status_warn "Git is not installed."
     if is_macos; then
       add_action "Install Git: xcode-select --install"
+    elif is_arch; then
+      add_action "Install Git: sudo pacman -S git"
     elif is_debian; then
       add_action "Install Git: sudo apt install git"
     else
