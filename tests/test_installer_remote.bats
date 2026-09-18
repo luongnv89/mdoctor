@@ -188,23 +188,17 @@ setup() {
 }
 
 @test "update-in-place fast-forwards an existing install when upstream moves" {
+  # The fresh install must land on an UNTAGGED commit to reach the
+  # update path: when the working tree's HEAD is exactly a release tag
+  # (e.g. right after `chore(release): vX.Y.Z`), the depth-1 clone
+  # carries the tag and the second run takes the tag-pinned branch
+  # instead of "Updating...". Advance once before installing, then again
+  # so the second run has something to fast-forward to.
+  _advance_upstream
   _remote_install "update"
   local install_dir="$TEST_TMP/update/install"
   local bin_dir="$TEST_TMP/update/bin"
-  rm -rf "$TEST_TMP/work"
-  git clone -q "$GIT_URL" "$TEST_TMP/work" \
-    || fail "fixture advance: clone of the loopback upstream failed"
-  # The fixture upstream is a bare clone of the working tree, so its
-  # HEAD is whatever branch the checkout sits on — but the installer
-  # update path pulls `origin main`, so the advance must land on main.
-  git -C "$TEST_TMP/work" checkout -q main \
-    || fail "fixture advance: checkout of main failed"
-  git -C "$TEST_TMP/work" config user.name "mdoctor test"
-  git -C "$TEST_TMP/work" config user.email "test@example.com"
-  git -C "$TEST_TMP/work" commit -q --allow-empty -m "remote advance $(date +%s)" \
-    || fail "fixture advance: empty commit failed"
-  git -C "$TEST_TMP/work" push -q "$TEST_TMP/upstream.git" main \
-    || fail "fixture advance: push to the loopback upstream failed"
+  _advance_upstream
   MDOCTOR_REPO_URL="$GIT_URL" \
   MDOCTOR_INSTALL_DIR="$install_dir" \
   MDOCTOR_BIN_DIR="$bin_dir" \
@@ -220,9 +214,16 @@ setup() {
 }
 
 @test "re-clone fallback reinstalls when the fast-forward fails" {
+  # Same untagged-HEAD need as the update test: a tag-pinned install
+  # takes the tag-update branch and never reaches "Re-cloning".
+  _advance_upstream
   _remote_install "reclone"
   local install_dir="$TEST_TMP/reclone/install"
   local bin_dir="$TEST_TMP/reclone/bin"
+  # history/ is mdoctor state inside the install dir (lib/history.sh) —
+  # the re-clone must carry it through, not destroy it.
+  mkdir -p "$install_dir/history"
+  echo '{"score":42}' > "$install_dir/history/entry.json"
   # Sabotage the checkout so `git pull --ff-only origin main` cannot
   # succeed: with no origin the pull errors and the installer must take
   # the re-clone branch (same branch any pull failure takes).
@@ -236,6 +237,7 @@ setup() {
     ./install.sh >"$TEST_TMP/reclone-second.out" 2>&1 \
     || { tail -n 20 "$TEST_TMP/reclone-second.out"; fail "re-clone fallback run failed"; }
   assert_contains "$TEST_TMP/reclone-second.out" "Re-cloning"
+  assert_file_exists "$install_dir/history/entry.json"
   [ -d "$install_dir/.git" ] || fail "re-clone fallback left no git checkout"
   [ "$(readlink "$bin_dir/mdoctor")" = "$install_dir/mdoctor" ] \
     || fail "re-clone fallback left a wrong symlink"
@@ -275,6 +277,27 @@ setup() {
   [ "$rc" -ne 124 ] || fail "installer hung on the confirmation prompt instead of refusing"
   [ "$rc" -ne 0 ] || fail "expected the non-tty run without assume-yes to refuse"
   assert_contains "$TEST_TMP/${stem}.out" "non-tty"
+}
+
+# _advance_upstream — push an empty commit to the loopback upstream's
+# main so installer runs have something to fast-forward (or so a fresh
+# clone lands on an untagged commit — required for the update/re-clone
+# paths when the working tree's HEAD is itself a release tag).
+_advance_upstream() {
+  rm -rf "$TEST_TMP/work"
+  git clone -q "$GIT_URL" "$TEST_TMP/work" \
+    || fail "fixture advance: clone of the loopback upstream failed"
+  # The fixture upstream is a bare clone of the working tree, so its
+  # HEAD is whatever branch the checkout sits on — but the installer
+  # update path pulls `origin main`, so the advance must land on main.
+  git -C "$TEST_TMP/work" checkout -q main \
+    || fail "fixture advance: checkout of main failed"
+  git -C "$TEST_TMP/work" config user.name "mdoctor test"
+  git -C "$TEST_TMP/work" config user.email "test@example.com"
+  git -C "$TEST_TMP/work" commit -q --allow-empty -m "remote advance $RANDOM" \
+    || fail "fixture advance: empty commit failed"
+  git -C "$TEST_TMP/work" push -q "$TEST_TMP/upstream.git" main \
+    || fail "fixture advance: push to the loopback upstream failed"
 }
 
 # _remote_install STEM — fresh install from the loopback git daemon into

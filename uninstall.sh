@@ -66,27 +66,61 @@ die()     { echo "${CYAN}[error]${RESET} $*" >&2; exit 1; }
 echo
 info "Uninstalling mdoctor..."
 
-# Validate the install directory before any rm (Task 1.1): it must be an
-# mdoctor checkout (mdoctor entry point + .git), never empty, $HOME or /.
-# INSTALL_DIR is environment-controlled and this script documents curl|bash
-# invocation, so every check matters. NOTE: the cache/temp allowlist in
-# validate_deletion_path does NOT apply here — install dirs are not cache
-# roots (e.g. ~/.mdoctor). The checkout markers are the proof of identity
-# for this path; only _normalize_path is reused from lib/safety.sh.
+# Validate the install directory before any rm (Task 1.1): never empty,
+# $HOME or /. INSTALL_DIR is environment-controlled and this script
+# documents curl|bash invocation, so every check matters. NOTE: the
+# cache/temp allowlist in validate_deletion_path does NOT apply here —
+# install dirs are not cache roots (e.g. ~/.mdoctor); only _normalize_path
+# is reused from lib/safety.sh.
 norm_home="$(_normalize_path "${HOME:-}")"
 norm_dir="$(_normalize_path "$INSTALL_DIR")"
 if [ -z "$norm_dir" ] || [ "$norm_dir" = "/" ] || { [ -n "$norm_home" ] && [ "$norm_dir" = "$norm_home" ]; }; then
   die "Refusing to uninstall from '${INSTALL_DIR}': not a valid install location."
 fi
-if [ ! -f "${INSTALL_DIR}/mdoctor" ] || [ ! -d "${INSTALL_DIR}/.git" ]; then
-  die "Refusing to remove '${INSTALL_DIR}': no mdoctor checkout found (missing mdoctor entry point or .git)."
+
+# True when every entry in DIR is mdoctor-owned: the history/ state dir, a
+# .git remnant, or the mdoctor entry point (same predicate as install.sh —
+# ~/.mdoctor doubles as mdoctor's state dir, so a dir without a working
+# checkout is a normal state, not an error). An empty dir is trivially
+# ours; anything else makes the dir foreign — never ours to delete.
+_dir_is_mdoctor_owned() {
+  local entry
+  for entry in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+    [ -e "$entry" ] || continue
+    case "${entry##*/}" in
+      history|.git|mdoctor) ;;
+      *) return 1 ;;
+    esac
+  done
+  return 0
+}
+
+# Classify INSTALL_DIR: a proven checkout (mdoctor entry point + .git) or
+# a dir holding only mdoctor-owned entries is removable after confirmation;
+# foreign content refuses; an absent dir just skips removal (the symlink
+# cleanup below still runs — a dangling link is a normal leftover).
+remove_install_dir=false
+if [ -d "$INSTALL_DIR" ]; then
+  if [ -f "${INSTALL_DIR}/mdoctor" ] && [ -d "${INSTALL_DIR}/.git" ]; then
+    remove_install_dir=true
+  elif _dir_is_mdoctor_owned "$INSTALL_DIR"; then
+    remove_install_dir=true
+  else
+    die "Refusing to remove '${INSTALL_DIR}': no mdoctor checkout found and it contains files mdoctor does not own. Move it aside or remove it manually (e.g. mv \"${INSTALL_DIR}\" \"${INSTALL_DIR}.bak\") and re-run."
+  fi
+elif [ -e "$INSTALL_DIR" ]; then
+  die "Refusing to remove '${INSTALL_DIR}': exists and is not a directory."
 fi
 
 # Confirmation gate (Task 1.1): prompt on a tty, skippable with the
 # documented MDOCTOR_ASSUME_YES=true flag.
 if [ "${MDOCTOR_ASSUME_YES:-false}" != true ]; then
   if [ -t 0 ]; then
-    printf 'Remove %s and %s? [y/N] ' "$INSTALL_DIR" "$BIN_LINK" >&2
+    if [ "$remove_install_dir" = true ]; then
+      printf 'Remove %s and %s? [y/N] ' "$INSTALL_DIR" "$BIN_LINK" >&2
+    else
+      printf 'Remove %s? [y/N] ' "$BIN_LINK" >&2
+    fi
     answer=""
     IFS= read -r answer || answer=""
     case "$answer" in
@@ -111,14 +145,14 @@ elif [ -e "$BIN_LINK" ]; then
   die "Refusing to remove '${BIN_LINK}': not a symlink."
 fi
 
-# Remove install directory
-if [ -d "$INSTALL_DIR" ]; then
+# Remove install directory (validated above: checkout or mdoctor state only)
+if [ "$remove_install_dir" = true ]; then
   info "Removing ${INSTALL_DIR}"
   rm -rf -- "$INSTALL_DIR"
 fi
 
 echo
 success "mdoctor has been uninstalled."
-info "Retained user config: ${CONFIG_DIR} (whitelist, scope, history)."
+info "Retained user config: ${CONFIG_DIR} (whitelist, scope, operations log)."
 info "To remove it as well: rm -rf \"${CONFIG_DIR}\""
 echo
