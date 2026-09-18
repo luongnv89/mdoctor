@@ -203,6 +203,39 @@ teardown_file() {
   assert_file_exists "$TMPHOME/foreign-install/keep.txt"
 }
 
+@test "move-aside backup names stay unique across same-second runs" {
+  # Regression: move_aside_and_clone used a per-second timestamp, so two
+  # move-asides in the same second collided — mv nested instead of
+  # renaming and the install aborted. Pre-create the same-second backup
+  # name with a marker, force the update path into move_aside via a
+  # fixture remote lacking refs/heads/main, and assert the marker is
+  # preserved while the install still succeeds.
+  _install_seed_fixture
+  mkdir -p "$TMPHOME/bin"
+  rm -rf "$TMPHOME/nomain-remote"
+  git clone -q "$ROOT_DIR" "$TMPHOME/nomain-remote" 2>/dev/null \
+    || { fail "fixture clone failed"; }
+  git -C "$TMPHOME/nomain-remote" checkout -q -B notmain 2>/dev/null \
+    || { fail "fixture branch setup failed"; }
+  git -C "$TMPHOME/nomain-remote" branch -D main 2>/dev/null || true
+  git -C "$TMPHOME/nomain-remote" symbolic-ref HEAD refs/heads/notmain 2>/dev/null || true
+  [ -f "$TMPHOME/nomain-remote/mdoctor" ] || { fail "fixture missing mdoctor"; }
+  git -C "$TMPHOME/seed" remote set-url origin "$TMPHOME/nomain-remote" 2>/dev/null || true
+  stamp="$(date +%Y%m%d%H%M%S)"
+  mkdir -p "$TMPHOME/seed.moved-${stamp}"
+  echo "precious" > "$TMPHOME/seed.moved-${stamp}/marker.txt"
+  MDOCTOR_SKIP_PLATFORM_CHECK=true MDOCTOR_REPO_URL="$TMPHOME/nomain-remote" MDOCTOR_CHANNEL=main \
+    MDOCTOR_INSTALL_DIR="$TMPHOME/seed" MDOCTOR_BIN_DIR="$TMPHOME/bin" \
+    MDOCTOR_BINARY_NAME="mdoctor-moveaside" MDOCTOR_ASSUME_YES=true \
+    HOME="$TMPHOME" ./install.sh >"$TMPHOME/moveaside.out" 2>&1 \
+    || { tail -n 20 "$TMPHOME/moveaside.out"; fail "move-aside install failed"; }
+  assert_file_exists "$TMPHOME/seed.moved-${stamp}/marker.txt"
+  assert_file_not_exists "$TMPHOME/seed.moved-${stamp}/seed"
+  assert_file_exists "$TMPHOME/seed/mdoctor"
+  assert_dir_exists "$TMPHOME/seed/.git"
+  assert_file_exists "$TMPHOME/bin/mdoctor-moveaside"
+}
+
 # Shared fixture: a seed install dir (valid markers) keeps the installer
 # hermetic; the override validation above is exercised deterministically.
 _install_seed_fixture() {

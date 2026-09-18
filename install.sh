@@ -332,8 +332,14 @@ reseed_checkout_in_place() {
 # the moved-aside copy. If the clone fails the original directory is put
 # back so no state is stranded.
 move_aside_and_clone() {
-  local backup
+  local backup backup_base n
   backup="${INSTALL_DIR}.moved-$(date +%Y%m%d%H%M%S)"
+  backup_base="$backup"
+  n=1
+  while [ -e "$backup" ]; do
+    backup="${backup_base}.${n}"
+    n=$((n + 1))
+  done
   mv "$INSTALL_DIR" "$backup" \
     || fail "Could not move '${INSTALL_DIR}' aside to '${backup}'."
   # Subshell so a fail() inside install_fresh_clone does not abort the
