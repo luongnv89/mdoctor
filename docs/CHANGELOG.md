@@ -6,8 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-09-18
+
 ### Added
-- Arch-family Linux support (Omarchy, Arch, EndeavourOS, Manjaro, CachyOS): new `pacman` check/cleanup/fix modules (`checks/pacman.sh`, `cleanups/pacman.sh`, `fixes/pacman.sh`), `is_arch`/`is_omarchy` predicates in `lib/platform.sh` (with `MDOCTOR_DISTRO_LIKE` from `ID_LIKE`), installer and agent-skill support, and Arch-specific install/upgrade advice in the devtools and git_config checks
+- Arch-family Linux support (Omarchy, Arch, EndeavourOS, Manjaro, CachyOS): new `pacman` check/cleanup/fix modules (`checks/pacman.sh`, `cleanups/pacman.sh`, `fixes/pacman.sh`), `is_arch`/`is_omarchy` predicates in `lib/platform.sh` (with `MDOCTOR_DISTRO_LIKE` from `ID_LIKE`), installer and agent-skill support, and Arch-specific install/upgrade advice in the devtools and git_config checks (#247)
+- Apple-style landing page (`site/index.html`) deployed via GitHub Pages — PAS-framework copy, light/dark Apple design tokens, copy buttons on the install command and terminal output (#245)
+
+### Changed
+- README fix-target docs now state commands print with a `[DRY RUN]` prefix and are never executed, and that `timemachine` is macOS-only (#243)
 
 ## [3.1.0] - 2026-09-16
 

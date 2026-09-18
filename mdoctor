@@ -31,7 +31,7 @@ set -uo pipefail
 # VERSION
 ########################################
 
-MDOCTOR_VERSION="3.1.0"
+MDOCTOR_VERSION="3.2.0"
 
 # mdoctor_version_full — print MDOCTOR_VERSION with the "+<commit>"
 # decoration appended, resolved lazily and memoized (issue #102).
