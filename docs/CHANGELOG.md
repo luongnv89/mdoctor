@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.2.1] - 2026-09-18
+
+### Fixed
+- `install.sh` never `rm -rf`s the install dir — a state-only `~/.mdoctor` (e.g., only `history/` from plain `mdoctor check`) is adopted in place instead of deadlocking `install.sh`/`uninstall.sh`; failed fast-forwards reseed in place and the move-aside fallback carries `history/` forward; foreign content is still refused with recovery instructions (#249, closes #250)
+
 ## [3.2.0] - 2026-09-18
 
 ### Added
