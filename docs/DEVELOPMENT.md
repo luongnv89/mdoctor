@@ -2,8 +2,8 @@
 
 ## Prerequisites
 
-- macOS (any recent version) **or** Debian-based Linux (Ubuntu, Pop!_OS, Mint, etc.)
-- Bash 3.2+ (ships with macOS; install via `sudo apt install bash` on Linux)
+- macOS (any recent version), Debian-based Linux (Ubuntu, Pop!_OS, Mint, etc.) **or** Arch-based Linux (Omarchy, Arch, EndeavourOS, Manjaro, CachyOS)
+- Bash 3.2+ (ships with macOS; install via `sudo apt install bash` on Debian-family or `sudo pacman -S bash` on Arch-family Linux)
 - Git
 
 No build tools, package managers, or runtimes are required. mdoctor is pure Bash.

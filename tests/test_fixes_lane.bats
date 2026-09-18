@@ -318,6 +318,39 @@ Ethernet Address: aa:bb:cc:dd:ee:ff"
   fix_lane_assert_sequence "$STUB_LOG" "$TEST_TMP/$BATS_TEST_NUMBER/expected.log"
 }
 
+@test "fixes lane: fix pacman runs exactly the keyring-refresh + full-upgrade sequence on Linux" {
+  fix_lane_as_linux
+  # Pin the distro so the keyring map emits the default archlinux-keyring
+  # on every dev host (a Manjaro-class host would otherwise emit
+  # manjaro-keyring and fail the exact-sequence assertion).
+  export MDOCTOR_DISTRO=arch
+  # Test-local pacman stub (records argv, succeeds): helpers/bin carries
+  # no pacman stub, and the hermetic sudo stub refuses non-whitelisted
+  # commands with rc 0 after recording — so the sequence below proves
+  # what fix_pacman issues without ever touching the package system.
+  local stubdir="$TEST_TMP/$BATS_TEST_NUMBER/stubbin"
+  mkdir -p "$stubdir"
+  cat > "$stubdir/pacman" <<'EOF'
+#!/usr/bin/env bash
+if [ -n "${MDOCTOR_STUB_LOG:-}" ]; then
+  printf 'pacman %s\n' "$*" >>"$MDOCTOR_STUB_LOG"
+fi
+exit 0
+EOF
+  chmod +x "$stubdir/pacman"
+  PATH="$stubdir:$PATH"
+  fix_lane_begin "$STUB_LOG"
+  # shellcheck source=/dev/null
+  source "$ROOT_DIR/fixes/pacman.sh"
+  local rc=0
+  fix_pacman >"$TEST_TMP/$BATS_TEST_NUMBER/out.txt" 2>&1 || rc=$?
+  [ "$rc" -eq 0 ] || { cat "$TEST_TMP/$BATS_TEST_NUMBER/out.txt"; fail "fix pacman exited $rc"; }
+  printf '%s\n' \
+    "sudo pacman -Sy --needed --noconfirm archlinux-keyring" \
+    "sudo pacman -Syu --noconfirm" >"$TEST_TMP/$BATS_TEST_NUMBER/expected.log"
+  fix_lane_assert_sequence "$STUB_LOG" "$TEST_TMP/$BATS_TEST_NUMBER/expected.log"
+}
+
 @test "fixes lane: fix permissions chowns exactly the Homebrew + /usr/local sequence" {
   fix_lane_as_macos
   export MDOCTOR_STUB_BREW_PREFIX="/opt/homebrew"
@@ -365,7 +398,7 @@ Ethernet Address: aa:bb:cc:dd:ee:ff"
     _m="$(basename "$_f" .sh)"
     fix_lane_as_macos
     case "$_m" in
-      apt) fix_lane_as_linux ;;
+      apt|pacman) fix_lane_as_linux ;;
     esac
     _log="$TEST_TMP/$BATS_TEST_NUMBER/guard-$_m.log"
     : >"$_log"
@@ -533,7 +566,10 @@ Ethernet Address: aa:bb:cc:dd:ee:ff"
 
 @test "fixes lane: dry-run fix all exits 0 on an apt-less Linux host (issue #220)" {
   # Same class on the Linux lane: helpers/bin normally stubs apt-get, so
-  # a PATH without it exercises fix_apt's no-tool branch for real.
+  # a PATH without it exercises fix_apt's no-tool branch for real. On
+  # Arch-family hosts fix all runs pacman instead of apt — pacman is a
+  # host binary, so the TOOLLESS_FARM symlinks it and the dry-run
+  # sequence runs (run_cmd_args short-circuits before exec).
   is_linux || skip "apt is a Linux fix target"
   local t="$TEST_TMP/$BATS_TEST_NUMBER/fixall-linux"
   mkdir -p "$t/home"
@@ -543,5 +579,15 @@ Ethernet Address: aa:bb:cc:dd:ee:ff"
     DRY_RUN=true bash "$ROOT_DIR/mdoctor" fix all \
     >"$t/out.txt" 2>"$t/err.txt" || rc=$?
   [ "$rc" -eq 0 ] || { tail -n 20 "$t/out.txt" >&2; fail "dry-run fix all rc=$rc on apt-less Linux"; }
-  assert_contains "$t/out.txt" "APT not available on this system."
+  if is_arch; then
+    assert_contains "$t/out.txt" "Pacman package manager fix complete."
+  elif is_debian; then
+    assert_contains "$t/out.txt" "APT not available on this system."
+  else
+    # Third lane (e.g. the Alpine bash:3.2 image): neither apt nor pacman
+    # is registered, so fix all runs dns only. BINMAC_NOBREW carries the
+    # resolvectl stub, so fix_dns takes its resolver branch in dry-run.
+    assert_contains "$t/out.txt" "Flushing Linux DNS cache"
+    assert_contains "$t/out.txt" "DNS cache flushed."
+  fi
 }

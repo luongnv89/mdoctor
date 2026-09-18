@@ -56,8 +56,11 @@ if is_macos; then
   source "${SCRIPT_DIR}/cleanups/xcode.sh"
 fi
 source "${SCRIPT_DIR}/cleanups/dev_caches.sh"
-if is_linux; then
+if is_debian; then
   source "${SCRIPT_DIR}/cleanups/apt.sh"
+fi
+if is_arch; then
+  source "${SCRIPT_DIR}/cleanups/pacman.sh"
 fi
 
 ########################################
@@ -112,8 +115,11 @@ if is_macos; then
   CLEANUP_STEPS+=(ios_backups xcode)
 fi
 CLEANUP_STEPS+=(dev_caches)
-if is_linux; then
+if is_debian; then
   CLEANUP_STEPS+=(apt)
+fi
+if is_arch; then
+  CLEANUP_STEPS+=(pacman)
 fi
 
 export STEP_CURRENT=0
@@ -154,8 +160,12 @@ cleanup_force_preflight_summary() {
 
   if is_macos; then
     echo "Modules touched: trash, caches, logs, crash_reports, ios_backups, xcode, dev_caches"
-  else
+  elif is_arch; then
+    echo "Modules touched: trash, caches, logs, crash_reports, dev_caches, pacman"
+  elif is_debian; then
     echo "Modules touched: trash, caches, logs, crash_reports, dev_caches, apt"
+  else
+    echo "Modules touched: trash, caches, logs, crash_reports, dev_caches"
   fi
   echo "Touched targets:"
 
@@ -246,7 +256,7 @@ cleanup_force_preflight_summary() {
     echo "  - xcrun simctl delete unavailable (size estimate: n/a)"
   fi
 
-  if is_linux; then
+  if is_debian; then
     preflight_size_path "/var/cache/apt/archives"
     total_kb=$((total_kb + MDOCTOR_SIZE_ADD))
     if [ -n "$MDOCTOR_SIZE_COVER" ]; then
@@ -255,6 +265,18 @@ cleanup_force_preflight_summary() {
       printf "  - %-45s (~%s)\n" "/var/cache/apt/archives" "$(human_readable_kb "$MDOCTOR_SIZE_KB")"
     else
       printf "  - %-45s (could not determine)\n" "/var/cache/apt/archives"
+    fi
+  fi
+
+  if is_arch; then
+    preflight_size_path "/var/cache/pacman/pkg"
+    total_kb=$((total_kb + MDOCTOR_SIZE_ADD))
+    if [ -n "$MDOCTOR_SIZE_COVER" ]; then
+      printf "  - %-45s (included in %s)\n" "/var/cache/pacman/pkg" "$MDOCTOR_SIZE_COVER"
+    elif [ -n "$MDOCTOR_SIZE_KB" ]; then
+      printf "  - %-45s (~%s)\n" "/var/cache/pacman/pkg" "$(human_readable_kb "$MDOCTOR_SIZE_KB")"
+    else
+      printf "  - %-45s (could not determine)\n" "/var/cache/pacman/pkg"
     fi
   fi
 
@@ -364,9 +386,14 @@ main() {
   step "Developer caches cleanup"
   clean_dev_caches || _cleanup_rc=$?
 
-  if is_linux; then
+  if is_debian; then
     step "APT cache cleanup"
     clean_apt_cache || _cleanup_rc=$?
+  fi
+
+  if is_arch; then
+    step "Pacman cache cleanup"
+    clean_pacman_cache || _cleanup_rc=$?
   fi
 
   # Stop spinner from last step

@@ -239,12 +239,20 @@ teardown_file() {
   done
 }
 
-@test "apt is accepted on Linux and listed in help and error text" {
-  if [ "$(uname -s)" != "Linux" ]; then
-    skip "Linux-only module"
-  fi
+@test "apt is accepted on Debian Linux and listed in help and error text" {
+  source "$ROOT_DIR/lib/platform.sh"
+  is_debian || skip "Debian-family module"
   ./mdoctor check --help >"$TEST_TMP/check_help_apt.txt" 2>&1
   assert_contains "$TEST_TMP/check_help_apt.txt" "apt"
   ./mdoctor check -m diagnose_performance >"$TEST_TMP/check_unreg.txt" 2>&1 || true
   assert_contains "$TEST_TMP/check_unreg.txt" "apt"
+}
+
+@test "pacman is accepted on Arch Linux and listed in help and error text" {
+  source "$ROOT_DIR/lib/platform.sh"
+  is_arch || skip "Arch-family module"
+  ./mdoctor check --help >"$TEST_TMP/check_help_pacman.txt" 2>&1
+  assert_contains "$TEST_TMP/check_help_pacman.txt" "pacman"
+  ./mdoctor check -m diagnose_performance >"$TEST_TMP/check_unreg_pacman.txt" 2>&1 || true
+  assert_contains "$TEST_TMP/check_unreg_pacman.txt" "pacman"
 }

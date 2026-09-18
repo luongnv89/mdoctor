@@ -22,12 +22,12 @@
 - **Modular** -- run everything or target a single module
 - **Actionable** -- provides a health score and specific next steps to fix issues
 - **Trackable** -- JSON output, historical scores with trend detection
-- **Cross-platform** -- macOS and Debian-based Linux (Ubuntu, Pop!_OS, Mint, etc.)
+- **Cross-platform** -- macOS, Debian-based Linux (Ubuntu, Pop!_OS, Mint, etc.) and Arch-based Linux (Omarchy, Arch, EndeavourOS, Manjaro, CachyOS)
 - **Zero dependencies** -- pure Bash, uses only standard system tools
 
 ## Quick Install
 
-Works on macOS and Debian-based Linux (Ubuntu, Pop!_OS, Mint, Raspbian, etc.):
+Works on macOS, Debian-based Linux (Ubuntu, Pop!_OS, Mint, Raspbian, etc.) and Arch-based Linux (Omarchy, Arch, EndeavourOS, Manjaro, CachyOS):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/luongnv89/mdoctor/main/install.sh | bash
@@ -40,7 +40,7 @@ git clone https://github.com/luongnv89/mdoctor.git ~/.mdoctor
 cd ~/.mdoctor && ./install.sh
 ```
 
-> **Linux prerequisite:** `git` must be installed (`sudo apt install git`).
+> **Linux prerequisite:** `git` must be installed (`sudo apt install git` on Debian-family, `sudo pacman -S git` on Arch-family).
 
 ## Usage
 
@@ -132,11 +132,11 @@ mdoctor check --json | python3 -m json.tool
 
 #### Check Modules (all `[SAFE]` — read-only)
 
-| Category | macOS | Linux (Debian) |
+| Category | macOS | Linux (Debian / Arch) |
 |----------|-------|----------------|
 | **Hardware** | `battery`, `hardware`, `bluetooth`, `usb` | `battery`, `hardware` |
 | **System** | `system`, `disk`, `updates`, `security`, `startup`, `network`, `performance`, `storage` | `system`, `disk`, `updates`, `security`, `startup`, `network`, `performance`, `storage` |
-| **Software** | `homebrew`, `node`, `python`, `devtools`, `shell`, `apps`, `git_config`, `containers` | `node`, `python`, `devtools`, `shell`, `apps`, `git_config`, `containers`, `apt` |
+| **Software** | `homebrew`, `node`, `python`, `devtools`, `shell`, `apps`, `git_config`, `containers` | `node`, `python`, `devtools`, `shell`, `apps`, `git_config`, `containers`, `apt` (Debian) / `pacman` (Arch) |
 
 The health check:
 - Scores your system 0-100
@@ -192,9 +192,9 @@ mdoctor clean --interactive --force
 
 #### Cleanup Modules (risk-rated by blast radius)
 
-| Category | macOS | Linux (Debian) |
+| Category | macOS | Linux (Debian / Arch) |
 |----------|-------|----------------|
-| **System** | `trash` [MED], `caches` [LOW], `logs` [MED], `downloads` [SAFE] (report-only), `crash_reports` [MED], `ios_backups` [HIGH] | `trash` [MED], `caches` [LOW], `logs` [MED], `downloads` [SAFE] (report-only), `crash_reports` [MED], `apt` [MED] |
+| **System** | `trash` [MED], `caches` [LOW], `logs` [MED], `downloads` [SAFE] (report-only), `crash_reports` [MED], `ios_backups` [HIGH] | `trash` [MED], `caches` [LOW], `logs` [MED], `downloads` [SAFE] (report-only), `crash_reports` [MED], `apt` [MED] (Debian) / `pacman` [MED] (Arch) |
 | **Software** | `browser` [LOW], `xcode` [MED], `dev_caches` [MED] | `browser` [LOW], `dev_caches` [MED] |
 
 ### Fix
@@ -223,6 +223,14 @@ mdoctor fix all            # Run all fixes except timemachine
 ```bash
 mdoctor fix dns            # [LOW]  Flush DNS cache (systemd-resolved)
 mdoctor fix apt            # [LOW]  Fix APT packages (update, upgrade, autoremove)
+mdoctor fix all            # Run all fixes
+```
+
+**Linux (Arch / Omarchy):**
+
+```bash
+mdoctor fix dns            # [LOW]  Flush DNS cache (systemd-resolved)
+mdoctor fix pacman         # [LOW]  Fix pacman packages (keyring refresh, full upgrade)
 mdoctor fix all            # Run all fixes
 ```
 
@@ -360,7 +368,7 @@ mdoctor/
 ├── doctor.sh            # Health check engine (20 on macOS / 18 on Linux)
 ├── cleanup.sh           # Cleanup engine (9 modules on macOS / 8 on Linux)
 ├── lib/                 # Shared libraries (18 files)
-│   ├── platform.sh      # OS/distro detection (macOS, Debian, Ubuntu, etc.)
+│   ├── platform.sh      # OS/distro detection (macOS, Debian, Arch/Omarchy, etc.)
 │   ├── constants.sh     # Named thresholds/timeouts + truthy predicate
 │   ├── context.sh       # Module context contract (shared globals)
 │   ├── common.sh        # Colors, icons, UI helpers, progress spinner
@@ -378,14 +386,14 @@ mdoctor/
 │   ├── safety.sh        # Deletion safety primitives + whitelist policy
 │   ├── cleanup_scope.sh # Dev cache scope include/exclude config
 │   └── clean_common.sh  # Single-module + interactive cleanup helpers
-├── checks/              # Health check modules (22 files)
+├── checks/              # Health check modules (23 files)
 │   ├── battery.sh       # Battery health & cycle count
 │   ├── hardware.sh      # CPU, RAM, thermals
 │   ├── bluetooth.sh     # Bluetooth status (macOS)
 │   ├── usb.sh           # USB device audit (macOS)
 │   ├── system.sh        # OS, memory, load average
 │   ├── disk.sh          # Disk usage
-│   ├── updates.sh       # System updates (macOS + APT)
+│   ├── updates.sh       # System updates (macOS + APT/pacman)
 │   ├── security.sh      # Firewall, encryption, security settings
 │   ├── startup.sh       # Startup services & agents
 │   ├── network.sh       # Connectivity, DNS, Wi-Fi signal
@@ -400,8 +408,9 @@ mdoctor/
 │   ├── apps.sh          # Crash reports, app health
 │   ├── git_config.sh    # Git & SSH config
 │   ├── containers.sh    # Docker & containers
-│   └── apt.sh           # APT package manager health (Linux)
-├── cleanups/            # Cleanup modules (10 files)
+│   ├── apt.sh           # APT package manager health (Debian Linux)
+│   └── pacman.sh        # pacman package manager health (Arch Linux)
+├── cleanups/            # Cleanup modules (11 files)
 │   ├── trash.sh         # Trash cleanup
 │   ├── caches.sh        # User caches
 │   ├── logs.sh          # Old logs
@@ -411,8 +420,9 @@ mdoctor/
 │   ├── ios_backups.sh   # Old iOS device backups (macOS)
 │   ├── xcode.sh         # Xcode DerivedData, archives, simulators (macOS)
 │   ├── dev_caches.sh    # Developer dependency & package caches
-│   └── apt.sh           # APT package cache cleanup (Linux)
-├── fixes/               # Fix modules (10 files)
+│   ├── apt.sh           # APT package cache cleanup (Debian Linux)
+│   └── pacman.sh        # pacman package cache cleanup (Arch Linux)
+├── fixes/               # Fix modules (11 files)
 │   ├── homebrew.sh      # Homebrew update & repair (macOS)
 │   ├── dns.sh           # Flush DNS cache
 │   ├── disk.sh          # Free disk space (macOS)
@@ -422,7 +432,8 @@ mdoctor/
 │   ├── audio.sh         # Restart Core Audio (macOS)
 │   ├── wifi.sh          # Fix Wi-Fi connection (macOS)
 │   ├── timemachine.sh   # Time Machine repair (macOS)
-│   └── apt.sh           # Fix APT packages (Linux)
+│   ├── apt.sh           # Fix APT packages (Debian Linux)
+│   └── pacman.sh        # Fix pacman packages (Arch Linux)
 ├── scripts/             # Repo scripts (3 files)
 │   ├── lint_shell.sh    # Shared ShellCheck policy entrypoint (local + CI)
 │   ├── check_bash32.sh  # Bash 3.2 banned-construct scanner

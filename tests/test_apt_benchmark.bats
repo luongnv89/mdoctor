@@ -18,6 +18,8 @@ load 'helpers/fixture'
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
 
+source "$ROOT_DIR/lib/platform.sh"
+
 setup_file() {
   cd "$ROOT_DIR" || return 1
   export PATH="$ROOT_DIR/tests/helpers/bin:$PATH"
@@ -40,9 +42,22 @@ teardown_file() {
     assert_contains "$TMPHOME/apt.out" "apt"
     return 0
   fi
+  is_debian || skip "Debian-family module"
   HOME="$TMPHOME" ./mdoctor check -m apt >"$TMPHOME/apt.out" 2>&1
   assert_contains "$TMPHOME/apt.out" "APT Package Manager"
   grep -qE '^  [^ ]' "$TMPHOME/apt.out" || fail "apt check emitted no parseable status line"
+}
+
+@test "check -m pacman emits header and a parseable status line" {
+  if [ "$(uname -s)" = "Darwin" ]; then
+    HOME="$TMPHOME" ./mdoctor check -m pacman >"$TMPHOME/pacman.out" 2>&1 || true
+    assert_contains "$TMPHOME/pacman.out" "pacman"
+    return 0
+  fi
+  is_arch || skip "Arch-family module"
+  HOME="$TMPHOME" ./mdoctor check -m pacman >"$TMPHOME/pacman.out" 2>&1
+  assert_contains "$TMPHOME/pacman.out" "Pacman Package Manager"
+  grep -qE '^  [^ ]' "$TMPHOME/pacman.out" || fail "pacman check emitted no parseable status line"
 }
 
 @test "benchmark helpers compute elapsed time and report units" {

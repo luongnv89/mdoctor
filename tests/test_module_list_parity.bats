@@ -123,7 +123,18 @@ teardown_file() {
       grep -qw "$m" "$TMPHOME/all_lists.txt" || fail "expected macOS module '$m' in help/error output"
     done
     ! grep -qw apt "$TMPHOME/all_lists.txt" || fail "Linux-only module 'apt' in help/error output"
-  else
+    ! grep -qw pacman "$TMPHOME/all_lists.txt" || fail "Linux-only module 'pacman' in help/error output"
+  elif is_arch; then
+    # battery became cross-platform in issue #109 (self-gated: sysfs on
+    # Linux) — only bluetooth/usb/homebrew/ios_backups/xcode stay
+    # macOS-only.
+    for m in bluetooth usb homebrew ios_backups xcode; do
+      ! grep -qw "$m" "$TMPHOME/all_lists.txt" || fail "macOS-only module '$m' in help/error output"
+    done
+    grep -qw battery "$TMPHOME/all_lists.txt" || fail "expected cross-platform module 'battery' in help/error output"
+    grep -qw pacman "$TMPHOME/all_lists.txt" || fail "expected Arch module 'pacman' in help/error output"
+    ! grep -qw apt "$TMPHOME/all_lists.txt" || fail "Debian-only module 'apt' in help/error output"
+  elif is_debian; then
     # battery became cross-platform in issue #109 (self-gated: sysfs on
     # Linux) — only bluetooth/usb/homebrew/ios_backups/xcode stay
     # macOS-only.
@@ -132,5 +143,15 @@ teardown_file() {
     done
     grep -qw battery "$TMPHOME/all_lists.txt" || fail "expected cross-platform module 'battery' in help/error output"
     grep -qw apt "$TMPHOME/all_lists.txt" || fail "expected Linux module 'apt' in help/error output"
+    ! grep -qw pacman "$TMPHOME/all_lists.txt" || fail "Arch-only module 'pacman' in help/error output"
+  else
+    # Third lane (e.g. the Alpine bash:3.2 image): neither apt nor pacman
+    # is registered, so no help/error path may name either.
+    for m in bluetooth usb homebrew ios_backups xcode; do
+      ! grep -qw "$m" "$TMPHOME/all_lists.txt" || fail "macOS-only module '$m' in help/error output"
+    done
+    grep -qw battery "$TMPHOME/all_lists.txt" || fail "expected cross-platform module 'battery' in help/error output"
+    ! grep -qw apt "$TMPHOME/all_lists.txt" || fail "Debian-only module 'apt' in help/error output"
+    ! grep -qw pacman "$TMPHOME/all_lists.txt" || fail "Arch-only module 'pacman' in help/error output"
   fi
 }

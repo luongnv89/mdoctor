@@ -187,7 +187,14 @@ _platform_sentinels() {
   HOME="$TMPHOME" ./cleanup.sh --dry-run >"$TMPHOME/engine-dry.out" 2>&1
   assert_not_contains "$TMPHOME/engine-dry.out" "Downloads"
   local want_total
-  if is_macos; then want_total=7; else want_total=6; fi
+  if is_macos; then
+    want_total=7
+  elif is_debian || is_arch; then
+    want_total=6
+  else
+    # Third lane (e.g. Alpine): no distro package module in CLEANUP_STEPS.
+    want_total=5
+  fi
   grep -q "➤ \[[0-9]*/${want_total}\]" "$TMPHOME/engine-dry.out" \
     || fail "expected ${want_total} progress steps in engine dry-run"
 }

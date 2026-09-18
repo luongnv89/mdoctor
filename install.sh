@@ -179,7 +179,7 @@ assert_mdoctor_install_dir() {
 # Pre-flight checks
 ########################################
 
-# Must be macOS or Linux (Debian-family) unless explicitly bypassed for CI
+# Must be macOS or Linux (Debian- or Arch-family) unless explicitly bypassed for CI
 if [[ "${MDOCTOR_SKIP_PLATFORM_CHECK:-false}" != "true" ]]; then
   case "$(uname -s)" in
     Darwin) ;;
@@ -189,13 +189,19 @@ if [[ "${MDOCTOR_SKIP_PLATFORM_CHECK:-false}" != "true" ]]; then
         . /etc/os-release
         case "${ID:-}" in
           debian|ubuntu|linuxmint|pop|raspbian|elementary|zorin|kali) ;;
-          *) fail "mdoctor supports Debian-family Linux only. Detected distro: ${ID:-unknown}" ;;
+          arch|omarchy|endeavouros|manjaro|cachyos|garuda|artix|arcolinux) ;;
+          *)
+            case " ${ID_LIKE:-} " in
+              *" debian "*|*" arch "*) ;;
+              *) fail "mdoctor supports Debian- and Arch-family Linux only. Detected distro: ${ID:-unknown}" ;;
+            esac
+            ;;
         esac
       else
         fail "Cannot determine Linux distribution (missing /etc/os-release)."
       fi
       ;;
-    *) fail "mdoctor supports macOS and Debian/Ubuntu Linux. Detected: $(uname -s)" ;;
+    *) fail "mdoctor supports macOS and Debian/Ubuntu/Arch Linux. Detected: $(uname -s)" ;;
   esac
 fi
 
@@ -203,6 +209,18 @@ fi
 if ! command -v git >/dev/null 2>&1; then
   if [[ "$(uname -s)" == "Darwin" ]]; then
     fail "git is required but not found. Install Xcode CLT: xcode-select --install"
+  elif [ -r /etc/os-release ]; then
+    # shellcheck source=/dev/null
+    . /etc/os-release
+    case "${ID:-} ${ID_LIKE:-}" in
+      # *arch* also matches ID=omarchy ("omarchy" contains "arch").
+      *arch*)
+        fail "git is required but not found. Install with: sudo pacman -S git"
+        ;;
+      *)
+        fail "git is required but not found. Install with: sudo apt install git"
+        ;;
+    esac
   else
     fail "git is required but not found. Install with: sudo apt install git"
   fi

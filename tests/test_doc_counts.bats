@@ -47,14 +47,21 @@ source "$ROOT_DIR/lib/platform.sh"
 # derivable on either host.
 _registry_counts() {
 	(
+		# Reset guards so the registry re-sources with the stubbed predicates
+		# rather than hitting the inherited loaded flag from the parent shell.
+		unset _MDOCTOR_METADATA_LOADED _MDOCTOR_REGISTRY_LOADED _MDOCTOR_MODULES_REGISTERED
 		if [ "$1" = "macos" ]; then
 			is_macos() { return 0; }
 			is_linux() { return 1; }
 			is_debian() { return 1; }
+			is_arch() { return 1; }
+			is_omarchy() { return 1; }
 		else
 			is_macos() { return 1; }
 			is_linux() { return 0; }
 			is_debian() { return 0; }
+			is_arch() { return 1; }
+			is_omarchy() { return 1; }
 		fi
 		source "$ROOT_DIR/lib/metadata.sh"
 		source "$ROOT_DIR/lib/registry.sh"
@@ -89,12 +96,18 @@ _progress_pair() {
 	mac="$(
 		is_macos() { return 0; }
 		is_linux() { return 1; }
+		is_debian() { return 1; }
+		is_arch() { return 1; }
+		is_omarchy() { return 1; }
 		eval "$block"
 		printf '%s' "${#CLEANUP_STEPS[@]}"
 	)"
 	lin="$(
 		is_macos() { return 1; }
 		is_linux() { return 0; }
+		is_debian() { return 0; }
+		is_arch() { return 1; }
+		is_omarchy() { return 1; }
 		eval "$block"
 		printf '%s' "${#CLEANUP_STEPS[@]}"
 	)"
@@ -193,7 +206,21 @@ teardown_file() {
 	local listed expected lane
 	if is_macos; then lane=macos; else lane=linux; fi
 	listed="$(_list_counts)"
-	expected="$(_registry_counts "$lane")"
+	# Derive expected counts from the actual host's platform so the
+	# comparison is fair on any distro (Debian, Arch, or other).
+	expected="$(
+		(
+			unset _MDOCTOR_METADATA_LOADED _MDOCTOR_REGISTRY_LOADED _MDOCTOR_MODULES_REGISTERED
+			# Inherit the actual host predicates so the registry
+			# matches what `mdoctor list` shows on this host.
+			source "$ROOT_DIR/lib/metadata.sh"
+			source "$ROOT_DIR/lib/registry.sh"
+			register_all_modules
+			printf '%s %s %s %s\n' \
+				"$_REG_COUNT_CHECK" "$_REG_COUNT_CLEANUP" \
+				"$_REG_COUNT_FIX" "$_REG_COUNT_DIAGNOSE"
+		)
+	)"
 	[ "$listed" = "$expected" ] || {
 		printf 'mdoctor list: %s\nregistry(%s): %s\n' "$listed" "$lane" "$expected" >&2
 		fail "mdoctor list diverged from the registry"

@@ -67,8 +67,11 @@ source "${SCRIPT_DIR}/checks/shell.sh"
 source "${SCRIPT_DIR}/checks/apps.sh"
 source "${SCRIPT_DIR}/checks/git_config.sh"
 source "${SCRIPT_DIR}/checks/containers.sh"
-if is_linux; then
+if is_debian; then
   source "${SCRIPT_DIR}/checks/apt.sh"
+fi
+if is_arch; then
+  source "${SCRIPT_DIR}/checks/pacman.sh"
 fi
 
 ########################################
@@ -194,9 +197,13 @@ main() {
   check_git_config
   _set_check_context containers
   check_containers
-  if is_linux; then
+  if is_debian; then
     _set_check_context apt
     check_apt
+  fi
+  if is_arch; then
+    _set_check_context pacman
+    check_pacman
   fi
 
   # Stop spinner from last check step

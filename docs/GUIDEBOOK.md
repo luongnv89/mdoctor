@@ -1,8 +1,8 @@
 # mdoctor Guidebook
 
-Quick problem-to-command reference for **macOS** and **Debian-based Linux**. Find your symptom, run the command.
+Quick problem-to-command reference for **macOS**, **Debian-based Linux** and **Arch-based Linux (including Omarchy)**. Find your symptom, run the command.
 
-**Platform labels.** Every row below is marked **Both**, **macOS only** or **Linux only** — the platform that problem or module applies to. A command that needs a module registered only on one platform is rejected on the other — `mdoctor list` always shows the exact module set for the machine you are on.
+**Platform labels.** Every row below is marked **Both**, **macOS only** or **Linux only** — the platform that problem or module applies to. Distro-scoped Linux examples use the longer **Debian Linux only** / **Arch Linux only** labels and run only on that family. A command that needs a module registered only on one platform is rejected on the other — `mdoctor list` always shows the exact module set for the machine you are on.
 
 ---
 
@@ -32,6 +32,7 @@ mdoctor clean --force        # Actually free disk space
 | Purge old log files | `mdoctor clean -m logs --force` | Both |
 | Clean dev dependency/tool caches (npm, pip, Yarn, Gradle, Homebrew, Docker) | `mdoctor clean -m dev_caches --force` | Both |
 | Clean the APT package cache | `mdoctor clean -m apt --force` | Linux only |
+| Clean the pacman package cache | `mdoctor clean -m pacman --force` | Linux only |
 | Clean Xcode bloat (DerivedData, archives, simulators) | `mdoctor clean -m xcode --force` | macOS only |
 | Free disk space (combined fix) | `mdoctor fix disk` | macOS only |
 
@@ -89,6 +90,8 @@ mdoctor clean --force        # Actually free disk space
 | Shell config syntax errors | `mdoctor check -m shell` | Both |
 | APT package problems | `mdoctor check -m apt` | Linux only |
 | Fix broken APT packages (update, upgrade, autoremove) | `mdoctor fix apt` | Linux only |
+| pacman package problems | `mdoctor check -m pacman` | Linux only |
+| Fix pacman packages (keyring refresh, full upgrade) | `mdoctor fix pacman` | Linux only |
 | Homebrew errors or outdated | `mdoctor check -m homebrew` | macOS only |
 | Update and fix Homebrew | `mdoctor fix homebrew` | macOS only |
 
@@ -125,6 +128,7 @@ A full `mdoctor clean` does not run every registered module — it runs a fixed 
 | `downloads` | Report only: lists large files in `~/Downloads` older than threshold (never deletes) | Both |
 | `crash_reports` | Old crash and diagnostic reports | Both |
 | `apt` | APT package cache (`/var/cache/apt/archives`) plus autoremove | Linux only |
+| `pacman` | pacman package cache (`/var/cache/pacman/pkg`), AUR helper caches, plus orphan removal | Linux only |
 | `ios_backups` | Old iOS device backups | macOS only |
 | `browser` | Browser cache files | Both |
 | `dev_caches` | Package-manager caches (npm, Yarn, pnpm, pip, Conda, Maven, Gradle, Go, Cargo), stale `node_modules`, `brew cleanup`/`autoremove`, Docker prune (opt-in only); plus CocoaPods and Xcode DerivedData on macOS | Both |
@@ -136,7 +140,8 @@ mdoctor clean --dry-run              # Same dry-run, stated explicitly
 mdoctor clean --force                # Same step list for real (asks to confirm)
 mdoctor clean -m caches              # Dry-run one module
 mdoctor clean -m caches --force      # Run one module for real
-mdoctor clean -m apt --force         # Linux only — clean the APT cache for real
+mdoctor clean -m apt --force         # Debian Linux only — clean the APT cache for real
+mdoctor clean -m pacman --force      # Arch Linux only — clean the pacman cache for real
 mdoctor clean -m xcode --force       # macOS only — clean Xcode data for real
 mdoctor clean --interactive          # Guided module selection
 mdoctor clean --interactive --force  # Guided destructive run
@@ -150,6 +155,7 @@ mdoctor clean --interactive --force  # Guided destructive run
 |--------|--------------|------|----------|
 | `dns` | Flush DNS cache | LOW | Both |
 | `apt` | Fix APT packages (update, upgrade, autoremove) | LOW | Linux only |
+| `pacman` | Fix pacman packages (keyring refresh, full upgrade) | LOW | Linux only |
 | `homebrew` | Update, upgrade, and cleanup Homebrew | LOW | macOS only |
 | `disk` | Free disk space | LOW | macOS only |
 | `bluetooth` | Reset Bluetooth module (devices may need re-pairing) | LOW | macOS only |
@@ -161,7 +167,8 @@ mdoctor clean --interactive --force  # Guided destructive run
 
 ```bash
 mdoctor fix dns          # Flush DNS cache (runs on both platforms)
-mdoctor fix apt          # Linux only — repair APT packages
+mdoctor fix apt          # Debian Linux only — repair APT packages
+mdoctor fix pacman       # Arch Linux only — repair pacman packages
 mdoctor fix wifi         # macOS only — renew DHCP, flush DNS, cycle Wi-Fi
 mdoctor fix all          # Run all applicable fixes for this platform
 ```

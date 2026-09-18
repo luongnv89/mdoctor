@@ -17,7 +17,10 @@
 #    Platform routing: an example line carrying the same label the
 #    tables use — `# macOS only` / `# Linux only` in its trailing
 #    comment — is exercised on that lane and skipped on the other;
-#    unlabeled examples run on both.
+#    unlabeled examples run on both. Distro-scoped examples use the
+#    longer `# Debian Linux only` / `# Arch Linux only` labels, which
+#    still contain the `Linux only` substring the label-coverage test
+#    pins, and run only when is_debian / is_arch holds.
 #
 #    Hermetic: HOME is a fixture sandbox and stdin is /dev/null (the
 #    interactive picker cancels cleanly on EOF). `clean` examples have
@@ -33,7 +36,7 @@
 # 2. Label coverage. Every table row carries Both / macOS only /
 #    Linux only, and every line naming a platform-scoped module
 #    (xcode, ios_backups, bluetooth, usb, homebrew, spotlight,
-#    timemachine, permissions, audio, wifi, apt, the `fix disk`
+#    timemachine, permissions, audio, wifi, apt, pacman, the `fix disk`
 #    target) carries its platform label — the same grep the issue's
 #    acceptance criteria run.
 
@@ -108,7 +111,7 @@ _rejection_seen() {
     "xcode:macOS only" "ios_backups:macOS only" "bluetooth:macOS only" \
     "usb:macOS only" "homebrew:macOS only" "spotlight:macOS only" \
     "timemachine:macOS only" "permissions:macOS only" "audio:macOS only" \
-    "wifi:macOS only" "apt:Linux only"; do
+    "wifi:macOS only" "apt:Linux only" "pacman:Linux only"; do
     token="${pair%%:*}"
     want="${pair#*:}"
     hits="$(grep -n "$token" "$GUIDEBOOK" | grep -v -- "$want" || true)"
@@ -139,6 +142,15 @@ _rejection_seen() {
   grep -q 'XDG' "$GUIDEBOOK" || fail "Linux cache path is not identified as the XDG path"
 }
 
+@test "pacman is documented for check, clean and fix" {
+  grep -n 'check -m pacman' "$GUIDEBOOK" | grep -q 'Linux only' \
+    || fail "no Linux-only 'check -m pacman' row"
+  grep -n 'clean -m pacman' "$GUIDEBOOK" | grep -q 'Linux only' \
+    || fail "no Linux-only 'clean -m pacman' row"
+  grep -n 'fix pacman' "$GUIDEBOOK" | grep -q 'Linux only' \
+    || fail "no Linux-only 'fix pacman' row"
+}
+
 @test "every fenced command example executes without rejection" {
   local ran=0 skipped_macos=0 skipped_linux=0 templates=0
   local macos_examples=0 linux_examples=0
@@ -150,9 +162,13 @@ _rejection_seen() {
     case "$line" in \#*) continue ;; esac
 
     # Platform label lives in the trailing comment — read it off the
-    # raw line before stripping.
+    # raw line before stripping. Distro qualifiers ("Debian Linux
+    # only" / "Arch Linux only") route on is_debian / is_arch and
+    # count toward the Linux-only coverage below.
     label="both"
     case "$raw" in
+      *"Debian Linux only"*) label="debian" ;;
+      *"Arch Linux only"*) label="arch" ;;
       *"macOS only"*) label="macos" ;;
       *"Linux only"*) label="linux" ;;
     esac
@@ -192,6 +208,12 @@ _rejection_seen() {
     elif [ "$label" = "linux" ]; then
       linux_examples=$((linux_examples + 1))
       is_linux || { skipped_linux=$((skipped_linux + 1)); continue; }
+    elif [ "$label" = "debian" ]; then
+      linux_examples=$((linux_examples + 1))
+      is_debian || { skipped_linux=$((skipped_linux + 1)); continue; }
+    elif [ "$label" = "arch" ]; then
+      linux_examples=$((linux_examples + 1))
+      is_arch || { skipped_linux=$((skipped_linux + 1)); continue; }
     fi
 
     # Safety normalization + the deterministic-rc subset.

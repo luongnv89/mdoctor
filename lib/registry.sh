@@ -75,8 +75,11 @@ register_all_modules() {
   register_module check apps       Software SAFE check_apps        "Crash reports, application health"
   register_module check git_config Software SAFE check_git_config  "Git & SSH configuration"
   register_module check containers Software SAFE check_containers  "Docker & container health"
-  if is_linux; then
+  if is_debian; then
     register_module check apt      Software SAFE check_apt         "APT package manager health"
+  fi
+  if is_arch; then
+    register_module check pacman   Software SAFE check_pacman      "Pacman package manager health"
   fi
 
   # Cleanup modules
@@ -97,8 +100,11 @@ register_all_modules() {
     register_module cleanup xcode         Software MED clean_xcode              "Xcode DerivedData, archives, simulators"
   fi
   register_module cleanup dev_caches    Software MED clean_dev_caches         "Developer dependency & package caches"
-  if is_linux; then
+  if is_debian; then
     register_module cleanup apt          System   MED clean_apt_cache          "APT package cache cleanup"
+  fi
+  if is_arch; then
+    register_module cleanup pacman       System   MED clean_pacman_cache       "Pacman package cache cleanup"
   fi
 
   # Fix modules
@@ -113,8 +119,11 @@ register_all_modules() {
     register_module fix wifi        System   LOW  fix_wifi        "Renew DHCP, flush DNS, cycle Wi-Fi"
     register_module fix timemachine System   MED  fix_timemachine "Verify Time Machine backups"
   fi
-  if is_linux; then
+  if is_debian; then
     register_module fix apt        System   LOW  fix_apt         "Fix APT packages (update, upgrade, autoremove)"
+  fi
+  if is_arch; then
+    register_module fix pacman     System   LOW  fix_pacman      "Fix pacman packages (keyring refresh, full upgrade)"
   fi
   _MDOCTOR_MODULES_REGISTERED=true
   registry_counts

@@ -2,7 +2,7 @@
 #
 # mdoctor - Unified System Doctor CLI
 #
-# A single entry-point for checking, cleaning, fixing, and diagnosing macOS / Linux (Debian).
+# A single entry-point for checking, cleaning, fixing, and diagnosing macOS / Linux (Debian, Arch/Omarchy).
 #
 # Usage:
 #   mdoctor <command> [options]
@@ -246,6 +246,10 @@ cmd_clean_preflight_summary_module() {
     apt)
       add_path "APT cache" "/var/cache/apt/archives"
       echo "  - apt autoremove (size estimate: n/a)"
+      ;;
+    pacman)
+      add_path "Pacman cache" "/var/cache/pacman/pkg"
+      echo "  - pacman orphan removal (size estimate: n/a)"
       ;;
     dev_caches)
       add_path "npm cache" "${HOME}/.npm"
@@ -593,7 +597,7 @@ cmd_fix() {
 
   local fix_rc=0
   case "$target" in
-    homebrew|dns|disk|permissions|spotlight|bluetooth|audio|wifi|timemachine|apt)
+    homebrew|dns|disk|permissions|spotlight|bluetooth|audio|wifi|timemachine|apt|pacman)
       if [ -f "$fix_file" ]; then
         # shellcheck source=/dev/null
         source "$fix_file"
@@ -610,8 +614,11 @@ cmd_fix() {
       if is_macos; then
         fix_targets+=(disk homebrew permissions spotlight bluetooth audio wifi)
       fi
-      if is_linux; then
+      if is_debian; then
         fix_targets+=(apt)
+      fi
+      if is_arch; then
+        fix_targets+=(pacman)
       fi
 
       local t
@@ -1253,8 +1260,12 @@ cmd_help() {
   # running platform's registry does not provide.
   if is_macos; then
     echo "  mdoctor check -m battery         # Check only battery health"
-  else
+  elif is_arch; then
+    echo "  mdoctor check -m pacman          # Check only pacman package health"
+  elif is_debian; then
     echo "  mdoctor check -m apt             # Check only APT package health"
+  else
+    echo "  mdoctor check -m storage         # Check only storage analysis"
   fi
   echo "  mdoctor check --json             # JSON output for automation"
   echo "  mdoctor check --debug            # Check with structured debug diagnostics"
@@ -1268,8 +1279,15 @@ cmd_help() {
     echo "  mdoctor fix homebrew             # Fix Homebrew issues"
     echo "  mdoctor fix wifi                 # Fix Wi-Fi connection"
     echo "  mdoctor fix --debug wifi         # Fix with structured debug diagnostics"
-  else
+  elif is_arch; then
+    echo "  mdoctor fix pacman               # Fix pacman packages"
+    echo "  mdoctor fix dns                  # Flush DNS cache"
+    echo "  mdoctor fix --debug dns          # Fix with structured debug diagnostics"
+  elif is_debian; then
     echo "  mdoctor fix apt                  # Fix APT packages"
+    echo "  mdoctor fix dns                  # Flush DNS cache"
+    echo "  mdoctor fix --debug dns          # Fix with structured debug diagnostics"
+  else
     echo "  mdoctor fix dns                  # Flush DNS cache"
     echo "  mdoctor fix --debug dns          # Fix with structured debug diagnostics"
   fi

@@ -9,6 +9,10 @@ load 'helpers/fixture'
 ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 export ROOT_DIR
 
+# Platform predicates for the lane-gated assertion below (the registry
+# decides which fix targets `fix all` runs on this host).
+source "$ROOT_DIR/lib/platform.sh"
+
 setup_file() {
   cd "$ROOT_DIR" || return 1
   export TMPHOME STUB_LOG
@@ -49,5 +53,13 @@ teardown_file() {
   # ... but every intended command reached the operations log as dry-run.
   OPLOG="$TMPHOME/.config/mdoctor/operations.log"
   assert_file_exists "$OPLOG"
-  assert_contains "$OPLOG" "DRY_RUN_CMD"
+  # Only lanes whose registry includes a command-emitting fix target log
+  # DRY_RUN_CMD: macOS (disk/homebrew/…), Debian (apt), Arch (pacman).
+  # On a third-lane Linux (neither Debian nor Arch — e.g. the Alpine
+  # bash:3.2 CI image) `fix all` runs only fix_dns, which early-returns
+  # without a run_cmd_args call when no resolver exists, so the log holds
+  # session records but no intended commands.
+  if is_macos || is_debian || is_arch; then
+    assert_contains "$OPLOG" "DRY_RUN_CMD"
+  fi
 }

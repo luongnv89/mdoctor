@@ -71,6 +71,7 @@ _expected_content() {
     check:git_config) echo "Git & SSH Configuration" ;;
     check:containers) echo "Docker & Containers" ;;
     check:apt) echo "APT Package Manager" ;;
+    check:pacman) echo "Pacman Package Manager" ;;
     check:battery) echo "Battery Health" ;;
     check:bluetooth) echo "Bluetooth Status" ;;
     check:usb) echo "USB Devices" ;;
@@ -84,10 +85,12 @@ _expected_content() {
     cleanup:browser) echo "Cleaning browser caches" ;;
     cleanup:dev_caches) echo "Developer caches cleanup" ;;
     cleanup:apt) echo "APT cache cleanup" ;;
+    cleanup:pacman) echo "Pacman cache cleanup" ;;
     cleanup:ios_backups) echo "iOS device backups cleanup" ;;
     cleanup:xcode) echo "Xcode cleanup" ;;
     fix:dns) echo "Flushing DNS Cache" ;;
     fix:apt) echo "APT Package Manager Fix" ;;
+    fix:pacman) echo "Pacman Package Manager Fix" ;;
     fix:disk) echo "Freeing Disk Space" ;;
     fix:homebrew) echo "Fixing Homebrew" ;;
     fix:permissions) echo "Resetting Permissions" ;;

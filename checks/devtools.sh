@@ -39,7 +39,11 @@ check_dev_tools() {
       status_ok "C compiler: $(tcap_or "$MDOCTOR_CMD_TIMEOUT_S" "unknown" cc --version | head -n1)"
     else
       status_info "No C compiler found."
-      add_action "Install build tools: sudo apt install build-essential"
+      if is_arch; then
+        add_action "Install build tools: sudo pacman -S base-devel"
+      else
+        add_action "Install build tools: sudo apt install build-essential"
+      fi
     fi
     if command -v make >/dev/null 2>&1; then
       status_ok "Make: $(tcap_or "$MDOCTOR_CMD_TIMEOUT_S" "unknown" make --version | head -n1)"
@@ -53,6 +57,8 @@ check_dev_tools() {
     status_warn "Git not found."
     if is_macos; then
       add_action "Install Git via Xcode CLT ('xcode-select --install') or 'brew' 'install' 'git'."
+    elif is_arch; then
+      add_action "Install Git: sudo pacman -S git"
     else
       add_action "Install Git: sudo apt install git"
     fi
