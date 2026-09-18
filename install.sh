@@ -43,28 +43,6 @@ usage() {
   echo "  MDOCTOR_REQUIRE_TAG_SIGNATURE Set to true to refuse unsigned tags"
 }
 
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --channel)
-      [ -n "${2:-}" ] || fail "Missing value for --channel (stable|main)"
-      CHANNEL="$2"
-      shift 2
-      ;;
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    *)
-      fail "Unknown option: $1 (see --help)"
-      ;;
-  esac
-done
-
-case "$CHANNEL" in
-  stable|main) ;;
-  *) fail "Unknown channel '${CHANNEL}' (supported: stable, main)" ;;
-esac
-
 ########################################
 # Colors
 ########################################
@@ -93,6 +71,28 @@ info()    { echo "${CYAN}[info]${RESET} $*"; }
 success() { echo "${GREEN}[ok]${RESET} $*"; }
 warn()    { echo "${YELLOW}[warn]${RESET} $*"; }
 fail()    { echo "${RED}[error]${RESET} $*" >&2; exit 1; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --channel)
+      [ -n "${2:-}" ] || fail "Missing value for --channel (stable|main)"
+      CHANNEL="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      fail "Unknown option: $1 (see --help)"
+      ;;
+  esac
+done
+
+case "$CHANNEL" in
+  stable|main) ;;
+  *) fail "Unknown channel '${CHANNEL}' (supported: stable, main)" ;;
+esac
 
 # --- Signed release tags (Task 4.1) -----------------------------------------
 # latest_release_tag URL — newest vX.Y.Z tag at the remote (numeric sort,
@@ -144,35 +144,27 @@ verify_release_tag() {
   return 0
 }
 
-# --- Install-dir validation (Task 1.1) --------------------------------------
+# --- Install-dir handling (Task 1.1) ----------------------------------------
 # INSTALL_DIR is environment-controlled and this script documents curl|bash
-# invocation, so never rm -rf it without proving it is an mdoctor checkout.
-_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd 2>/dev/null || pwd)"
-if [ -f "$_SCRIPT_DIR/lib/safety.sh" ]; then
-  # shellcheck source=/dev/null
-  source "$_SCRIPT_DIR/lib/safety.sh"
-fi
+# invocation, so it is never rm -rf'd: existing dirs are repaired in place
+# (git refuses to clobber untracked files) or moved aside — not deleted.
+# ~/.mdoctor doubles as mdoctor's state dir (lib/history.sh writes
+# ~/.mdoctor/history on every check run, installed or not), so a dir that
+# is not a checkout is a normal state, not an error.
 
-assert_mdoctor_install_dir() {
-  local dir="$1"
-  local norm_dir norm_home
-  if declare -f _normalize_path >/dev/null 2>&1; then
-    norm_dir="$(_normalize_path "$dir")"
-    norm_home="$(_normalize_path "${HOME:-}")"
-  else
-    norm_dir="$dir"
-    norm_home="${HOME:-}"
-  fi
-  if [ -z "$norm_dir" ] || [ "$norm_dir" = "/" ] || { [ -n "$norm_home" ] && [ "$norm_dir" = "$norm_home" ]; }; then
-    fail "Refusing to touch '${dir}': not a valid install location."
-  fi
-  if [ ! -f "${dir}/mdoctor" ] || [ ! -d "${dir}/.git" ]; then
-    fail "Refusing to remove '${dir}': no mdoctor checkout found (missing mdoctor entry point or .git)."
-  fi
-  # NOTE: validate_deletion_path is intentionally not used here — install
-  # dirs are not cache/temp roots (e.g. ~/.mdoctor), so the 0.4 allowlist
-  # would reject legitimate checkouts. The markers above are the proof of
-  # identity for this path.
+# True when every entry in DIR is mdoctor-owned: the history/ state dir, a
+# .git remnant, or the mdoctor entry point. An empty dir is trivially ours;
+# anything else makes the dir foreign — never merge a checkout into it.
+_dir_is_mdoctor_owned() {
+  local entry
+  for entry in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+    [ -e "$entry" ] || continue
+    case "${entry##*/}" in
+      history|.git|mdoctor) ;;
+      *) return 1 ;;
+    esac
+  done
+  return 0
 }
 
 ########################################
@@ -257,6 +249,18 @@ validate_bin_override() {
 }
 validate_bin_override
 
+# Location guard (Task 1.1): /, $HOME and the empty string are never valid
+# install dirs — the dispatch below may mv INSTALL_DIR aside, so this must
+# be settled before any of it runs.
+_install_dir_norm="${INSTALL_DIR%/}"
+[ -z "$_install_dir_norm" ] && _install_dir_norm="/"
+_install_home_norm="${HOME%/}"
+if [ "$_install_dir_norm" = "/" ] \
+  || { [ -n "$_install_home_norm" ] && [ "$_install_dir_norm" = "$_install_home_norm" ]; }; then
+  fail "Refusing to use '${INSTALL_DIR}': not a valid install location."
+fi
+unset _install_dir_norm _install_home_norm
+
 ########################################
 # Banner
 ########################################
@@ -294,7 +298,65 @@ install_fresh_clone() {
   fi
 }
 
-if [ -d "$INSTALL_DIR" ]; then
+# (Re)create the checkout inside INSTALL_DIR without deleting anything:
+# `git init` is a no-op on an existing repo and `checkout -f` touches
+# tracked files only, so untracked state (history/) survives. Git aborts
+# the checkout when a tracked path would clobber an untracked file —
+# exactly the safe outcome for unexpected content.
+reseed_checkout_in_place() {
+  git -C "$INSTALL_DIR" init -q || return 1
+  if git -C "$INSTALL_DIR" remote get-url origin >/dev/null 2>&1; then
+    git -C "$INSTALL_DIR" remote set-url origin "$REPO_URL" || return 1
+  else
+    git -C "$INSTALL_DIR" remote add origin "$REPO_URL" || return 1
+  fi
+  if [ "$CHANNEL" = "main" ]; then
+    git -C "$INSTALL_DIR" fetch --depth 1 origin \
+      "+refs/heads/main:refs/remotes/origin/main" || return 1
+    git -C "$INSTALL_DIR" checkout -q -f -B main origin/main || return 1
+    git -C "$INSTALL_DIR" branch --set-upstream-to=origin/main main >/dev/null 2>&1 || true
+  else
+    local tag
+    tag="$(latest_release_tag "$REPO_URL")"
+    [ -n "$tag" ] || return 1
+    info "Channel stable: fetching release ${tag}..."
+    git -C "$INSTALL_DIR" fetch --depth 1 origin \
+      "+refs/tags/${tag}:refs/tags/${tag}" || return 1
+    git -C "$INSTALL_DIR" checkout -q -f "$tag" || return 1
+    verify_release_tag "$INSTALL_DIR" "$tag" || return 1
+  fi
+}
+
+# Fallback when in-place repair cannot work: rename the directory (a plain
+# mv — nothing is deleted), clone fresh, then carry history/ forward from
+# the moved-aside copy. If the clone fails the original directory is put
+# back so no state is stranded.
+move_aside_and_clone() {
+  local backup
+  backup="${INSTALL_DIR}.moved-$(date +%Y%m%d%H%M%S)"
+  mv "$INSTALL_DIR" "$backup" \
+    || fail "Could not move '${INSTALL_DIR}' aside to '${backup}'."
+  # Subshell so a fail() inside install_fresh_clone does not abort the
+  # restore path below.
+  if ( install_fresh_clone ); then
+    info "Previous directory moved aside to ${backup}"
+    if [ -d "${backup}/history" ] && [ ! -e "${INSTALL_DIR}/history" ]; then
+      mv "${backup}/history" "${INSTALL_DIR}/history" \
+        && info "Carried mdoctor history forward into ${INSTALL_DIR}/history"
+    fi
+  else
+    # A leftover at INSTALL_DIR can only be output of the failed clone —
+    # the original directory is safely at $backup.
+    if [ -e "$INSTALL_DIR" ]; then rm -rf -- "$INSTALL_DIR"; fi
+    mv "$backup" "$INSTALL_DIR"
+    fail "Clone failed; restored '${INSTALL_DIR}' unchanged."
+  fi
+}
+
+if [ -d "$INSTALL_DIR" ] \
+  && git -C "$INSTALL_DIR" rev-parse --git-dir >/dev/null 2>&1 \
+  && { [ -f "${INSTALL_DIR}/mdoctor" ] \
+    || [ "$(git -C "$INSTALL_DIR" remote get-url origin 2>/dev/null)" = "$REPO_URL" ]; }; then
   info "Existing installation found at ${INSTALL_DIR}"
   if git -C "$INSTALL_DIR" describe --tags --exact-match >/dev/null 2>&1; then
     # Tag-pinned install (Task 4.1): move to the newest verified tag.
@@ -308,15 +370,23 @@ if [ -d "$INSTALL_DIR" ]; then
     fi
   else
     info "Updating..."
-    cd "$INSTALL_DIR"
-    git pull --ff-only origin main 2>/dev/null || {
+    git -C "$INSTALL_DIR" pull --ff-only origin main 2>/dev/null || {
       warn "Could not fast-forward. Re-cloning..."
-      cd ..
-      assert_mdoctor_install_dir "$INSTALL_DIR"
-      rm -rf -- "$INSTALL_DIR"
-      install_fresh_clone
+      reseed_checkout_in_place || move_aside_and_clone
     }
   fi
+elif [ -d "$INSTALL_DIR" ] && [ -n "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]; then
+  # Non-empty dir that is not an mdoctor checkout: adoptable only when
+  # every entry is mdoctor-owned (e.g. history/ written by check runs);
+  # foreign content is never merged into or deleted.
+  if _dir_is_mdoctor_owned "$INSTALL_DIR"; then
+    info "No checkout at ${INSTALL_DIR} — installing in place (existing mdoctor state is preserved)..."
+    reseed_checkout_in_place || move_aside_and_clone
+  else
+    fail "Refusing to install over '${INSTALL_DIR}': not an mdoctor checkout and contains files mdoctor does not own. Move it aside (e.g. mv \"${INSTALL_DIR}\" \"${INSTALL_DIR}.bak\") and re-run."
+  fi
+elif [ -e "$INSTALL_DIR" ]; then
+  fail "Refusing to install over '${INSTALL_DIR}': exists and is not a directory."
 else
   install_fresh_clone
 fi
