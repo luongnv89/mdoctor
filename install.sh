@@ -375,9 +375,9 @@ if [ -d "$INSTALL_DIR" ] \
       reseed_checkout_in_place || move_aside_and_clone
     }
   fi
-elif [ -d "$INSTALL_DIR" ] && [ -n "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]; then
-  # Non-empty dir that is not an mdoctor checkout: adoptable only when
-  # every entry is mdoctor-owned (e.g. history/ written by check runs);
+elif [ -d "$INSTALL_DIR" ]; then
+  # Dir that is not an mdoctor checkout: adoptable only when every entry
+  # is mdoctor-owned (empty dirs and e.g. history/ written by check runs);
   # foreign content is never merged into or deleted.
   if _dir_is_mdoctor_owned "$INSTALL_DIR"; then
     info "No checkout at ${INSTALL_DIR} — installing in place (existing mdoctor state is preserved)..."

@@ -176,6 +176,21 @@ teardown_file() {
   assert_file_exists "$TMPHOME/bin/mdoctor"
 }
 
+@test "install adopts a pre-created empty dir" {
+  # Regression: a pre-created empty MDOCTOR_INSTALL_DIR used to fall
+  # through to the 'exists and is not a directory' refusal instead of
+  # being adopted in place (an empty dir is trivially mdoctor-owned).
+  export MDOCTOR_SKIP_PLATFORM_CHECK=true MDOCTOR_REPO_URL="$ROOT_DIR" MDOCTOR_CHANNEL=main
+  mkdir -p "$TMPHOME/adopt-empty" "$TMPHOME/bin"
+  MDOCTOR_INSTALL_DIR="$TMPHOME/adopt-empty" MDOCTOR_BIN_DIR="$TMPHOME/bin" \
+    MDOCTOR_BINARY_NAME="mdoctor-empty" \
+    MDOCTOR_ASSUME_YES=true HOME="$TMPHOME" ./install.sh >"$TMPHOME/adopt-empty.out" 2>&1 \
+    || { tail -n 20 "$TMPHOME/adopt-empty.out"; fail "empty-dir adopt install failed"; }
+  assert_file_exists "$TMPHOME/adopt-empty/mdoctor"
+  assert_dir_exists "$TMPHOME/adopt-empty/.git"
+  assert_file_exists "$TMPHOME/bin/mdoctor-empty"
+}
+
 @test "install refuses to adopt a directory with foreign files" {
   export MDOCTOR_SKIP_PLATFORM_CHECK=true MDOCTOR_REPO_URL="$ROOT_DIR" MDOCTOR_CHANNEL=main
   mkdir -p "$TMPHOME/foreign-install" "$TMPHOME/bin"
