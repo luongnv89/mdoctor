@@ -21,6 +21,16 @@
 # `git worktree prune`. The branch a removed worktree had checked out is
 # always kept — removing a worktree never deletes commits.
 #
+# A stale entry (directory missing — possibly just an unmounted disk or
+# network share) is pruned only when it passes the same path checks
+# (protected / whitelisted / scope-excluded), its admin dir
+# <common>/worktrees/<id> shows no activity in DAYS_OLD days, and a
+# detached HEAD is contained by some ref. Because `git worktree prune` is
+# repo-wide, a repository's prune runs only when EVERY stale entry in it
+# was vetted: one kept stale entry holds back pruning for the whole repo
+# (its other stale entries are reported as kept). The decision is made in
+# worktree_scan_candidates, so the force pre-flight summary matches.
+#
 # A linked worktree is "safe to delete" only when ALL of these hold:
 #   - not the main worktree, not bare, not locked
 #   - the current directory is not inside it
@@ -171,13 +181,60 @@ _worktree_keep_reason() {
   return 0
 }
 
-# worktree_scan_candidates — evaluate every linked worktree. One line per
-# worktree, tab-separated: ACTION COMMON_DIR PATH LABEL REASON, where
-# ACTION is remove | prune | keep. Shared by the module and the force-mode
-# pre-flight summary in mdoctor.
-worktree_scan_candidates() {
-  command -v git >/dev/null 2>&1 || return 0
-  local common line wt head branch detached locked prunable first label reason
+# _worktree_admin_dir COMMON PATH — admin dir <COMMON>/worktrees/<id> whose
+# gitdir file points at PATH/.git (empty when none matches).
+_worktree_admin_dir() {
+  local common="$1" wt="$2" d target
+  for d in "$common"/worktrees/*; do
+    [ -f "$d/gitdir" ] || continue
+    IFS= read -r target < "$d/gitdir" || [ -n "$target" ] || continue
+    if [ "$target" = "$wt/.git" ]; then
+      printf '%s' "$d"
+      return 0
+    fi
+  done
+  return 0
+}
+
+# _worktree_stale_keep_reason PATH HEAD DETACHED COMMON — prints why the
+# stale entry (directory missing) for PATH must be kept; prints nothing
+# when `git worktree prune` may drop it.
+_worktree_stale_keep_reason() {
+  local wt="$1" head="$2" detached="$3" common="$4" admin days
+  if is_protected_deletion_path "$wt"; then
+    echo "protected path (directory missing)"; return 0
+  fi
+  if is_whitelisted_cleanup_path "$wt"; then
+    echo "whitelisted (directory missing)"; return 0
+  fi
+  if cleanup_scope_is_excluded "$wt"; then
+    echo "excluded by cleanup scope (directory missing)"; return 0
+  fi
+  admin="$(_worktree_admin_dir "$common" "$wt")"
+  if [ -z "$admin" ]; then
+    echo "admin entry not found (directory missing)"; return 0
+  fi
+  days="$(_worktree_days)"
+  if [ "$days" -gt 0 ] &&
+     [ -n "$(find "$admin" -maxdepth 1 -mtime "-${days}" 2>/dev/null)" ]; then
+    echo "active within the last ${days} days (directory missing)"; return 0
+  fi
+  if [ "$detached" = true ] && [ -n "$head" ]; then
+    if [ -z "$(git --git-dir="$common" for-each-ref --contains "$head" --count=1 2>/dev/null)" ]; then
+      echo "detached HEAD has commits no branch, tag or remote contains (directory missing)"; return 0
+    fi
+  fi
+  return 0
+}
+
+# _worktree_scan_repo COMMON — classify every linked worktree of one
+# repository (lines as in worktree_scan_candidates) and end with a
+# "hold<TAB>true|false" line: true when a kept stale entry must block the
+# repo-wide `git worktree prune`.
+_worktree_scan_repo() {
+  local common="$1"
+  local line wt="" head="" branch="" detached=false locked=false prunable=false
+  local first=true hold=false label reason
 
   _wt_emit() {
     [ -n "$wt" ] || return 0
@@ -191,8 +248,16 @@ worktree_scan_candidates() {
       label="${branch:-bare}"
     fi
     if [ "$prunable" = true ] || [ ! -d "$wt" ]; then
+      # Locked entries are never pruned by git, so they do not hold back
+      # the repo-wide prune; any other kept stale entry does.
       if [ "$locked" = true ]; then
         printf 'keep\t%s\t%s\t%s\t%s\n' "$common" "$wt" "$label" "locked (directory missing)"
+        return 0
+      fi
+      reason="$(_worktree_stale_keep_reason "$wt" "$head" "$detached" "$common")"
+      if [ -n "$reason" ]; then
+        hold=true
+        printf 'keep\t%s\t%s\t%s\t%s\n' "$common" "$wt" "$label" "$reason"
       else
         printf 'prune\t%s\t%s\t%s\t%s\n' "$common" "$wt" "$label" "directory no longer exists"
       fi
@@ -214,25 +279,51 @@ worktree_scan_candidates() {
     fi
   }
 
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      "worktree "*)
+        _wt_emit
+        wt="${line#worktree }" head="" branch="" detached=false locked=false prunable=false
+        ;;
+      "HEAD "*) head="${line#HEAD }" ;;
+      "branch "*) branch="${line#branch refs/heads/}" ;;
+      detached) detached=true ;;
+      locked|"locked "*) locked=true ;;
+      prunable|"prunable "*) prunable=true ;;
+    esac
+  done < <(git --git-dir="$common" worktree list --porcelain 2>/dev/null)
+  _wt_emit
+  unset -f _wt_emit
+  # Last line tells the caller whether a kept stale entry holds the repo.
+  printf 'hold\t%s\n' "$hold"
+}
+
+# worktree_scan_candidates — evaluate every linked worktree. One line per
+# worktree, tab-separated: ACTION COMMON_DIR PATH LABEL REASON, where
+# ACTION is remove | prune | keep. Shared by the module and the force-mode
+# pre-flight summary in mdoctor.
+worktree_scan_candidates() {
+  command -v git >/dev/null 2>&1 || return 0
+  local common out hold a c w l r
+
   while IFS= read -r common; do
     [ -z "$common" ] && continue
-    wt="" head="" branch="" detached=false locked=false prunable=false first=true
-    while IFS= read -r line || [ -n "$line" ]; do
-      case "$line" in
-        "worktree "*)
-          _wt_emit
-          wt="${line#worktree }" head="" branch="" detached=false locked=false prunable=false
-          ;;
-        "HEAD "*) head="${line#HEAD }" ;;
-        "branch "*) branch="${line#branch refs/heads/}" ;;
-        detached) detached=true ;;
-        locked|"locked "*) locked=true ;;
-        prunable|"prunable "*) prunable=true ;;
-      esac
-    done < <(git --git-dir="$common" worktree list --porcelain 2>/dev/null)
-    _wt_emit
+    out="$(_worktree_scan_repo "$common")"
+    hold=false
+    while IFS=$'\t' read -r a c; do
+      [ "$a" = hold ] && hold="$c"
+    done <<< "$out"
+    # `git worktree prune` is repo-wide: when any stale entry of this repo
+    # must be kept, no stale entry of it is pruned.
+    while IFS=$'\t' read -r a c w l r; do
+      [ -n "$a" ] && [ "$a" != hold ] || continue
+      if [ "$a" = prune ] && [ "$hold" = true ]; then
+        a=keep
+        r="directory missing; prune held back by another kept stale entry in this repo"
+      fi
+      printf '%s\t%s\t%s\t%s\t%s\n' "$a" "$c" "$w" "$l" "$r"
+    done <<< "$out"
   done < <(_worktree_repo_dirs)
-  unset -f _wt_emit
 }
 
 clean_git_worktrees() {
@@ -270,7 +361,13 @@ clean_git_worktrees() {
           [ "$p" = "$common" ] && continue 2
         done
         pruned+=("$common")
-        run_cmd_args git --git-dir="$common" worktree prune || rc="$MDOCTOR_SAFE_ERR_RUNTIME_FAILURE"
+        # Only reached when every stale entry of this repo was vetted (see
+        # worktree_scan_candidates); --expire is a second guard on git's side.
+        if [ "$days" -gt 0 ]; then
+          run_cmd_args git --git-dir="$common" worktree prune --expire "${days}.days.ago" || rc="$MDOCTOR_SAFE_ERR_RUNTIME_FAILURE"
+        else
+          run_cmd_args git --git-dir="$common" worktree prune || rc="$MDOCTOR_SAFE_ERR_RUNTIME_FAILURE"
+        fi
         ;;
       keep)
         log "Keeping: ${disp} [${label}] — ${reason}"

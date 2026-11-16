@@ -92,7 +92,14 @@ the guarded helpers, so `validate_deletion_path` and the whitelist do
   has a HEAD some ref contains, holds only regenerable ignored files and
   has been inactive for `DAYS_OLD` days (default 7). `--force` is never
   passed to git, so a worktree that turns dirty after the scan is
-  refused by git itself. Branches are never deleted.
+  refused by git itself. Branches are never deleted. A stale entry
+  (directory missing, e.g. an unmounted disk) is pruned only when it
+  passes the same protected/whitelist/scope checks, its admin dir
+  `<common>/worktrees/<id>` is inactive for `DAYS_OLD` days, and a
+  detached HEAD is contained by some ref. Because `git worktree prune`
+  is repo-wide, it runs (with `--expire <DAYS_OLD>.days.ago`) only when
+  every stale entry in that repository was vetted; one kept stale entry
+  holds back the prune for the whole repository.
 
 All of these are additionally covered by the layer-2 confirmation gate
 (Task 0.5): an interactive `--force` asks `[y/N]` after the pre-flight

@@ -126,6 +126,7 @@ run_wt() {
 @test "--force prunes a stale entry whose directory is gone" {
   add_wt gone
   rm -rf "$TMPHOME/Projects/wt-gone"
+  age_all
   run_wt --force
   assert_contains "$TMPHOME/out" "Stale entry: ~/Projects/wt-gone"
   run git -C "$REPO" worktree list --porcelain
@@ -147,4 +148,56 @@ run_wt() {
   (cd "$TMPHOME/Projects/wt-here" && HOME="$TMPHOME" MDOCTOR_ASSUME_YES=true "$ROOT_DIR/mdoctor" clean -m worktrees --force) >"$TMPHOME/out" 2>&1
   assert_contains "$TMPHOME/out" "wt-here \\[here\\] — current directory is inside it"
   assert_dir_exists "$TMPHOME/Projects/wt-here"
+}
+
+@test "a recently active stale entry (directory missing) is kept, not pruned" {
+  add_wt mounted
+  rm -rf "$TMPHOME/Projects/wt-mounted"
+  run_wt --force
+  assert_contains "$TMPHOME/out" "wt-mounted \\[mounted\\] — active within the last 7 days (directory missing)"
+  run git -C "$REPO" worktree list --porcelain
+  [[ "$output" == *wt-mounted* ]]
+}
+
+@test "a whitelisted stale entry is kept and holds back the repo-wide prune" {
+  add_wt wlgone
+  add_wt vetted
+  rm -rf "$TMPHOME/Projects/wt-wlgone" "$TMPHOME/Projects/wt-vetted"
+  age_all
+  printf '%s\n' "$TMPHOME/Projects/wt-wlgone" >> "$TMPHOME/.config/mdoctor/cleanup_whitelist"
+  run_wt --force
+  assert_contains "$TMPHOME/out" "wt-wlgone \\[wlgone\\] — whitelisted (directory missing)"
+  assert_contains "$TMPHOME/out" "wt-vetted \\[vetted\\] — directory missing; prune held back"
+  run git -C "$REPO" worktree list --porcelain
+  [[ "$output" == *wt-wlgone* ]]
+  [[ "$output" == *wt-vetted* ]]
+}
+
+@test "a stale detached entry with commits no ref contains is kept" {
+  git -C "$REPO" worktree add -q --detach "$TMPHOME/Projects/wt-detgone"
+  echo z > "$TMPHOME/Projects/wt-detgone/z"
+  git -C "$TMPHOME/Projects/wt-detgone" add z
+  git -C "$TMPHOME/Projects/wt-detgone" commit -qm detached
+  rm -rf "$TMPHOME/Projects/wt-detgone"
+  age_all
+  run_wt --force
+  assert_contains "$TMPHOME/out" "detached HEAD has commits no branch, tag or remote contains (directory missing)"
+  run git -C "$REPO" worktree list --porcelain
+  [[ "$output" == *wt-detgone* ]]
+}
+
+@test "vetted stale entries are pruned while a live worktree in the repo is kept" {
+  add_wt old1
+  add_wt old2
+  add_wt live
+  rm -rf "$TMPHOME/Projects/wt-old1" "$TMPHOME/Projects/wt-old2"
+  age_all
+  echo y >> "$TMPHOME/Projects/wt-live/a"
+  run_wt --force
+  assert_contains "$TMPHOME/out" "Stale entry: ~/Projects/wt-old1"
+  assert_contains "$TMPHOME/out" "Stale entry: ~/Projects/wt-old2"
+  run git -C "$REPO" worktree list --porcelain
+  [[ "$output" != *wt-old1* ]]
+  [[ "$output" != *wt-old2* ]]
+  [[ "$output" == *wt-live* ]]
 }
