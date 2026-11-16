@@ -59,7 +59,7 @@ recommended first command.
 |---------|-------|-------------|
 | `mdoctor check` | `[SAFE]` | Run full system health audit (20 checks on macOS / 18 on Linux, read-only) |
 | `mdoctor check --json` | `[SAFE]` | JSON output for automation |
-| `mdoctor clean` | `[HIGH]` | Run system cleanup (dry-run by default, 9 on macOS / 8 on Linux) |
+| `mdoctor clean` | `[HIGH]` | Run system cleanup (dry-run by default, 10 on macOS / 9 on Linux) |
 | `mdoctor fix <target>` | `[MED]` | Preview common fixes (dry-run only, 9 on macOS / 2 on Linux) |
 | `mdoctor diagnose` | `[SAFE]` | Run active performance diagnosis (read-only — prints remedies, never runs them) |
 | `mdoctor info` | `[SAFE]` | Show system information summary |
@@ -171,8 +171,8 @@ outright. The summary itself is informational, not an approval step.
 
 A full `mdoctor clean` does not run every registered module — it runs a
 fixed step list of 7 on macOS / 6 on Linux. The opted-out modules —
-`downloads` (report-only: lists large files, never deletes) and
-`browser` — run via `mdoctor clean -m <name>` or
+`downloads` (report-only: lists large files, never deletes),
+`browser` and `worktrees` (git worktrees that are safe to delete) — run via `mdoctor clean -m <name>` or
 `mdoctor clean --interactive`.
 
 Clean a specific target only:
@@ -181,6 +181,8 @@ Clean a specific target only:
 mdoctor clean -m trash
 mdoctor clean -m crash_reports --force
 mdoctor clean -m xcode
+mdoctor clean -m worktrees           # scan git worktrees, list the safe-to-delete ones
+mdoctor clean -m worktrees --force   # remove them (git worktree remove; branches kept)
 ```
 
 Interactive cleanup selection:
@@ -195,7 +197,7 @@ mdoctor clean --interactive --force
 | Category | macOS | Linux (Debian / Arch) |
 |----------|-------|----------------|
 | **System** | `trash` [MED], `caches` [LOW], `logs` [MED], `downloads` [SAFE] (report-only), `crash_reports` [MED], `ios_backups` [HIGH] | `trash` [MED], `caches` [LOW], `logs` [MED], `downloads` [SAFE] (report-only), `crash_reports` [MED], `apt` [MED] (Debian) / `pacman` [MED] (Arch) |
-| **Software** | `browser` [LOW], `xcode` [MED], `dev_caches` [MED] | `browser` [LOW], `dev_caches` [MED] |
+| **Software** | `browser` [LOW], `xcode` [MED], `dev_caches` [MED], `worktrees` [MED] | `browser` [LOW], `dev_caches` [MED], `worktrees` [MED] |
 
 ### Fix
 
@@ -366,7 +368,7 @@ mdoctor/
 ├── install.sh           # One-line installer
 ├── uninstall.sh         # Uninstaller
 ├── doctor.sh            # Health check engine (20 on macOS / 18 on Linux)
-├── cleanup.sh           # Cleanup engine (9 modules on macOS / 8 on Linux)
+├── cleanup.sh           # Cleanup engine (cleanup modules: 10 on macOS / 9 on Linux)
 ├── lib/                 # Shared libraries (18 files)
 │   ├── platform.sh      # OS/distro detection (macOS, Debian, Arch/Omarchy, etc.)
 │   ├── constants.sh     # Named thresholds/timeouts + truthy predicate
@@ -410,7 +412,7 @@ mdoctor/
 │   ├── containers.sh    # Docker & containers
 │   ├── apt.sh           # APT package manager health (Debian Linux)
 │   └── pacman.sh        # pacman package manager health (Arch Linux)
-├── cleanups/            # Cleanup modules (11 files)
+├── cleanups/            # Cleanup modules (12 files)
 │   ├── trash.sh         # Trash cleanup
 │   ├── caches.sh        # User caches
 │   ├── logs.sh          # Old logs
@@ -420,6 +422,7 @@ mdoctor/
 │   ├── ios_backups.sh   # Old iOS device backups (macOS)
 │   ├── xcode.sh         # Xcode DerivedData, archives, simulators (macOS)
 │   ├── dev_caches.sh    # Developer dependency & package caches
+│   ├── worktrees.sh     # Git worktrees safe to delete (opt-in via -m)
 │   ├── apt.sh           # APT package cache cleanup (Debian Linux)
 │   └── pacman.sh        # pacman package cache cleanup (Arch Linux)
 ├── fixes/               # Fix modules (11 files)

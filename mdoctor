@@ -251,6 +251,27 @@ cmd_clean_preflight_summary_module() {
       add_path "Pacman cache" "/var/cache/pacman/pkg"
       echo "  - pacman orphan removal (size estimate: n/a)"
       ;;
+    worktrees)
+      if ! declare -f worktree_scan_candidates >/dev/null 2>&1; then
+        # shellcheck source=/dev/null
+        source "${MDOCTOR_DIR}/cleanups/worktrees.sh"
+      fi
+      local _wt_action _wt_common _wt_path _wt_label _wt_reason _wt_n=0
+      while IFS=$'\t' read -r _wt_action _wt_common _wt_path _wt_label _wt_reason; do
+        case "$_wt_action" in
+          remove)
+            add_path "Worktree [${_wt_label}]" "$_wt_path"
+            _wt_n=$((_wt_n + 1))
+            ;;
+          prune)
+            printf "  - %-30s %s (stale entry, git worktree prune)\n" "Worktree [${_wt_label}]" "$_wt_path"
+            _wt_n=$((_wt_n + 1))
+            ;;
+        esac
+      done < <(DAYS_OLD="$days" worktree_scan_candidates)
+      [ "$_wt_n" -gt 0 ] || echo "  (no worktrees are safe to remove)"
+      echo "  Removal uses 'git worktree remove' (no --force); branches are kept."
+      ;;
     dev_caches)
       add_path "npm cache" "${HOME}/.npm"
       add_path "pip cache" "${HOME}/.cache/pip"

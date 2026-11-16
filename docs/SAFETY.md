@@ -63,7 +63,7 @@ module deletes there today), `~/.config`, `~/.local`.
 
 ### Operations outside the safety primitives
 
-Two operations reachable from a forced clean do **not** route through
+These operations reachable from a forced clean do **not** route through
 the guarded helpers, so `validate_deletion_path` and the whitelist do
 **not** apply to them:
 
@@ -82,7 +82,19 @@ the guarded helpers, so `validate_deletion_path` and the whitelist do
   orphan removal that uninstalls packages. Not filtered by any path
   check.
 
-Both are additionally covered by the layer-2 confirmation gate
+- `git worktree remove <path>` / `git worktree prune` —
+  `cleanups/worktrees.sh` (opt-in `clean -m worktrees` only). Linked
+  worktrees live in project trees outside the allowed deletion roots,
+  so removal is delegated to git instead of `safe_remove`. The module
+  still applies `is_protected_deletion_path`, the cleanup whitelist and
+  the scope `EXCLUDE_GLOB`s, and only selects a worktree that is clean
+  (untracked included), unlocked, not mid-operation, has no submodules,
+  has a HEAD some ref contains, holds only regenerable ignored files and
+  has been inactive for `DAYS_OLD` days (default 7). `--force` is never
+  passed to git, so a worktree that turns dirty after the scan is
+  refused by git itself. Branches are never deleted.
+
+All of these are additionally covered by the layer-2 confirmation gate
 (Task 0.5): an interactive `--force` asks `[y/N]` after the pre-flight
 summary, and a non-tty `--force` without `MDOCTOR_ASSUME_YES=true`
 refuses. The gate limits *when* they run; it does not filter *what*
@@ -132,11 +144,13 @@ Rules:
 - Exact path protects itself + descendants
 - `/*` protects the base path itself + descendants under it
 
-### Cleanup scope (dev_caches node_modules scan)
+### Cleanup scope (dev_caches node_modules scan, worktrees repo scan)
 
 Path: `~/.config/mdoctor/cleanup_scope.conf`
 
-Use it to tune stale `node_modules` scanning in `dev_caches`.
+Use it to tune stale `node_modules` scanning in `dev_caches` and the
+repository search roots of `worktrees` (`INCLUDE_PATH` sets the roots,
+`EXCLUDE_GLOB` keeps a matching worktree).
 
 Examples:
 
@@ -197,7 +211,7 @@ If you suspect an unwanted cleanup:
   and the confirmation gate constrain them.
 - Certain macOS-protected areas (SIP/read-only zones) may report permission-like failures.
 - On Linux, SELinux or AppArmor restrictions may cause similar permission-like failures.
-- Scope config currently targets stale `node_modules` behavior under `dev_caches` (not every cleanup module).
+- Scope config currently targets stale `node_modules` behavior under `dev_caches` and the `worktrees` repo scan (not every cleanup module).
 
 ## Platform Differences
 

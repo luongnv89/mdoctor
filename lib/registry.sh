@@ -100,6 +100,11 @@ register_all_modules() {
     register_module cleanup xcode         Software MED clean_xcode              "Xcode DerivedData, archives, simulators"
   fi
   register_module cleanup dev_caches    Software MED clean_dev_caches         "Developer dependency & package caches"
+  # worktrees is opt-in: `clean -m worktrees` / `clean -i` only, never part
+  # of the engine's full-run CLEANUP_STEPS (removing checkouts must be an
+  # explicit choice). Removal goes through `git worktree remove` without
+  # --force, so git refuses anything dirty.
+  register_module cleanup worktrees     Software MED clean_git_worktrees      "Git worktrees safe to delete (clean, inactive; branches kept)"
   if is_debian; then
     register_module cleanup apt          System   MED clean_apt_cache          "APT package cache cleanup"
   fi
