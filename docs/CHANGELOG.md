@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `worktrees` cleanup module (`mdoctor clean -m worktrees [--force]`, opt-in, never part of a full `clean`): scans every git repository under the cleanup scope roots for linked worktrees and removes only the ones that are safe to delete — clean (untracked included), unlocked, no operation in progress, no submodules, HEAD reachable from a ref, only regenerable ignored files (e.g. `node_modules`, `.venv`; a `.env` keeps the worktree), and inactive for `DAYS_OLD` days (default 7). Removal is `git worktree remove` without `--force`, stale entries whose directory is gone are cleared with `git worktree prune`, and branches are always kept
+
 ## [3.2.1] - 2026-09-18
 
 ### Fixed

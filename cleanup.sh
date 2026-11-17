@@ -50,6 +50,8 @@ source "${SCRIPT_DIR}/cleanups/logs.sh"
 # `mdoctor clean -m downloads` / `clean -i` instead. browser and dev are
 # likewise unsourced: browser has no full-run step and dev is retired
 # (issue #89); both dispatch paths source modules on demand instead.
+# worktrees is opt-in the same way: removing git checkouts is never part
+# of a blanket full run — `mdoctor clean -m worktrees [--force]` only.
 source "${SCRIPT_DIR}/cleanups/crash_reports.sh"
 if is_macos; then
   source "${SCRIPT_DIR}/cleanups/ios_backups.sh"

@@ -124,11 +124,12 @@ usage_clean() {
   registry_help_group cleanup
   echo
   echo "Whitelist file: ~/.config/mdoctor/cleanup_whitelist"
-  echo "Scope file: ~/.config/mdoctor/cleanup_scope.conf (dev_caches node_modules scan)"
+  echo "Scope file: ~/.config/mdoctor/cleanup_scope.conf (dev_caches node_modules scan, worktrees repo scan)"
   echo
   echo "Environment Variables:"
   echo "  DAYS_OLD_OVERRIDE=N              Override cleanup age threshold (per-module defaults 7/30/90)"
   echo "  DAYS_OLD_NODE_MODULES=N          Override stale node_modules threshold (default: 30)"
+  echo "  MDOCTOR_WORKTREE_SCAN_DEPTH=N    Repo search depth under scope roots for worktrees (default: 4)"
 }
 
 # usage_fix — fix command help (targets from the registry).
